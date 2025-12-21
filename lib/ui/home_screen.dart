@@ -313,7 +313,6 @@ Future<void> _loadViewMode() async {
       onTap: () => _openDetail(v),
       borderRadius: BorderRadius.circular(14),
       child: Card(
-        color: Colors.white.withOpacity(0.88),
         child: Stack(
           children: [
             Padding(
@@ -362,7 +361,7 @@ Future<void> _loadViewMode() async {
                   icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Colors.grey : Colors.black),
                   onPressed: () => _toggleFavorite(v),
                 ),
-              ),
+	              ),
 
             // 🗑️ borrar abajo derecha (bien a la esquina)
             if (conBorrar)
@@ -631,121 +630,277 @@ Future<void> _loadViewMode() async {
   }
 
   Widget botonesInicio() {
-    Widget btn(IconData icon, String text, VoidCallback onTap, {int? badge}) {
-      return InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Stack(
+    // ✅ Opción C: Home tipo “app de música” con secciones.
+    // Mantiene EXACTAMENTE la misma lógica/callbacks.
+
+    final t = Theme.of(context);
+
+    // ✅ Contadores (ya calculados en _homeCounts)
+    final all = _homeCounts['all'] ?? 0;
+    final fav = _homeCounts['fav'] ?? 0;
+    final wish = _homeCounts['wish'] ?? 0;
+
+    Widget badge(int n) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFF2A2A2A)),
+        ),
+        child: Text(
+          '$n',
+          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900),
+        ),
+      );
+    }
+
+    Widget sectionTitle(String title, {String? subtitle}) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(18),
+            Text(title, style: t.textTheme.titleLarge),
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
               ),
-              child: Row(
-                children: [
-                  Icon(icon),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      text,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right),
-                ],
-              ),
-            ),
-            if (badge != null)
-              Positioned(
-                // ✅ mejor alineado: no tapa el chevron y queda en la línea del texto
-                right: 34,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '$badge',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            ]
           ],
         ),
       );
     }
 
-    // ✅ Si aún no cargó el Future, usamos los últimos contadores.
-    final all = _homeCounts['all'] ?? 0;
-    final fav = _homeCounts['fav'] ?? 0;
-    final wish = _homeCounts['wish'] ?? 0;
+    Widget quickAction({required IconData icon, required String label, required VoidCallback onTap}) {
+      return ActionChip(
+        onPressed: onTap,
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+        avatar: Icon(icon, size: 18),
+        backgroundColor: const Color(0xFF111111),
+        side: const BorderSide(color: Color(0xFF2A2A2A)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      );
+    }
+
+    Widget menuRow({required IconData icon, required String title, required String subtitle, int? count, required VoidCallback onTap}) {
+      return Card(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F0F0F),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF2A2A2A)),
+                  ),
+                  child: Icon(icon, size: 22, color: t.colorScheme.onSurface),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: t.textTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFFA7A7A7)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (count != null) ...[
+                  const SizedBox(width: 10),
+                  badge(count),
+                ],
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right, size: 20, color: Color(0xFFA7A7A7)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget recentGrid() {
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: _futureAll,
+        builder: (context, snap) {
+          final items = (snap.data ?? const <Map<String, dynamic>>[]).toList();
+          if (items.isEmpty) {
+            return const Text(
+              'Aún no has agregado vinilos. Usa “Buscar” o “Discografías”.',
+              style: TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
+            );
+          }
+
+          // Mostramos 4 “últimos” de forma visual (sin cambiar lógica de guardado).
+          items.sort((a, b) {
+            final ia = (a['id'] is int) ? a['id'] as int : 0;
+            final ib = (b['id'] is int) ? b['id'] as int : 0;
+            return ib.compareTo(ia);
+          });
+          final top = items.take(4).toList();
+
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: top.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.05,
+            ),
+            itemBuilder: (_, i) {
+              final v = top[i];
+              final artista = (v['artista'] as String?)?.trim() ?? '';
+              final album = (v['album'] as String?)?.trim() ?? '';
+              final year = (v['year'] as String?)?.trim() ?? '';
+
+              return InkWell(
+                onTap: () => _openDetail(v),
+                borderRadius: BorderRadius.circular(16),
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: _gridCover(v),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          artista.isEmpty ? '—' : artista,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          album.isEmpty ? '—' : album,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          year.isEmpty ? '—' : year,
+                          style: const TextStyle(color: Color(0xFFA7A7A7), fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        btn(Icons.search, 'Buscar vinilos', () => setState(() => vista = Vista.buscar)),
-        const SizedBox(height: 10),
-        btn(Icons.library_music, 'Discografías', () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen()));
-        }),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
 
-        // ✅ sin "Mostrar"
-        // ✅ Icono de "líneas" (mismo estilo para lista/agregar)
-        btn(
-          Icons.format_list_bulleted,
-          'Lista de vinilos',
-          () {
-            setState(() => vista = Vista.lista);
-          },
-          badge: all,
+        // HERO
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F0F0F),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFF2A2A2A)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('GaBoLP', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 4),
+              const Text(
+                'Tu colección de vinilos, simple y rápida.',
+                style: TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  quickAction(icon: Icons.search, label: 'Buscar', onTap: () => setState(() => vista = Vista.buscar)),
+                  quickAction(
+                    icon: Icons.library_music,
+                    label: 'Discografías',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())),
+                  ),
+                  quickAction(
+                    icon: Icons.settings,
+                    label: 'Ajustes',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 10),
 
-        btn(
-          Icons.star,
-          'Vinilos favoritos',
-          () {
-            setState(() => vista = Vista.favoritos);
-          },
-          badge: fav,
+        sectionTitle('Colección', subtitle: 'Accede rápido a tus listas.'),
+        menuRow(
+          icon: Icons.list,
+          title: 'Lista de vinilos',
+          subtitle: 'Todos tus LPs guardados',
+          count: all,
+          onTap: () => setState(() => vista = Vista.lista),
         ),
-        const SizedBox(height: 10),
+        menuRow(
+          icon: Icons.star,
+          title: 'Vinilos favoritos',
+          subtitle: 'Tu selección destacada',
+          count: fav,
+          onTap: () => setState(() => vista = Vista.favoritos),
+        ),
+        menuRow(
+          icon: Icons.shopping_cart,
+          title: 'Lista de deseos',
+          subtitle: 'Pendientes por comprar',
+          count: wish,
+          onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen())).then((_) {
+              if (!mounted) return;
+              _reloadAllData();
+            });
+          },
+        ),
+        menuRow(
+          icon: Icons.delete_outline,
+          title: 'Borrar vinilos',
+          subtitle: 'Eliminar de tu lista',
+          onTap: () => setState(() => vista = Vista.borrar),
+        ),
 
-        // ✅ Lista de deseos con icono carrito (mismo que discografía)
-        btn(Icons.shopping_cart, 'Lista de deseos', () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => WishlistScreen())).then((_) {
-            if (!mounted) return;
-            _refreshHomeCounts();
-            setState(() {});
-          });
-        }, badge: wish),
+        sectionTitle('Últimos agregados', subtitle: 'Acceso rápido a lo último que guardaste.'),
+        recentGrid(),
         const SizedBox(height: 10),
-
-        btn(Icons.settings, 'Ajustes', () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())).then((_) async {
-            await _loadViewMode();
-            if (!mounted) return;
-            setState(() {});
-          });
-        }),
-        const SizedBox(height: 10),
-
-        btn(Icons.delete_outline, 'Borrar vinilos', () => setState(() => vista = Vista.borrar)),
       ],
     );
   }
+
+
+
 
   Widget vistaBuscar() {
     final p = prepared;
@@ -759,9 +914,9 @@ Future<void> _loadViewMode() async {
       return Container(
         margin: const EdgeInsets.only(top: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.92),
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.black12),
+          border: Border.all(color: const Color(0xFF2A2A2A)),
         ),
         child: ListView.separated(
           shrinkWrap: true,
@@ -782,9 +937,6 @@ Future<void> _loadViewMode() async {
           onChanged: _onArtistChanged,
           decoration: InputDecoration(
             labelText: 'Artista',
-            filled: true,
-            fillColor: Colors.white.withOpacity(0.85),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
             suffixIcon: showXArtist
                 ? IconButton(
                     tooltip: 'Limpiar',
@@ -820,9 +972,6 @@ Future<void> _loadViewMode() async {
           onChanged: _onAlbumChanged,
           decoration: InputDecoration(
             labelText: 'Álbum',
-            filled: true,
-            fillColor: Colors.white.withOpacity(0.85),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
             suffixIcon: showXAlbum
                 ? IconButton(
                     tooltip: 'Limpiar',
@@ -1035,7 +1184,6 @@ Future<void> _loadViewMode() async {
             final fav = _isFav(v);
 
             return Card(
-              color: Colors.white.withOpacity(0.88),
               child: ListTile(
                 leading: _leadingCover(v),
 
