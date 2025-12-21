@@ -37,14 +37,15 @@ class GaBoLpApp extends StatelessWidget {
         centerTitle: false,
         elevation: 0,
       ),
-      cardTheme: CardTheme(
-        color: const Color(0xFF161616),
+      // ThemeData.cardTheme espera CardThemeData (no CardTheme).
+      cardTheme: const CardThemeData(
+        color: Color(0xFF161616),
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: Color(0xFF242424)),
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+          side: BorderSide(color: Color(0xFF242424)),
         ),
-        margin: const EdgeInsets.symmetric(vertical: 6),
+        margin: EdgeInsets.symmetric(vertical: 6),
       ),
       textTheme: const TextTheme(
         headlineSmall: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2),
