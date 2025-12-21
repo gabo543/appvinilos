@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/backup_service.dart';
+import '../services/app_theme_service.dart';
 import '../services/view_mode_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -11,8 +12,23 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+
+  String _themeName(int v) {
+    switch (v) {
+      case 1:
+        return 'Vinyl Pro';
+      case 2:
+        return 'Claro Premium';
+      case 3:
+        return 'Minimal Dark';
+      default:
+        return 'Vinyl Pro';
+    }
+  }
+
   bool _auto = false;
   bool _grid = false;
+  int _theme = 1;
   bool _loading = true;
 
   @override
@@ -24,9 +40,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final v = await BackupService.isAutoEnabled();
     final g = await ViewModeService.isGridEnabled();
+    final t = await AppThemeService.getTheme();
     setState(() {
       _auto = v;
       _grid = g;
+      _theme = t;
       _loading = false;
     });
   }
@@ -84,6 +102,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 16),
                 Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Diseño de la app', style: TextStyle(fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Text('Estilo:', style: TextStyle(fontWeight: FontWeight.w800)),
+                            const SizedBox(width: 8),
+                            Text(_themeName(_theme), style: const TextStyle(fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        SegmentedButton<int>(
+                          segments: const [
+                            ButtonSegment(value: 1, label: Text('Pro'), icon: Icon(Icons.music_note)),
+                            ButtonSegment(value: 2, label: Text('B3'), icon: Icon(Icons.wb_sunny_outlined)),
+                            ButtonSegment(value: 3, label: Text('B1'), icon: Icon(Icons.nightlight_round)),
+                          ],
+                          selected: <int>{_theme},
+                          onSelectionChanged: (s) {
+                            final v = s.first;
+                            setState(() => _theme = v);
+                            // ✅ instantáneo: cambia UI al toque
+                            AppThemeService.setTheme(v);
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Cambia el estilo visual sin afectar la lógica ni tus datos.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
                   child: SwitchListTile(
                     value: _auto,
                     onChanged: (v) async {
@@ -110,7 +168,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: _grid,
                     onChanged: (v) async {
                       setState(() => _grid = v);
-                      await ViewModeService.setGridEnabled(v);
+                      // ✅ instantáneo en memoria (no bloquea la UI)
+                      ViewModeService.setGridEnabled(v);
                       _snack(v ? 'Vista: CUADRÍCULA ✅' : 'Vista: LISTA ✅');
                     },
                     secondary: Icon(_grid ? Icons.grid_view : Icons.view_list),

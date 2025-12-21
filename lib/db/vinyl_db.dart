@@ -260,6 +260,28 @@ class VinylDb {
     return d.query('wishlist', orderBy: 'createdAt DESC');
   }
 
+  // ✅ Contadores rápidos (evita cargar listas completas solo para contar)
+  Future<int> countAll() async {
+    final d = await db;
+    final r = await d.rawQuery('SELECT COUNT(*) as c FROM vinyls');
+    final v = r.first['c'];
+    return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
+  }
+
+  Future<int> countFavorites() async {
+    final d = await db;
+    final r = await d.rawQuery('SELECT COUNT(*) as c FROM vinyls WHERE favorite = 1');
+    final v = r.first['c'];
+    return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
+  }
+
+  Future<int> countWishlist() async {
+    final d = await db;
+    final r = await d.rawQuery('SELECT COUNT(*) as c FROM wishlist');
+    final v = r.first['c'];
+    return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
+  }
+
   Future<Map<String, dynamic>?> findWishlistByExact({
     required String artista,
     required String album,
