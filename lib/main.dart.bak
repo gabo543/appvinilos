@@ -53,6 +53,21 @@ class GaBoLpApp extends StatelessWidget {
         ),
         margin: EdgeInsets.symmetric(vertical: 10),
       ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          side: const BorderSide(color: Color(0xFFE6E6E6)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
       textTheme: const TextTheme(
         headlineSmall: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2),
         titleLarge: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2),
