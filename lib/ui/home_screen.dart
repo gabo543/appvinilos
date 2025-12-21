@@ -26,6 +26,19 @@ class _HomeScreenState extends State<HomeScreen> {
   // ⭐ Cache local para favoritos (cambio instantáneo)
   final Map<int, bool> _favCache = {};
 
+  // ✅ micro-opt: evitar File.existsSync() en cada build (especialmente en grid)
+  final Map<String, bool> _fileExistsCache = {};
+
+  bool _fileExistsCached(String path) {
+    final p = path.trim();
+    if (p.isEmpty) return false;
+    final cached = _fileExistsCache[p];
+    if (cached != null) return cached;
+    final ok = File(p).existsSync();
+    _fileExistsCache[p] = ok;
+    return ok;
+  }
+
   Vista vista = Vista.inicio;
 
   bool _gridView = false;
@@ -223,6 +236,10 @@ Future<void> _loadViewMode() async {
     try {
       await VinylDb.instance.setFavorite(id: id, favorite: next);
       await BackupService.autoSaveIfEnabled();
+
+      // ✅ Mantener coherentes: lista completa + favoritos + contadores
+      // (evita: contador incorrecto y que "se salga" de favoritos al recargar)
+      _reloadAllData();
     } catch (_) {
       if (!mounted) return;
       // revert
@@ -276,25 +293,33 @@ Future<void> _loadViewMode() async {
 
   Widget _leadingCover(Map<String, dynamic> v) {
     final cp = (v['coverPath'] as String?)?.trim() ?? '';
-    if (cp.isNotEmpty) {
+    if (cp.isNotEmpty && _fileExistsCached(cp)) {
       final f = File(cp);
-      if (f.existsSync()) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.file(f, width: 48, height: 48, fit: BoxFit.cover),
-        );
-      }
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          f,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          cacheWidth: 96,
+          cacheHeight: 96,
+        ),
+      );
     }
     return const Icon(Icons.album);
   }
 
   Widget _gridCover(Map<String, dynamic> v) {
     final cp = (v['coverPath'] as String?)?.trim() ?? '';
-    if (cp.isNotEmpty) {
+    if (cp.isNotEmpty && _fileExistsCached(cp)) {
       final f = File(cp);
-      if (f.existsSync()) {
-        return Image.file(f, fit: BoxFit.cover);
-      }
+      return Image.file(
+        f,
+        fit: BoxFit.cover,
+        cacheWidth: 600,
+        cacheHeight: 600,
+      );
     }
     return Container(
       color: Colors.black12,
@@ -640,7 +665,38 @@ Future<void> _loadViewMode() async {
     final fav = _homeCounts['fav'] ?? 0;
     final wish = _homeCounts['wish'] ?? 0;
 
-    Widget badge(int n) {
+Widget _statPill({required String label, required int value}) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    decoration: BoxDecoration(
+      color: const Color(0xFF0F0F0F),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: const Color(0xFF2A2A2A)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: const TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w800, fontSize: 12)),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFF2A2A2A)),
+          ),
+          child: Text(
+            '$value',
+            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget badge(int n) {
+
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
@@ -820,58 +876,112 @@ Future<void> _loadViewMode() async {
         const SizedBox(height: 6),
 
         // HERO
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0F0F0F),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFF2A2A2A)),
+Container(
+  padding: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    borderRadius: BorderRadius.circular(20),
+    border: Border.all(color: const Color(0xFF2A2A2A)),
+    gradient: const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Color(0xFF1A1A1A),
+        Color(0xFF0F0F0F),
+      ],
+    ),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F0F0F),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF2A2A2A)),
+            ),
+            child: const Icon(Icons.graphic_eq, size: 22, color: Colors.white),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('GaBoLP', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
-              const SizedBox(height: 4),
-              const Text(
-                'Tu colección de vinilos, simple y rápida.',
-                style: TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  quickAction(icon: Icons.search, label: 'Buscar', onTap: () => setState(() => vista = Vista.buscar)),
-                  quickAction(
-                    icon: Icons.library_music,
-                    label: 'Discografías',
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())),
-                  ),
-                  quickAction(
-                    icon: Icons.settings,
-                    label: 'Ajustes',
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
-                  ),
-                ],
-              ),
-            ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('GaBoLP', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3)),
+                const SizedBox(height: 4),
+                Text(
+                  'Colección • favoritos • deseos',
+                  style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFFA7A7A7), fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
+      ),
+      const SizedBox(height: 12),
 
-        sectionTitle('Colección', subtitle: 'Accede rápido a tus listas.'),
+      // mini stats
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _statPill(label: 'Vinilos', value: all),
+          _statPill(label: 'Favoritos', value: fav),
+          _statPill(label: 'Deseos', value: wish),
+        ],
+      ),
+
+      const SizedBox(height: 12),
+
+      // acciones rápidas
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          quickAction(icon: Icons.search, label: 'Buscar', onTap: () => setState(() => vista = Vista.buscar)),
+          quickAction(
+            icon: Icons.library_music,
+            label: 'Discografías',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())),
+          ),
+          quickAction(
+            icon: Icons.settings,
+            label: 'Ajustes',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
+        ],
+      ),
+    ],
+  ),
+),
+
+sectionTitle('Colección'
+, subtitle: 'Accede rápido a tus listas.'),
         menuRow(
           icon: Icons.list,
           title: 'Lista de vinilos',
           subtitle: 'Todos tus LPs guardados',
           count: all,
-          onTap: () => setState(() => vista = Vista.lista),
+          onTap: () {
+            _reloadAllData();
+            if (!mounted) return;
+            setState(() => vista = Vista.lista);
+          },
         ),
         menuRow(
           icon: Icons.star,
           title: 'Vinilos favoritos',
           subtitle: 'Tu selección destacada',
           count: fav,
-          onTap: () => setState(() => vista = Vista.favoritos),
+          onTap: () {
+            _reloadAllData();
+            if (!mounted) return;
+            setState(() => vista = Vista.favoritos);
+          },
         ),
         menuRow(
           icon: Icons.shopping_cart,

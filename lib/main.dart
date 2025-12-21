@@ -94,6 +94,35 @@ class GaBoLpApp extends StatelessWidget {
         ),
       ),
       iconTheme: const IconThemeData(color: Colors.white),
+
+      listTileTheme: const ListTileThemeData(
+        iconColor: Colors.white,
+        textColor: Colors.white,
+        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: Colors.white,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: const Color(0xFF111111),
+        selectedColor: const Color(0xFF1B1B1B),
+        disabledColor: const Color(0xFF101010),
+        labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        secondaryLabelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999), side: const BorderSide(color: Color(0xFF2A2A2A))),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dialogTheme: const DialogTheme(
+        backgroundColor: Color(0xFF141414),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18)), side: BorderSide(color: Color(0xFF242424))),
+      ),
       dividerColor: const Color(0xFF242424),
     );
   }

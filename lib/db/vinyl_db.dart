@@ -38,6 +38,7 @@ class VinylDb {
         await d.execute('CREATE INDEX idx_artist ON vinyls(artista);');
         await d.execute('CREATE INDEX idx_album ON vinyls(album);');
         await d.execute('CREATE INDEX idx_fav ON vinyls(favorite);');
+        await d.execute('CREATE UNIQUE INDEX idx_vinyl_exact ON vinyls(artista, album);');
 
         // ✅ tabla wishlist (no tiene numero)
         await d.execute('''
@@ -68,6 +69,8 @@ class VinylDb {
           await d.execute('ALTER TABLE vinyls ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;');
           await d.execute('CREATE INDEX IF NOT EXISTS idx_fav ON vinyls(favorite);');
         }
+        // índice exacto para búsquedas por artista + álbum
+        await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_vinyl_exact ON vinyls(artista, album);');
         if (oldV < 7) {
           await d.execute('''
             CREATE TABLE IF NOT EXISTS wishlist(
