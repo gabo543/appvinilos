@@ -362,8 +362,7 @@ Future<void> _loadViewMode() async {
                   icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Colors.grey : Colors.black),
                   onPressed: () => _toggleFavorite(v),
                 ),
-                  ),
-                ),
+              ),
 
             // 🗑️ borrar abajo derecha (bien a la esquina)
             if (conBorrar)
