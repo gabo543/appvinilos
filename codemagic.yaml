@@ -1,0 +1,111 @@
+workflows:
+  android-apk:
+    name: Android APK - GaBoLP
+    max_build_duration: 60
+    environment:
+      flutter: stable
+
+    scripts:
+      - name: Preparar proyecto (crear android si falta)
+        script: |
+          set -e
+          if [ ! -d "android" ]; then
+            TMPDIR="$(mktemp -d)"
+            cp -R lib "$TMPDIR/lib"
+            if [ -d "assets" ]; then cp -R assets "$TMPDIR/assets"; fi
+            cp pubspec.yaml "$TMPDIR/pubspec.yaml"
+
+            flutter create . --platforms=android --org com.gabolp.app
+
+            rm -f pubspec.yaml
+            cp "$TMPDIR/pubspec.yaml" pubspec.yaml
+
+            rm -rf lib
+            cp -R "$TMPDIR/lib" lib
+
+            if [ -d "$TMPDIR/assets" ]; then
+              rm -rf assets
+              cp -R "$TMPDIR/assets" assets
+            fi
+          fi
+
+      - name: Forzar permiso INTERNET en AndroidManifest MAIN
+        script: |
+          set -e
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          echo "Usando: $MANIFEST"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "ERROR: No existe $MANIFEST"
+            echo "Manifests encontrados:"
+            find android -name AndroidManifest.xml -print || true
+            exit 1
+          fi
+
+          if grep -q "android.permission.INTERNET" "$MANIFEST"; then
+            echo "INTERNET ya estaba en el MAIN manifest."
+          else
+            echo "Insertando INTERNET en el MAIN manifest..."
+            perl -0777 -i -pe 's/(<manifest[^>]*>)/$1\n    <uses-permission android:name="android.permission.INTERNET"\/>/s' "$MANIFEST"
+          fi
+
+          echo "Chequeo MAIN manifest:"
+          grep -n "android.permission.INTERNET" "$MANIFEST" || true
+          head -n 30 "$MANIFEST"
+
+      - name: Instalar dependencias
+        script: |
+          flutter pub get
+
+      - name: Generar Splash
+        script: |
+          flutter pub run flutter_native_splash:create
+
+      - name: Compilar APK Release
+        script: |
+          flutter build apk --release
+
+      - name: Verificar que el Manifest final (merge) tenga INTERNET
+        script: |
+          set -e
+          echo "Buscando merged manifests..."
+          find build -path "*merged_manifests*" -name "AndroidManifest.xml" -print || true
+
+          MERGED="$(find build -path "*merged_manifests*" -path "*release*" -name "AndroidManifest.xml" | head -n 1)"
+          echo "MERGED=$MERGED"
+
+          if [ -z "$MERGED" ]; then
+            echo "No encontré merged manifest (no pasa nada, pero raro)."
+            exit 0
+          fi
+
+          if grep -q "android.permission.INTERNET" "$MERGED"; then
+            echo "OK ✅ El merged manifest tiene INTERNET."
+          else
+            echo "ERROR ❌ El merged manifest NO tiene INTERNET."
+            echo "Mostrando primeras 60 líneas:"
+            head -n 60 "$MERGED"
+            exit 1
+          fi
+                - name: Verificar INTERNET en manifest final
+        script: |
+          echo "Buscando merged manifest de la APP..."
+          MERGED="$(find build/app -path "*merged_manifests*" -path "*release*" -name "AndroidManifest.xml" | head -n 1)"
+          echo "MERGED=$MERGED"
+
+          if [ -z "$MERGED" ]; then
+            echo "No encontré el merged manifest de la app (build/app)."
+            exit 1
+          fi
+
+          if grep -q "android.permission.INTERNET" "$MERGED"; then
+            echo "OK ✅ El merged manifest de la APP tiene INTERNET."
+          else
+            echo "ERROR ❌ El merged manifest de la APP NO tiene INTERNET."
+            head -n 120 "$MERGED"
+            exit 1
+          fi
+
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+          
