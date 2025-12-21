@@ -65,6 +65,10 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final fg = dark ? Colors.white : Colors.black;
+    final sub = dark ? const Color(0xFFBDBDBD) : Colors.black54;
     final artista = (widget.vinyl['artista'] as String?) ?? '';
     final album = (widget.vinyl['album'] as String?) ?? '';
     final year = (widget.vinyl['year'] as String?)?.trim() ?? '';
@@ -85,12 +89,12 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                 Expanded(
                   child: Text(
                     '$artista\n$album',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: fg),
                   ),
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                  icon: Icon(Icons.close, color: fg),
                 ),
               ],
             ),
@@ -100,9 +104,9 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
               spacing: 10,
               runSpacing: 8,
               children: [
-                _pill('Año', year.isEmpty ? '—' : year),
-                _pill('Género', genre.isEmpty ? '—' : genre),
-                _pill('País', country.isEmpty ? '—' : country),
+                _pill(context, 'Año', year.isEmpty ? '—' : year),
+                _pill(context, 'Género', genre.isEmpty ? '—' : genre),
+                _pill(context, 'País', country.isEmpty ? '—' : country),
               ],
             ),
 
@@ -112,20 +116,20 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.05),
+                  color: dark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.black12),
+                  border: Border.all(color: dark ? Colors.white12 : Colors.black12),
                 ),
-                child: Text(bio),
+                child: Text(bio, style: TextStyle(color: fg)),
               ),
 
             const SizedBox(height: 12),
             Row(
               children: [
-                const Expanded(
-                  child: Text('Canciones', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                Expanded(
+                  child: Text('Canciones', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: fg)),
                 ),
-                IconButton(onPressed: _loadTracks, icon: const Icon(Icons.refresh)),
+                IconButton(onPressed: _loadTracks, icon: Icon(Icons.refresh, color: fg)),
               ],
             ),
 
@@ -133,7 +137,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
             if (!loadingTracks && msg != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(msg!),
+                child: Text(msg!, style: TextStyle(color: sub)),
               ),
 
             if (!loadingTracks && tracks.isNotEmpty)
@@ -145,8 +149,8 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                     final t = tracks[i];
                     return ListTile(
                       dense: true,
-                      title: Text('${t.number}. ${t.title}'),
-                      trailing: Text(t.length ?? ''),
+                      title: Text('${t.number}. ${t.title}', style: TextStyle(color: fg)),
+                      trailing: Text(t.length ?? '', style: TextStyle(color: sub)),
                     );
                   },
                 ),
@@ -157,15 +161,18 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     );
   }
 
-  Widget _pill(String k, String v) {
+  Widget _pill(BuildContext context, String k, String v) {
+    final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final fg = dark ? Colors.white : Colors.black;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.06),
+        color: dark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(color: dark ? Colors.white12 : Colors.black12),
       ),
-      child: Text('$k: $v', style: const TextStyle(fontWeight: FontWeight.w700)),
+      child: Text('$k: $v', style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
     );
   }
 }

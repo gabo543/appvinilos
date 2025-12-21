@@ -343,10 +343,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                       iconSize: 20,
                                       padding: EdgeInsets.zero,
                                       constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                      icon: Icon(
-                                        Icons.add_circle_outline,
-                                        color: (exists || busy) ? Colors.grey : Colors.black,
-                                      ),
+	                                      icon: Icon(
+	                                        // mismo icono "líneas" que la Lista de vinilos
+	                                        Icons.format_list_bulleted,
+	                                        // borde blanco cuando está disponible, gris cuando está deshabilitado
+	                                        color: (exists || busy) ? Colors.grey : Colors.white,
+	                                      ),
                                       tooltip: exists ? 'Ya está en tu lista' : 'Agregar LP',
                                       onPressed: (busy || exists)
                                           ? null
@@ -358,10 +360,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                       iconSize: 20,
                                       padding: EdgeInsets.zero,
                                       constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                      icon: Icon(
-                                        fav ? Icons.star : Icons.star_border,
-                                        color: !exists ? Colors.grey : (fav ? Colors.grey : Colors.black),
-                                      ),
+	                                      icon: Icon(
+	                                        fav ? Icons.star : Icons.star_border,
+	                                        // borde blanco (no marcado) + relleno gris (marcado)
+	                                        color: !exists ? Colors.grey : (fav ? Colors.grey : Colors.white),
+	                                      ),
                                       tooltip: !exists
                                           ? 'Agrega el álbum para marcar favorito'
                                           : (fav ? 'Quitar de favoritos' : 'Agregar a favoritos'),
@@ -373,10 +376,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                       iconSize: 20,
                                       padding: EdgeInsets.zero,
                                       constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                      icon: Icon(
-                                        inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined,
-                                        color: (exists || inWish || busy) ? Colors.grey : Colors.black,
-                                      ),
+	                                      icon: Icon(
+	                                        inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined,
+	                                        // borde blanco cuando está disponible, gris si está deshabilitado
+	                                        color: (exists || inWish || busy) ? Colors.grey : Colors.white,
+	                                      ),
                                       tooltip: exists
                                           ? 'Ya está en tu lista de vinilos'
                                           : (inWish ? 'Ya está en tu lista deseos' : 'Agregar a lista deseos'),

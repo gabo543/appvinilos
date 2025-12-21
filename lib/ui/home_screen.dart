@@ -381,11 +381,15 @@ Future<void> _loadViewMode() async {
               Positioned(
                 right: 2,
                 bottom: 2,
-                child: IconButton(
-                  tooltip: fav ? 'Quitar de favoritos' : 'Agregar a favoritos',
-                  icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Colors.grey : Colors.black),
-                  onPressed: () => _toggleFavorite(v),
-                ),
+	                child: IconButton(
+	                  tooltip: fav ? 'Quitar de favoritos' : 'Agregar a favoritos',
+	                  // Borde blanco (no marcado) + relleno gris (marcado)
+	                  icon: Icon(
+	                    fav ? Icons.star : Icons.star_border,
+	                    color: fav ? Colors.grey : Colors.white,
+	                  ),
+	                  onPressed: () => _toggleFavorite(v),
+	                ),
 	              ),
 
             // 🗑️ borrar abajo derecha (bien a la esquina)
@@ -907,7 +911,7 @@ Container(
             child: const Icon(Icons.graphic_eq, size: 22, color: Colors.white),
           ),
           const SizedBox(width: 12),
-          Expanded(
+	          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -920,6 +924,14 @@ Container(
               ],
             ),
           ),
+	          const SizedBox(width: 8),
+	          IconButton(
+	            tooltip: 'Actualizar',
+	            onPressed: () {
+	              _reloadAllData();
+	            },
+	            icon: const Icon(Icons.refresh, color: Colors.white),
+	          ),
         ],
       ),
       const SizedBox(height: 12),
@@ -946,7 +958,12 @@ Container(
           quickAction(
             icon: Icons.library_music,
             label: 'Discografías',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
+                if (!mounted) return;
+                _reloadAllData();
+              });
+            },
           ),
           quickAction(
             icon: Icons.settings,
@@ -1329,7 +1346,11 @@ sectionTitle('Colección'
                       )
                     : IconButton(
                         tooltip: fav ? 'Quitar de favoritos' : 'Agregar a favoritos',
-                        icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Colors.grey : Colors.black),
+                        icon: Icon(
+                          fav ? Icons.star : Icons.star_border,
+                          // Borde blanco (no marcado) + relleno gris (marcado)
+                          color: fav ? Colors.grey : Colors.white,
+                        ),
                         onPressed: () => _toggleFavorite(v),
                       ),
               ),
