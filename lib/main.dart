@@ -257,21 +257,181 @@ class GaBoLpApp extends StatelessWidget {
     );
   }
 
+
+  ThemeData _theme4() {
+    // Diseño 4: Pastel Citrus (claro, suave)
+    const bg = Color(0xFFF7F7F3);
+    const surf = Color(0xFFFFFFFF);
+    const accent = Color(0xFF2E7D32); // verde
+    const accent2 = Color(0xFFFFA000); // ámbar
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: bg,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: accent,
+        brightness: Brightness.light,
+        surface: surf,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: bg,
+        foregroundColor: Colors.black,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      cardTheme: CardTheme(
+        color: surf,
+        elevation: 1,
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      listTileTheme: const ListTileThemeData(iconColor: Colors.black87, textColor: Colors.black87),
+      iconTheme: const IconThemeData(color: Colors.black87, size: 22),
+      dividerColor: const Color(0xFFE6E6E6),
+      chipTheme: ChipThemeData(
+        backgroundColor: const Color(0xFFF0F0F0),
+        selectedColor: accent.withOpacity(0.18),
+        labelStyle: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+        secondaryLabelStyle: const TextStyle(color: Colors.black87),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.black87,
+          side: const BorderSide(color: Color(0xFFCCCCCC)),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: accent2,
+        foregroundColor: Colors.black,
+      ),
+    );
+  }
+
+  ThemeData _theme5() {
+    // Diseño 5: Pastel Sky (oscuro con acento lila/celeste)
+    const bg = Color(0xFF0D0F14);
+    const surf = Color(0xFF151A24);
+    const accent = Color(0xFFB39DDB); // lila
+    const accent2 = Color(0xFF80DEEA); // celeste
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: bg,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: accent,
+        brightness: Brightness.dark,
+        surface: surf,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: bg,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      cardTheme: CardTheme(
+        color: surf,
+        elevation: 0,
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Color(0xFF232A3A)),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(iconColor: Colors.white, textColor: Colors.white),
+      iconTheme: const IconThemeData(color: Colors.white, size: 22),
+      dividerColor: const Color(0xFF232A3A),
+      chipTheme: ChipThemeData(
+        backgroundColor: const Color(0xFF1A2030),
+        selectedColor: accent2.withOpacity(0.18),
+        labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        secondaryLabelStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: const BorderSide(color: Color(0xFF2B3348)),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: accent2,
+        foregroundColor: Colors.black,
+      ),
+    );
+  }
+
+  ThemeData _applyTextIntensity(ThemeData base, int level) {
+    // level: 0..3
+    final isDark = base.brightness == Brightness.dark;
+    final dark = [
+      const Color(0xFFB5B5B5),
+      const Color(0xFFD0D0D0),
+      const Color(0xFFE8E8E8),
+      Colors.white,
+    ];
+    final light = [
+      const Color(0xFF4A4A4A),
+      const Color(0xFF2F2F2F),
+      const Color(0xFF1A1A1A),
+      Colors.black,
+    ];
+    final idx = level.clamp(0, 3);
+    final c = isDark ? dark[idx] : light[idx];
+
+    return base.copyWith(
+      textTheme: base.textTheme.apply(bodyColor: c, displayColor: c),
+      primaryTextTheme: base.primaryTextTheme.apply(bodyColor: c, displayColor: c),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: AppThemeService.themeNotifier,
-      builder: (_, v, __) {
-        final ThemeData theme = switch (v) {
-          2 => _theme2(),
-          3 => _theme3(),
-          _ => _theme1(),
-        };
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'Colección vinilos',
-          theme: theme,
-          home: const HomeScreen(),
+      builder: (_, themeId, __) {
+        return ValueListenableBuilder<int>(
+          valueListenable: AppThemeService.textIntensityNotifier,
+          builder: (_, intensity, __) {
+            ThemeData base = switch (themeId) {
+              2 => _theme2(),
+              3 => _theme3(),
+              4 => _theme4(),
+              5 => _theme5(),
+              _ => _theme1(),
+            };
+
+            final ThemeData theme = _applyTextIntensity(base, intensity);
+
+            return MaterialApp(
+              debugShowCheckedModeBanner: false,
+              title: 'Colección vinilos',
+              theme: theme,
+              home: const HomeScreen(),
+            );
+          },
         );
       },
     );

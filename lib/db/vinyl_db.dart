@@ -18,7 +18,7 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 7, // ✅ nuevo: wishlist
+      version: 8, // ✅ nuevo: wishlist
       onCreate: (d, v) async {
         await d.execute('''
           CREATE TABLE vinyls(
@@ -86,6 +86,11 @@ class VinylDb {
           ''');
           await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_wish_unique ON wishlist(artista, album);');
         }
+        if (oldV < 8) {
+          // normaliza valores antiguos tipo 'true'/'false'
+          await d.execute("UPDATE vinyls SET favorite = 1 WHERE favorite = 'true' OR favorite = 'TRUE'");
+          await d.execute("UPDATE vinyls SET favorite = 0 WHERE favorite = 'false' OR favorite = 'FALSE'");
+        }
       },
     );
   }
@@ -105,7 +110,7 @@ class VinylDb {
 
   Future<List<Map<String, dynamic>>> getFavorites() async {
     final d = await db;
-    return d.query('vinyls', where: 'favorite = 1', orderBy: 'numero ASC');
+    return d.query('vinyls', where: "(favorite = 1 OR favorite = '1' OR favorite = 'true' OR favorite = 'TRUE')", orderBy: 'numero ASC');
   }
 
   Future<void> setFavorite({required int id, required bool favorite}) async {
@@ -270,7 +275,7 @@ class VinylDb {
 
   Future<int> countFavorites() async {
     final d = await db;
-    final r = await d.rawQuery('SELECT COUNT(*) as c FROM vinyls WHERE favorite = 1');
+    final r = await d.rawQuery("SELECT COUNT(*) as c FROM vinyls WHERE (favorite = 1 OR favorite = '1' OR favorite = 'true' OR favorite = 'TRUE')");
     final v = r.first['c'];
     return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
   }

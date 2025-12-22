@@ -227,27 +227,30 @@ Future<void> _loadViewMode() async {
     final current = _isFav(v);
     final next = !current;
 
-    // ✅ Optimista: cambia al tiro
+    // ✅ UI instantáneo (optimista)
     setState(() {
       _favCache[id] = next;
       v['favorite'] = next ? 1 : 0;
+      _reloadTick++;
+
+      // si estás en la vista de favoritos y lo desmarcas, lo ocultamos altiro
+      if (vista == Vista.favoritos && !next) {
+        // la lista se recalcula desde la DB, pero forzamos rebuild inmediato
+      }
     });
 
     try {
       await VinylDb.instance.setFavorite(id: id, favorite: next);
       await BackupService.autoSaveIfEnabled();
-
-      // ✅ Mantener coherentes: lista completa + favoritos + contadores
-      // (evita: contador incorrecto y que "se salga" de favoritos al recargar)
-      _reloadAllData();
-      // 🔁 Re-calcula contadores reales (corrige cualquier desincronización)
+      // refresca contadores (inicio)
       await _refreshHomeCounts();
     } catch (_) {
+      // revertir si falla
       if (!mounted) return;
-      // revert
       setState(() {
         _favCache[id] = current;
         v['favorite'] = current ? 1 : 0;
+        _reloadTick++;
       });
       snack('Error actualizando favorito.');
     }
