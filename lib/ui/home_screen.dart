@@ -1857,11 +1857,11 @@ return Column(
   }
 
   PreferredSizeWidget? _buildAppBar() {
-    // Usamos this.vista explícito para evitar problemas de resolución de nombres
-    if (this.vista == Vista.inicio) return null;
+    // Usamos vista explícito para evitar problemas de resolución de nombres
+    if (vista == Vista.inicio) return null;
 
     String title;
-    switch (this.vista) {
+    switch (vista) {
       case Vista.buscar:
         title = 'Buscar vinilos';
         break;
@@ -1882,16 +1882,16 @@ return Column(
       title: Text(title),
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
-        onPressed: () => setState(() => this.vista = Vista.inicio),
+        onPressed: () => setState(() => vista = Vista.inicio),
       ),
     );
   }
 
   Widget? _buildFab() {
-    if (this.vista == Vista.lista || this.vista == Vista.favoritos || this.vista == Vista.borrar) {
+    if (vista == Vista.lista || vista == Vista.favoritos || vista == Vista.borrar) {
       // Solo icono (sin texto "Inicio")
       return FloatingActionButton(
-        onPressed: () => setState(() => this.vista = Vista.inicio),
+        onPressed: () => setState(() => vista = Vista.inicio),
         tooltip: 'Inicio',
         child: const Icon(Icons.home),
       );
@@ -1915,21 +1915,21 @@ return Column(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (this.vista == Vista.inicio) ...[
-                      this.encabezadoInicio(),
+                    if (vista == Vista.inicio) ...[
+                      encabezadoInicio(),
                       const SizedBox(height: 14),
-                      this.botonesInicio(),
+                      botonesInicio(),
                     ],
-                    if (this.vista == Vista.buscar) this.vistaBuscar(),
-                    if (this.vista == Vista.lista) this.listaCompleta(conBorrar: false, onlyFavorites: false),
-                    if (this.vista == Vista.favoritos) this.listaCompleta(conBorrar: false, onlyFavorites: true),
-                    if (this.vista == Vista.borrar) this.listaCompleta(conBorrar: true, onlyFavorites: false),
+                    if (vista == Vista.buscar) vistaBuscar(),
+                    if (vista == Vista.lista) listaCompleta(conBorrar: false, onlyFavorites: false),
+                    if (vista == Vista.favoritos) listaCompleta(conBorrar: false, onlyFavorites: true),
+                    if (vista == Vista.borrar) listaCompleta(conBorrar: true, onlyFavorites: false),
                   ],
                 ),
               ),
             ),
           ),
-          this.gabolpMarca(),
+          gabolpMarca(),
         ],
       ),
     );
