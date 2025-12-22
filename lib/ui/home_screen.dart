@@ -1888,9 +1888,10 @@ return Column(
 
   Widget? _buildFab() {
     if (vista == Vista.lista || vista == Vista.favoritos || vista == Vista.borrar) {
-      // Solo icono (sin texto)
+      // Solo icono (sin texto "Inicio")
       return FloatingActionButton(
         onPressed: () => setState(() => vista = Vista.inicio),
+        tooltip: 'Inicio',
         child: const Icon(Icons.home),
       );
     }
