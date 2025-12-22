@@ -101,6 +101,8 @@ class VinylAddService {
     PreparedVinylAdd prepared, {
     String? overrideYear, // si quieres permitir editar año
     bool favorite = false,
+    String? condition,
+    String? format,
   }) async { 
     final artist = prepared.artist.trim();
     final album = prepared.album.trim();

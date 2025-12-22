@@ -86,4 +86,8 @@ class AppThemeService {
     final prefs = await SharedPreferences.getInstance();
     return _clampLevel(prefs.getInt(_kCardLevel) ?? 2);
   }
+  // Compat: nombres antiguos
+  static Future<int> getBgLevel() => getBackgroundLevel();
+  static Future<void> setBgLevel(int v) => setBackgroundLevel(v);
+
 }

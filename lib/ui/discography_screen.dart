@@ -140,25 +140,78 @@ Future<String?> _askWishlistStatus() async {
   );
 }
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.message)));
-    } catch (_) {
+      
+
+Future<void> _addAlbumOptimistic({
+  required String artistName,
+  required AlbumSuggest album,
+  required String condition,
+  required String format,
+}) async {
+  final key = _k(artistName, album.title);
+  if (_busy[key] == true) return;
+
+  // Si ya existe, no permitimos agregar de nuevo.
+  if (_exists[key] == true) return;
+
+  setState(() {
+    _busy[key] = true;
+    _exists[key] = true; // deshabilita el botón al toque
+  });
+
+  try {
+    final prepared = await VinylAddService.prepare(
+      artist: artistName,
+      album: album.title,
+      artistId: pickedArtist?.id,
+    );
+
+    final res = await VinylAddService.addPrepared(
+      prepared,
+      favorite: false,
+      condition: condition,
+      format: format,
+    );
+
+    if (!res.ok) {
       if (!mounted) return;
-      // revert
       setState(() {
-        _exists.remove(key);
-        _vinylId.remove(key);
-        _fav.remove(key);
+        _exists[key] = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error guardando. Intenta de nuevo.')),
+        SnackBar(content: Text(res.message)),
       );
-    } finally {
-      if (!mounted) return;
-      setState(() => _busy[key] = false);
+      return;
     }
-  }
 
-  Future<void> _toggleFavoriteOptimistic(String artistName, AlbumItem al) async {
+    // refrescar caches con el ID real
+    final row = await VinylDb.instance.findByExact(artista: artistName, album: album.title);
+    if (row != null) {
+      _vinylId[key] = row['id'] as int?;
+      _fav[key] = (row['favorite'] == 1);
+    }
+
+    await BackupService.autoSaveIfEnabled();
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Agregado a tu lista ✅')),
+    );
+  } catch (_) {
+    if (!mounted) return;
+    setState(() {
+      _exists[key] = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Error agregando a tu lista.')),
+    );
+  } finally {
+    if (!mounted) return;
+    setState(() => _busy[key] = false);
+  }
+}
+
+Future<void> _toggleFavoriteOptimistic(String artistName, AlbumItem al) async {
     final key = _k(artistName, al.title);
     if (_busy[key] == true) return;
 

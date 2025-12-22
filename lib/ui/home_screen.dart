@@ -1712,25 +1712,82 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
         final shown = items.length;
 
         if (_gridView) {
-          return Column(
-            children: [
-              if (showControls) _vinylListTopBar(shown: shown, total: total),
-              GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(top: 6),
-            itemCount: items.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.78,
+
+return Column(
+  children: [
+    if (showControls) _vinylListTopBar(items),
+    Expanded(
+      child: _gridView
+          ? GridView.builder(
+              padding: const EdgeInsets.only(bottom: 80),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.72,
+              ),
+              itemCount: items.length,
+              itemBuilder: (context, i) => _gridVinylCard(items[i], conBorrar: conBorrar),
+            )
+          : ListView.builder(
+              itemCount: items.length,
+              itemBuilder: (context, i) {
+                final v = items[i];
+                final year = (v['year'] as String?)?.trim();
+                final genre = (v['genre'] as String?)?.trim();
+                final country = (v['country'] as String?)?.trim();
+                final fav = _isFav(v);
+
+                return Card(
+                  child: ListTile(
+                    onTap: () => _openDetail(v),
+                    leading: _leadingCover(v),
+                    title: Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 28),
+                          child: Text(
+                            '${v['artista']} — ${v['album']}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Positioned(right: 0, top: 0, child: _numeroBadge(v['numero'])),
+                      ],
+                    ),
+                    subtitle: Text(
+                      'Año: ${(year?.isNotEmpty ?? false) ? year : '—'}'
+                      '  •  Género: ${(genre?.isNotEmpty ?? false) ? genre : '—'}'
+                      '  •  País: ${(country?.isNotEmpty ?? false) ? country : '—'}',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (conBorrar)
+                          IconButton(
+                            tooltip: 'Borrar',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () async {
+                              await VinylDb.instance.deleteById(v['id'] as int);
+                              await BackupService.autoSaveIfEnabled();
+                              snack('Borrado');
+                              setState(() {});
+                            },
+                          )
+                        else
+                          IconButton(
+                            tooltip: fav ? 'Quitar de favoritos' : 'Marcar favorito',
+                            icon: Icon(fav ? Icons.star : Icons.star_border),
+                            onPressed: () => _toggleFavorite(v),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-            itemBuilder: (context, i) => _gridVinylCard(items[i], conBorrar: conBorrar),
-          ),
-            ],
-          );
-        }
+    ),
+  ],
+);
+  }
 
         return Column(
           children: [
@@ -1831,10 +1888,11 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
 
   Widget? _buildFab() {
     if (vista == Vista.lista || vista == Vista.favoritos || vista == Vista.borrar) {
-      return FloatingActionButton.extended(
+      // Solo icono (sin texto "Inicio")
+      return FloatingActionButton(
         onPressed: () => setState(() => vista = Vista.inicio),
-        icon: const Icon(Icons.home),
-        label: const Text('Inicio'),
+        tooltip: 'Inicio',
+        child: const Icon(Icons.home),
       );
     }
     return null;
