@@ -29,7 +29,63 @@ class _WishlistScreenState extends State<WishlistScreen> {
     });
   }
 
-  void _snack(String t) {
+  
+
+Future<Map<String, String>?> _askConditionAndFormat() async {
+  String condition = 'VG+';
+  String format = 'LP';
+
+  return showDialog<Map<String, String>>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setSt) {
+          return AlertDialog(
+            title: const Text('Agregar a tu lista'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: condition,
+                  decoration: const InputDecoration(labelText: 'Condición'),
+                  items: const [
+                    DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
+                    DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
+                    DropdownMenuItem(value: 'VG+', child: Text('VG+ (Very Good +)')),
+                    DropdownMenuItem(value: 'VG', child: Text('VG (Very Good)')),
+                    DropdownMenuItem(value: 'G', child: Text('G (Good)')),
+                    DropdownMenuItem(value: 'P', child: Text('P (Poor)')),
+                  ],
+                  onChanged: (v) => setSt(() => condition = v ?? condition),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: format,
+                  decoration: const InputDecoration(labelText: 'Formato'),
+                  items: const [
+                    DropdownMenuItem(value: 'LP', child: Text('LP')),
+                    DropdownMenuItem(value: 'EP', child: Text('EP')),
+                    DropdownMenuItem(value: 'Single', child: Text('Single')),
+                    DropdownMenuItem(value: 'Box Set', child: Text('Box Set')),
+                  ],
+                  onChanged: (v) => setSt(() => format = v ?? format),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, {'condition': condition, 'format': format}),
+                child: const Text('Aceptar'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+void _snack(String t) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
@@ -93,6 +149,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final artistName = (w['artista'] ?? '').toString().trim();
     final albumTitle = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
+              final status = (w['status'] ?? '').toString().trim();
     final cover250 = (w['cover250'] ?? '').toString().trim();
     final cover500 = (w['cover500'] ?? '').toString().trim();
     final artistId = (w['artistId'] ?? '').toString().trim();
@@ -180,6 +237,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
               final artista = (w['artista'] ?? '').toString().trim();
               final album = (w['album'] ?? '').toString().trim();
               final year = (w['year'] ?? '').toString().trim();
+              final status = (w['status'] ?? '').toString().trim();
 
               return ListTile(
                 onTap: () => _openDetail(w),
@@ -190,13 +248,28 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
-                subtitle: Text(
-                  [
-                    if (artista.isNotEmpty) artista,
-                    if (year.isNotEmpty) year,
-                  ].join(' • '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      [
+                        if (artista.isNotEmpty) artista,
+                        if (year.isNotEmpty) year,
+                      ].join(' • '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (status.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          status,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -205,6 +278,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
                       tooltip: 'Agregar a tu lista de vinilos',
                       icon: const Icon(Icons.format_list_bulleted),
                       onPressed: () async {
+                        final opts = await _askConditionAndFormat();
+                        if (!mounted || opts == null) return;
                         final artista = (w['artista'] ?? '').toString().trim();
                         final album = (w['album'] ?? '').toString().trim();
                         if (artista.isEmpty || album.isEmpty) return;
@@ -212,6 +287,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           await VinylDb.instance.insertVinyl(
                             artista: artista,
                             album: album,
+                            condition: opts['condition'],
+                            format: opts['format'],
                             year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
                             coverPath: (w['cover250'] ?? '').toString(),
                           );

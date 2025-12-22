@@ -18,7 +18,16 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 8, // ✅ nuevo: wishlist
+      version: 9, // ✅ v9: condition/format + wishlistStatus
+      onOpen: (d) async {
+        // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
+        try {
+          await d.execute("UPDATE vinyls SET favorite = 1 WHERE favorite = 'true'");
+          await d.execute("UPDATE vinyls SET favorite = 0 WHERE favorite = 'false'");
+        } catch (_) {
+          // si la tabla/columna no existe todavía en algún estado raro, ignorar
+        }
+      },
       onCreate: (d, v) async {
         await d.execute('''
           CREATE TABLE vinyls(
@@ -32,6 +41,8 @@ class VinylDb {
             artistBio TEXT,
             coverPath TEXT,
             mbid TEXT,
+            condition TEXT,
+            format TEXT,
             favorite INTEGER NOT NULL DEFAULT 0
           );
         ''');
@@ -50,6 +61,7 @@ class VinylDb {
             cover250 TEXT,
             cover500 TEXT,
             artistId TEXT,
+            status TEXT,
             createdAt INTEGER NOT NULL
           );
         ''');
@@ -81,6 +93,7 @@ class VinylDb {
               cover250 TEXT,
               cover500 TEXT,
               artistId TEXT,
+              status TEXT,
               createdAt INTEGER NOT NULL
             );
           ''');
@@ -91,6 +104,19 @@ class VinylDb {
           await d.execute("UPDATE vinyls SET favorite = 1 WHERE favorite = 'true' OR favorite = 'TRUE'");
           await d.execute("UPDATE vinyls SET favorite = 0 WHERE favorite = 'false' OR favorite = 'FALSE'");
         }
+
+if (oldV < 9) {
+  // v9: condition/format en vinyls y status en wishlist
+  try {
+    await d.execute('ALTER TABLE vinyls ADD COLUMN condition TEXT;');
+  } catch (_) {}
+  try {
+    await d.execute('ALTER TABLE vinyls ADD COLUMN format TEXT;');
+  } catch (_) {}
+  try {
+    await d.execute('ALTER TABLE wishlist ADD COLUMN status TEXT;');
+  } catch (_) {}
+}
       },
     );
   }
@@ -201,6 +227,8 @@ class VinylDb {
     String? artistBio,
     String? coverPath,
     String? mbid,
+    String? condition,
+    String? format,
     bool favorite = false,
   }) async {
     final d = await db;
@@ -222,6 +250,8 @@ class VinylDb {
         'artistBio': artistBio?.trim(),
         'coverPath': coverPath?.trim(),
         'mbid': mbid?.trim(),
+        'condition': condition?.trim(),
+        'format': format?.trim(),
         'favorite': favorite ? 1 : 0,
       },
       conflictAlgorithm: ConflictAlgorithm.abort,
@@ -275,7 +305,10 @@ class VinylDb {
 
   Future<int> countFavorites() async {
     final d = await db;
-    final r = await d.rawQuery("SELECT COUNT(*) as c FROM vinyls WHERE (favorite = 1 OR favorite = '1' OR favorite = 'true' OR favorite = 'TRUE')");
+    // CAST ayuda si el valor quedó guardado como texto
+    final r = await d.rawQuery(
+      "SELECT COUNT(*) as c FROM vinyls WHERE CAST(favorite AS INTEGER) = 1 OR favorite = 'true' OR favorite = 'TRUE'",
+    );
     final v = r.first['c'];
     return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
   }
@@ -310,6 +343,7 @@ class VinylDb {
     String? cover250,
     String? cover500,
     String? artistId,
+    String? status,
   }) async {
     final d = await db;
     await d.insert(
@@ -321,6 +355,7 @@ class VinylDb {
         'cover250': cover250?.trim(),
         'cover500': cover500?.trim(),
         'artistId': artistId?.trim(),
+        'status': status?.trim(),
         'createdAt': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.ignore, // si ya existe, no duplica

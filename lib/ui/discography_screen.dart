@@ -34,127 +34,111 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   String _k(String artist, String album) => '$artist||$album';
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    artistCtrl.dispose();
-    super.dispose();
-  }
 
-  void _onArtistTextChanged(String value) {
-    _debounce?.cancel();
-    final q = value.trim();
-    if (q.isEmpty) {
-      setState(() {
-        artistResults = [];
-        searchingArtists = false;
-      });
-      return;
-    }
+Future<Map<String, String>?> _askConditionAndFormat() async {
+  String condition = 'VG+';
+  String format = 'LP';
 
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
-      setState(() => searchingArtists = true);
-      final hits = await DiscographyService.searchArtists(q);
-      if (!mounted) return;
-      setState(() {
-        artistResults = hits;
-        searchingArtists = false;
-      });
-    });
-  }
-
-  Future<void> _pickArtist(ArtistHit a) async {
-    FocusScope.of(context).unfocus();
-
-    setState(() {
-      pickedArtist = a;
-      artistCtrl.text = a.name;
-      artistResults = [];
-      albums = [];
-      loadingAlbums = true;
-
-      // limpia caches al cambiar artista
-      _exists.clear();
-      _fav.clear();
-      _vinylId.clear();
-      _wish.clear();
-      _busy.clear();
-    });
-
-    final list = await DiscographyService.getDiscographyByArtistId(a.id);
-
-    if (!mounted) return;
-
-    setState(() {
-      albums = list;
-      loadingAlbums = false;
-    });
-  }
-
-  Future<void> _hydrateIfNeeded(String artistName, AlbumItem al) async {
-    final key = _k(artistName, al.title);
-    if (_exists.containsKey(key) || _busy[key] == true) return;
-
-    _busy[key] = true;
-    try {
-      final r = await Future.wait([
-        VinylDb.instance.findByExact(artista: artistName, album: al.title),
-        VinylDb.instance.findWishlistByExact(artista: artistName, album: al.title),
-      ]);
-
-      final vinyl = r[0] as Map<String, dynamic>?;
-      final wish = r[1] as Map<String, dynamic>?;
-
-      _exists[key] = vinyl != null;
-      _vinylId[key] = vinyl?['id'] as int?;
-      _fav[key] = (vinyl != null) ? ((vinyl['favorite'] ?? 0) == 1) : false;
-      _wish[key] = (wish != null);
-    } finally {
-      _busy[key] = false;
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<void> _addAlbumOptimistic(String artistName, AlbumItem al, {required bool favorite}) async {
-    final key = _k(artistName, al.title);
-    if (_busy[key] == true) return;
-
-    // ✅ Optimista: cambia UI al tiro
-    setState(() {
-      _busy[key] = true;
-      _exists[key] = true;
-      _fav[key] = favorite;
-    });
-
-    try {
-      final prepared = await VinylAddService.prepare(
-        artist: artistName,
-        album: al.title,
-        artistId: pickedArtist?.id,
+  return showDialog<Map<String, String>>(
+    context: context,
+    builder: (ctx) {
+      return AlertDialog(
+        title: const Text('Agregar a tu lista'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: condition,
+              decoration: const InputDecoration(labelText: 'Condición'),
+              items: const [
+                DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
+                DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
+                DropdownMenuItem(value: 'VG+', child: Text('VG+ (Very Good +)')),
+                DropdownMenuItem(value: 'VG', child: Text('VG (Very Good)')),
+                DropdownMenuItem(value: 'G', child: Text('G (Good)')),
+                DropdownMenuItem(value: 'P', child: Text('P (Poor)')),
+              ],
+              onChanged: (v) => condition = v ?? condition,
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: format,
+              decoration: const InputDecoration(labelText: 'Formato'),
+              items: const [
+                DropdownMenuItem(value: 'LP', child: Text('LP')),
+                DropdownMenuItem(value: 'EP', child: Text('EP')),
+                DropdownMenuItem(value: 'Single', child: Text('Single')),
+                DropdownMenuItem(value: 'Box Set', child: Text('Box Set')),
+              ],
+              onChanged: (v) => format = v ?? format,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, {'condition': condition, 'format': format}),
+            child: const Text('Aceptar'),
+          ),
+        ],
       );
+    },
+  );
+}
 
-      final res = await VinylAddService.addPrepared(prepared, favorite: favorite);
-      await BackupService.autoSaveIfEnabled();
 
-      if (!mounted) return;
+Future<String?> _askWishlistStatus() async {
+  String status = 'Por comprar';
 
-      if (!res.ok) {
-        // ❌ falló -> revertimos
-        setState(() {
-          _exists.remove(key);
-          _vinylId.remove(key);
-          _fav.remove(key);
-        });
-      } else {
-        // ✅ refrescamos id real desde DB
-        final row = await VinylDb.instance.findByExact(artista: artistName, album: al.title);
-        if (!mounted) return;
-        setState(() {
-          _vinylId[key] = row?['id'] as int?;
-          _exists[key] = row != null;
-          _fav[key] = row != null ? ((row['favorite'] ?? 0) == 1) : favorite;
-        });
-      }
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setSt) {
+          return AlertDialog(
+            title: const Text('Lista de deseos'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  value: 'Por comprar',
+                  groupValue: status,
+                  title: const Text('Por comprar'),
+                  onChanged: (v) => setSt(() => status = v ?? status),
+                ),
+                RadioListTile<String>(
+                  value: 'En camino',
+                  groupValue: status,
+                  title: const Text('En camino'),
+                  onChanged: (v) => setSt(() => status = v ?? status),
+                ),
+                RadioListTile<String>(
+                  value: 'Comprado',
+                  groupValue: status,
+                  title: const Text('Comprado'),
+                  onChanged: (v) => setSt(() => status = v ?? status),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, status),
+                child: const Text('Aceptar'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res.message)));
     } catch (_) {
@@ -215,7 +199,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
   }
 
-  Future<void> _toggleWishlistOptimistic(String artistName, AlbumItem al) async {
+  Future<void> _toggleWishlistOptimistic(String artistName, AlbumItem al, {String? status}) async {
     final key = _k(artistName, al.title);
     if (_busy[key] == true) return;
 
@@ -352,7 +336,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                       tooltip: exists ? 'Ya está en tu lista' : 'Agregar LP',
                                       onPressed: (busy || exists)
                                           ? null
-                                          : () => _addAlbumOptimistic(artistName, al, favorite: false),
+                                          : () async {
+                                              final opts = await _askConditionAndFormat();
+                                              if (!mounted || opts == null) return;
+                                              await _addAlbumOptimistic(
+                                                artistName,
+                                                al,
+                                                favorite: false,
+                                                condition: opts['condition'],
+                                                format: opts['format'],
+                                              );
+                                            },
                                     ),
 
                                     // 2) ⭐ Favoritos
@@ -386,7 +380,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                           : (inWish ? 'Ya está en tu lista deseos' : 'Agregar a lista deseos'),
                                       onPressed: (busy || exists || inWish)
                                           ? null
-                                          : () => _toggleWishlistOptimistic(artistName, al),
+                                          : () async {
+                                              final st = await _askWishlistStatus();
+                                              if (!mounted || st == null) return;
+                                              await _toggleWishlistOptimistic(artistName, al, status: st);
+                                            },
                                     ),
                                   ],
                                 ),

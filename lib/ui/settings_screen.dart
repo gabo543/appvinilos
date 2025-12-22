@@ -18,19 +18,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     3: 'Minimal Dark',
     4: 'Pastel Citrus',
     5: 'Pastel Sky',
+    6: 'Rasta Vibes',
   };
 
-  static const Map<int, String> _intensityLabels = {
-    0: 'Suave',
-    1: 'Normal',
-    2: 'Fuerte',
-    3: 'Máx',
-  };
+  static String _labelIntensity(int v) {
+    if (v <= 1) return 'Suave';
+    if (v <= 4) return 'Normal';
+    if (v <= 7) return 'Fuerte';
+    return 'Máx';
+  }
 
   bool _auto = false;
   bool _grid = false;
   int _theme = 1;
-  int _textIntensity = 2;
+  int _textIntensity = 5;
+  int _bgLevel = 2;
+  int _cardLevel = 2;
   bool _loading = true;
 
   @override
@@ -44,11 +47,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final g = await ViewModeService.isGridEnabled();
     final t = await AppThemeService.getTheme();
     final ti = await AppThemeService.getTextIntensity();
+    final bg = await AppThemeService.getBgLevel();
+    final cl = await AppThemeService.getCardLevel();
     setState(() {
       _auto = v;
       _grid = g;
       _theme = t;
       _textIntensity = ti;
+      _bgLevel = bg;
+      _cardLevel = cl;
       _loading = false;
     });
   }
@@ -79,7 +86,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final themeName = _themeLabels[_theme] ?? 'Vinyl Pro';
-    final intensityName = _intensityLabels[_textIntensity] ?? 'Fuerte';
+    final intensityName = _labelIntensity(_textIntensity);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
@@ -133,6 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ButtonSegment(value: 3, icon: Icon(Icons.nightlight_round)),
                             ButtonSegment(value: 4, icon: Icon(Icons.palette_outlined)),
                             ButtonSegment(value: 5, icon: Icon(Icons.bubble_chart_outlined)),
+                            ButtonSegment(value: 6, icon: Icon(Icons.flag_outlined)),
                           ],
                           selected: <int>{_theme},
                           showSelectedIcon: false,
@@ -170,24 +178,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        SegmentedButton<int>(
-                          segments: const [
-                            ButtonSegment(value: 0, label: Text('1')),
-                            ButtonSegment(value: 1, label: Text('2')),
-                            ButtonSegment(value: 2, label: Text('3')),
-                            ButtonSegment(value: 3, label: Text('4')),
-                          ],
-                          selected: <int>{_textIntensity},
-                          showSelectedIcon: false,
-                          onSelectionChanged: (s) {
-                            final v = s.first;
-                            setState(() => _textIntensity = v);
-                            AppThemeService.setTextIntensity(v);
+                        Slider(
+                          value: _textIntensity.toDouble(),
+                          min: 0,
+                          max: 10,
+                          divisions: 10,
+                          label: '${_textIntensity + 1}',
+                          onChanged: (v) {
+                            final iv = v.round();
+                            setState(() => _textIntensity = iv);
+                            AppThemeService.setTextIntensity(iv);
                           },
                         ),
                         const SizedBox(height: 8),
                         const Text(
                           'Ajusta el contraste del texto en toda la app.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 🧱 Fondo y cuadros
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Niveles visuales', style: TextStyle(fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Text('Fondo', style: TextStyle(fontWeight: FontWeight.w800)),
+                            const Spacer(),
+                            Text('Nivel ${_bgLevel + 1}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                        Slider(
+                          value: _bgLevel.toDouble(),
+                          min: 0,
+                          max: 4,
+                          divisions: 4,
+                          label: '${_bgLevel + 1}',
+                          onChanged: (v) {
+                            final iv = v.round();
+                            setState(() => _bgLevel = iv);
+                            AppThemeService.setBgLevel(iv);
+                          },
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Text('Cuadros', style: TextStyle(fontWeight: FontWeight.w800)),
+                            const Spacer(),
+                            Text('Nivel ${_cardLevel + 1}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                        Slider(
+                          value: _cardLevel.toDouble(),
+                          min: 0,
+                          max: 4,
+                          divisions: 4,
+                          label: '${_cardLevel + 1}',
+                          onChanged: (v) {
+                            final iv = v.round();
+                            setState(() => _cardLevel = iv);
+                            AppThemeService.setCardLevel(iv);
+                          },
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Ajusta el fondo y el estilo de los cuadros (cards) sin cambiar la lógica.',
                           style: TextStyle(fontSize: 12),
                         ),
                       ],

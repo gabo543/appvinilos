@@ -74,6 +74,9 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final year = (widget.vinyl['year'] as String?)?.trim() ?? '';
     final genre = (widget.vinyl['genre'] as String?)?.trim() ?? '';
     final country = (widget.vinyl['country'] as String?)?.trim() ?? '';
+    final condition = (widget.vinyl['condition'] as String?)?.trim() ?? '';
+    final format = (widget.vinyl['format'] as String?)?.trim() ?? '';
+    final wishlistStatus = (widget.vinyl['status'] as String?)?.trim() ?? '';
     final bio = (widget.vinyl['artistBio'] as String?)?.trim() ?? '';
 
     return SafeArea(
@@ -107,6 +110,9 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                 _pill(context, 'Año', year.isEmpty ? '—' : year),
                 _pill(context, 'Género', genre.isEmpty ? '—' : genre),
                 _pill(context, 'País', country.isEmpty ? '—' : country),
+                if (condition.isNotEmpty) _pill(context, 'Condición', condition),
+                if (format.isNotEmpty) _pill(context, 'Formato', format),
+                if (wishlistStatus.isNotEmpty) _pill(context, 'Wishlist', wishlistStatus),
               ],
             ),
 

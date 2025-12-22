@@ -127,6 +127,8 @@ class VinylAddService {
         artistBio: prepared.bioShort,
         coverPath: coverPath,
         mbid: prepared.releaseGroupId,
+        condition: condition,
+        format: format,
         favorite: favorite,
       );
       return AddVinylResult(ok: true, message: favorite ? 'Agregado a favoritos ⭐' : 'Vinilo agregado ✅');

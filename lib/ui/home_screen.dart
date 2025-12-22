@@ -16,6 +16,19 @@ import 'wishlist_screen.dart';
 
 enum Vista { inicio, buscar, lista, favoritos, borrar }
 
+enum VinylSortMode { az, yearDesc, recent }
+
+String vinylSortLabel(VinylSortMode m) {
+  switch (m) {
+    case VinylSortMode.az:
+      return 'A–Z';
+    case VinylSortMode.yearDesc:
+      return 'Año';
+    case VinylSortMode.recent:
+      return 'Recientes';
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -29,6 +42,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ✅ fuerza rebuild de listas cuando hay cambios “silenciosos” (ej: toggle favorito optimista)
   int _reloadTick = 0;
+
+  // 🔎 Filtros + orden (solo para "Vinilos")
+  String _filterArtistQ = '';
+  String _filterGenreQ = '';
+  String _filterCountryQ = '';
+  int? _filterYearFrom;
+  int? _filterYearTo;
+  VinylSortMode _sortMode = VinylSortMode.recent;
+
+  bool get _hasAnyFilter =>
+      _filterArtistQ.trim().isNotEmpty ||
+      _filterGenreQ.trim().isNotEmpty ||
+      _filterCountryQ.trim().isNotEmpty ||
+      _filterYearFrom != null ||
+      _filterYearTo != null;
 
   // ✅ micro-opt: evitar File.existsSync() en cada build (especialmente en grid)
   final Map<String, bool> _fileExistsCache = {};
@@ -1051,7 +1079,7 @@ sectionTitle('Colección'
 , subtitle: 'Accede rápido a tus listas.'),
         menuRow(
           icon: Icons.list,
-          title: 'Lista de vinilos',
+          title: 'Vinilos',
           subtitle: 'Todos tus LPs guardados',          onTap: () {
             _reloadAllData();
             if (!mounted) return;
@@ -1060,7 +1088,7 @@ sectionTitle('Colección'
         ),
         menuRow(
           icon: Icons.star,
-          title: 'Vinilos favoritos',
+          title: 'Favoritos',
           subtitle: 'Tu selección destacada',          onTap: () {
             _reloadAllData();
             if (!mounted) return;
@@ -1069,7 +1097,7 @@ sectionTitle('Colección'
         ),
         menuRow(
           icon: Icons.shopping_cart,
-          title: 'Lista de deseos',
+          title: 'Deseos',
           subtitle: 'Pendientes por comprar',          onTap: () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen())).then((_) {
               if (!mounted) return;
@@ -1079,7 +1107,7 @@ sectionTitle('Colección'
         ),
         menuRow(
           icon: Icons.delete_outline,
-          title: 'Borrar vinilos',
+          title: 'Borrar',
           subtitle: 'Eliminar de tu lista',
           onTap: () => setState(() => vista = Vista.borrar),
         ),
@@ -1342,7 +1370,289 @@ sectionTitle('Colección'
     );
   }
 
-  Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
+  
+  int? _parseYear(dynamic y) {
+    final s = (y as String?)?.trim();
+    if (s == null || s.isEmpty) return null;
+    return int.tryParse(s);
+  }
+
+  List<Map<String, dynamic>> _applyListFiltersAndSort(List<Map<String, dynamic>> items) {
+    final aQ = _filterArtistQ.trim().toLowerCase();
+    final gQ = _filterGenreQ.trim().toLowerCase();
+    final cQ = _filterCountryQ.trim().toLowerCase();
+
+    Iterable<Map<String, dynamic>> it = items;
+
+    if (aQ.isNotEmpty) {
+      it = it.where((v) {
+        final a = ((v['artista'] as String?) ?? '').toLowerCase();
+        final al = ((v['album'] as String?) ?? '').toLowerCase();
+        return a.contains(aQ) || al.contains(aQ);
+      });
+    }
+    if (gQ.isNotEmpty) {
+      it = it.where((v) => (((v['genre'] as String?) ?? '').toLowerCase()).contains(gQ));
+    }
+    if (cQ.isNotEmpty) {
+      it = it.where((v) => (((v['country'] as String?) ?? '').toLowerCase()).contains(cQ));
+    }
+    if (_filterYearFrom != null || _filterYearTo != null) {
+      final from = _filterYearFrom;
+      final to = _filterYearTo;
+      it = it.where((v) {
+        final y = _parseYear(v['year']);
+        if (y == null) return false;
+        if (from != null && y < from) return false;
+        if (to != null && y > to) return false;
+        return true;
+      });
+    }
+
+    final list = it.toList();
+
+    int safeCmp(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+
+    switch (_sortMode) {
+      case VinylSortMode.az:
+        list.sort((x, y) {
+          final ax = (x['artista'] as String?) ?? '';
+          final ay = (y['artista'] as String?) ?? '';
+          final c1 = safeCmp(ax, ay);
+          if (c1 != 0) return c1;
+          final bx = (x['album'] as String?) ?? '';
+          final by = (y['album'] as String?) ?? '';
+          return safeCmp(bx, by);
+        });
+        break;
+      case VinylSortMode.yearDesc:
+        list.sort((x, y) {
+          final yx = _parseYear(x['year']) ?? -1;
+          final yy = _parseYear(y['year']) ?? -1;
+          final c1 = yy.compareTo(yx);
+          if (c1 != 0) return c1;
+          final ax = (x['artista'] as String?) ?? '';
+          final ay = (y['artista'] as String?) ?? '';
+          return safeCmp(ax, ay);
+        });
+        break;
+      case VinylSortMode.recent:
+        list.sort((x, y) {
+          final ix = (x['id'] as int?) ?? 0;
+          final iy = (y['id'] as int?) ?? 0;
+          return iy.compareTo(ix);
+        });
+        break;
+    }
+
+    return list;
+  }
+
+  void _openVinylFiltersSheet() {
+    // valores temporales (para no aplicar hasta "Aplicar")
+    String tArtist = _filterArtistQ;
+    String tGenre = _filterGenreQ;
+    String tCountry = _filterCountryQ;
+    String tFrom = _filterYearFrom?.toString() ?? '';
+    String tTo = _filterYearTo?.toString() ?? '';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(ctx).colorScheme.surface,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.tune),
+                        const SizedBox(width: 10),
+                        const Expanded(child: Text('Filtros')),
+                        TextButton(
+                          onPressed: () {
+                            setLocal(() {
+                              tArtist = '';
+                              tGenre = '';
+                              tCountry = '';
+                              tFrom = '';
+                              tTo = '';
+                            });
+                          },
+                          child: const Text('Limpiar'),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'Artista o álbum'),
+                      controller: TextEditingController(text: tArtist),
+                      onChanged: (v) => setLocal(() => tArtist = v),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Año desde'),
+                            controller: TextEditingController(text: tFrom),
+                            onChanged: (v) => setLocal(() => tFrom = v),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Año hasta'),
+                            controller: TextEditingController(text: tTo),
+                            onChanged: (v) => setLocal(() => tTo = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'Género (contiene)'),
+                      controller: TextEditingController(text: tGenre),
+                      onChanged: (v) => setLocal(() => tGenre = v),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      decoration: const InputDecoration(labelText: 'País (contiene)'),
+                      controller: TextEditingController(text: tCountry),
+                      onChanged: (v) => setLocal(() => tCountry = v),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancelar'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _filterArtistQ = tArtist;
+                                _filterGenreQ = tGenre;
+                                _filterCountryQ = tCountry;
+                                _filterYearFrom = int.tryParse(tFrom.trim());
+                                _filterYearTo = int.tryParse(tTo.trim());
+                              });
+                              Navigator.pop(ctx);
+                            },
+                            child: const Text('Aplicar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _niceEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    String? actionText,
+    VoidCallback? onAction,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 58),
+            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+            if (actionText != null && onAction != null) ...[
+              const SizedBox(height: 14),
+              ElevatedButton(onPressed: onAction, child: Text(actionText)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _vinylListTopBar({required int shown, required int total}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, top: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _hasAnyFilter ? '$shown de $total' : '$total',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          if (_hasAnyFilter)
+            IconButton(
+              tooltip: 'Quitar filtros',
+              onPressed: () => setState(() {
+                _filterArtistQ = '';
+                _filterGenreQ = '';
+                _filterCountryQ = '';
+                _filterYearFrom = null;
+                _filterYearTo = null;
+              }),
+              icon: const Icon(Icons.filter_alt_off),
+            ),
+          IconButton(
+            tooltip: 'Filtros',
+            onPressed: _openVinylFiltersSheet,
+            icon: Icon(_hasAnyFilter ? Icons.filter_alt : Icons.filter_alt_outlined),
+          ),
+          PopupMenuButton<VinylSortMode>(
+            tooltip: 'Ordenar',
+            initialValue: _sortMode,
+            onSelected: (m) => setState(() => _sortMode = m),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: VinylSortMode.recent, child: Text('Recientes')),
+              PopupMenuItem(value: VinylSortMode.az, child: Text('A–Z')),
+              PopupMenuItem(value: VinylSortMode.yearDesc, child: Text('Año')),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.sort),
+                  const SizedBox(width: 6),
+                  Text(vinylSortLabel(_sortMode)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
     final fut = _futureAll;
 
     return FutureBuilder<List<Map<String, dynamic>>>(
@@ -1350,18 +1660,62 @@ sectionTitle('Colección'
       builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         final rawItems = snap.data!;
-        final items = onlyFavorites
+        final baseItems = onlyFavorites
             ? rawItems.where((v) => _isFav(v)).toList()
             : rawItems;
+
+        final items = (!onlyFavorites && !conBorrar)
+            ? _applyListFiltersAndSort(baseItems)
+            : baseItems;
+
         if (items.isEmpty) {
-          return Text(
-            onlyFavorites ? 'No tienes favoritos todavía.' : 'No tienes vinilos todavía.',
-            style: const TextStyle(color: Colors.white),
+          // Si hay filtros activos, significa "sin resultados"
+          if (!onlyFavorites && !conBorrar && _hasAnyFilter) {
+            return _niceEmptyState(
+              icon: Icons.search_off,
+              title: 'Sin resultados',
+              subtitle: 'Prueba quitando filtros o cambiando el texto.',
+              actionText: 'Quitar filtros',
+              onAction: () => setState(() {
+                _filterArtistQ = '';
+                _filterGenreQ = '';
+                _filterCountryQ = '';
+                _filterYearFrom = null;
+                _filterYearTo = null;
+              }),
+            );
+          }
+
+          if (onlyFavorites) {
+            return _niceEmptyState(
+              icon: Icons.star_border,
+              title: 'Sin favoritos',
+              subtitle: 'Marca la estrella en un vinilo para que aparezca aquí.',
+              actionText: 'Ver vinilos',
+              onAction: () => setState(() => vista = Vista.lista),
+            );
+          }
+
+          return _niceEmptyState(
+            icon: Icons.library_music,
+            title: 'Tu lista está vacía',
+            subtitle: 'Agrega vinilos desde Discografías o desde Buscar.',
+            actionText: 'Ir a Discografías',
+            onAction: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen()));
+            },
           );
         }
 
+        final showControls = (!onlyFavorites && !conBorrar);
+        final total = baseItems.length;
+        final shown = items.length;
+
         if (_gridView) {
-          return GridView.builder(
+          return Column(
+            children: [
+              if (showControls) _vinylListTopBar(shown: shown, total: total),
+              GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.only(top: 6),
@@ -1373,17 +1727,24 @@ sectionTitle('Colección'
               childAspectRatio: 0.78,
             ),
             itemBuilder: (context, i) => _gridVinylCard(items[i], conBorrar: conBorrar),
+          ),
+            ],
           );
         }
 
-        return ListView.builder(
+        return Column(
+          children: [
+            if (showControls) _vinylListTopBar(shown: shown, total: total),
+            ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: items.length,
           itemBuilder: (context, i) {
             final v = items[i];
             final year = (v['year'] as String?)?.trim() ?? '—';
-            final genre = (v['genre'] as String?)?.trim();
+            final genre = (v['genre'] as String?)?.trim(),
+          ],
+        );
             final country = (v['country'] as String?)?.trim();
             final fav = _isFav(v);
 
@@ -1447,13 +1808,13 @@ sectionTitle('Colección'
         title = 'Buscar vinilos';
         break;
       case Vista.lista:
-        title = 'Lista de vinilos';
+        title = 'Vinilos';
         break;
       case Vista.favoritos:
-        title = 'Vinilos favoritos';
+        title = 'Favoritos';
         break;
       case Vista.borrar:
-        title = 'Borrar vinilos';
+        title = 'Borrar';
         break;
       default:
         title = 'GaBoLP';

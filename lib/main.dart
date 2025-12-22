@@ -383,27 +383,168 @@ class GaBoLpApp extends StatelessWidget {
     );
   }
 
+  ThemeData _theme6() {
+    // Diseño 6: Rasta Vibes (verde/amarillo/rojo)
+    const bg = Color(0xFF050505);
+    const surf = Color(0xFF0C0F0B);
+    const green = Color(0xFF1DB954); // verde vivo
+    const yellow = Color(0xFFF6C343);
+    const red = Color(0xFFE53935);
+
+    final cs = ColorScheme.fromSeed(
+      seedColor: green,
+      brightness: Brightness.dark,
+      surface: surf,
+    ).copyWith(
+      primary: green,
+      secondary: yellow,
+      tertiary: red,
+      onPrimary: Colors.black,
+      onSecondary: Colors.black,
+      onTertiary: Colors.white,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: bg,
+      colorScheme: cs,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: bg,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      dividerColor: const Color(0xFF1C1C1C),
+      cardTheme: CardThemeData(
+        color: surf,
+        elevation: 1,
+        shadowColor: Colors.black,
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: yellow.withOpacity(0.22)),
+        ),
+      ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: Colors.white,
+        textColor: Colors.white,
+      ),
+      iconTheme: const IconThemeData(color: Colors.white, size: 22),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: Colors.white,
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: const Color(0xFF121212),
+        selectedColor: green.withOpacity(0.18),
+        labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        secondaryLabelStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+        side: BorderSide(color: red.withOpacity(0.22)),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: green,
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: BorderSide(color: yellow.withOpacity(0.45)),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: yellow,
+        foregroundColor: Colors.black,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: const Color(0xFF101010),
+        contentTextStyle: const TextStyle(color: Colors.white),
+        actionTextColor: yellow,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF0F0F0F),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: yellow.withOpacity(0.30))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: yellow.withOpacity(0.18))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: green, width: 1.4)),
+      ),
+    );
+  }
+
   ThemeData _applyTextIntensity(ThemeData base, int level) {
-    // level: 0..3
+    // level: 0..10 (más niveles = más contraste)
     final isDark = base.brightness == Brightness.dark;
-    final dark = [
-      const Color(0xFFB5B5B5),
-      const Color(0xFFD0D0D0),
-      const Color(0xFFE8E8E8),
-      Colors.white,
-    ];
-    final light = [
-      const Color(0xFF4A4A4A),
-      const Color(0xFF2F2F2F),
-      const Color(0xFF1A1A1A),
-      Colors.black,
-    ];
-    final idx = level.clamp(0, 3);
-    final c = isDark ? dark[idx] : light[idx];
+    final t = (level.clamp(0, 10)) / 10.0;
+
+    // Fondo oscuro: desde gris a blanco
+    // Fondo claro: desde gris oscuro a negro
+    final Color c = isDark
+        ? Color.lerp(const Color(0xFFB5B5B5), Colors.white, t)!
+        : Color.lerp(const Color(0xFF4A4A4A), Colors.black, t)!
+;
+
+    final textTheme = base.textTheme.apply(bodyColor: c, displayColor: c);
+    final primaryTextTheme = base.primaryTextTheme.apply(bodyColor: c, displayColor: c);
+
+    final cs = base.colorScheme;
+    final newCs = cs.copyWith(
+      onSurface: c,
+      onBackground: c,
+      onSecondaryContainer: c,
+      onPrimaryContainer: c,
+    );
 
     return base.copyWith(
-      textTheme: base.textTheme.apply(bodyColor: c, displayColor: c),
-      primaryTextTheme: base.primaryTextTheme.apply(bodyColor: c, displayColor: c),
+      colorScheme: newCs,
+      textTheme: textTheme,
+      primaryTextTheme: primaryTextTheme,
+    );
+  }
+
+  ThemeData _applyBackgroundLevel(ThemeData base, int level) {
+    // level: 0..4
+    final idx = level.clamp(0, 4);
+    final isDark = base.brightness == Brightness.dark;
+
+    // 0 = base, 4 = más contraste entre fondo/superficie
+    final t = idx / 4.0;
+    final bgBase = base.scaffoldBackgroundColor;
+    final bgTarget = isDark ? const Color(0xFF060606) : const Color(0xFFF7F7F7);
+    final bg = Color.lerp(bgBase, bgTarget, t * 0.55) ?? bgBase;
+
+    return base.copyWith(scaffoldBackgroundColor: bg);
+  }
+
+  ThemeData _applyCardLevel(ThemeData base, int level) {
+    // level: 0..4
+    final idx = level.clamp(0, 4);
+    final isDark = base.brightness == Brightness.dark;
+
+    final elev = (idx * 2).toDouble();
+    final radius = 12.0 + (idx * 2).toDouble();
+    final borderColor = isDark
+        ? Color.lerp(const Color(0xFF1A1A1A), const Color(0xFF3A3A3A), idx / 4.0)!
+        : Color.lerp(const Color(0xFFE0E0E0), const Color(0xFFBDBDBD), idx / 4.0)!;
+
+    final card = base.cardTheme;
+    return base.copyWith(
+      cardTheme: card.copyWith(
+        elevation: elev,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radius),
+          side: BorderSide(color: borderColor, width: idx == 0 ? 0.5 : 1.0),
+        ),
+      ),
     );
   }
 
@@ -415,21 +556,34 @@ class GaBoLpApp extends StatelessWidget {
         return ValueListenableBuilder<int>(
           valueListenable: AppThemeService.textIntensityNotifier,
           builder: (_, intensity, __) {
-            ThemeData base = switch (themeId) {
-              2 => _theme2(),
-              3 => _theme3(),
-              4 => _theme4(),
-              5 => _theme5(),
-              _ => _theme1(),
-            };
+            return ValueListenableBuilder<int>(
+              valueListenable: AppThemeService.bgLevelNotifier,
+              builder: (_, bgLevel, __) {
+                return ValueListenableBuilder<int>(
+                  valueListenable: AppThemeService.cardLevelNotifier,
+                  builder: (_, cardLevel, __) {
+                    ThemeData base = switch (themeId) {
+                      2 => _theme2(),
+                      3 => _theme3(),
+                      4 => _theme4(),
+                      5 => _theme5(),
+                      6 => _theme6(),
+                      _ => _theme1(),
+                    };
 
-            final ThemeData theme = _applyTextIntensity(base, intensity);
+                    ThemeData theme = _applyTextIntensity(base, intensity);
+                    theme = _applyBackgroundLevel(theme, bgLevel);
+                    theme = _applyCardLevel(theme, cardLevel);
 
-            return MaterialApp(
-              debugShowCheckedModeBanner: false,
-              title: 'Colección vinilos',
-              theme: theme,
-              home: const HomeScreen(),
+                    return MaterialApp(
+                      debugShowCheckedModeBanner: false,
+                      title: 'Colección vinilos',
+                      theme: theme,
+                      home: const HomeScreen(),
+                    );
+                  },
+                );
+              },
             );
           },
         );
