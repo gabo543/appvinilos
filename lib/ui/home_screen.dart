@@ -1653,208 +1653,158 @@ sectionTitle('Colección'
   }
 
 Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
-    final fut = _futureAll;
+  final future = onlyFavorites ? VinylDb.instance.getFavorites() : VinylDb.instance.getAll();
 
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: fut,
-      builder: (context, snap) {
-        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        final rawItems = snap.data!;
-        final baseItems = onlyFavorites
-            ? rawItems.where((v) => _isFav(v)).toList()
-            : rawItems;
+  return FutureBuilder<List<Map<String, dynamic>>>(
+    future: future,
+    builder: (context, snap) {
+      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+      final items = snap.data ?? const <Map<String, dynamic>>[];
 
-        final items = (!onlyFavorites && !conBorrar)
-            ? _applyListFiltersAndSort(baseItems)
-            : baseItems;
+      if (items.isEmpty) {
+        return _emptyState(
+          icon: onlyFavorites ? Icons.star_outline : Icons.library_music_outlined,
+          title: onlyFavorites ? 'No hay favoritos' : 'No hay vinilos',
+          subtitle: onlyFavorites
+              ? 'Marca un vinilo como favorito y aparecerá aquí.'
+              : 'Agrega tu primer vinilo desde Discografía o Buscar.',
+        );
+      }
 
-        if (items.isEmpty) {
-          // Si hay filtros activos, significa "sin resultados"
-          if (!onlyFavorites && !conBorrar && _hasAnyFilter) {
-            return _niceEmptyState(
-              icon: Icons.search_off,
-              title: 'Sin resultados',
-              subtitle: 'Prueba quitando filtros o cambiando el texto.',
-              actionText: 'Quitar filtros',
-              onAction: () => setState(() {
-                _filterArtistQ = '';
-                _filterGenreQ = '';
-                _filterCountryQ = '';
-                _filterYearFrom = null;
-                _filterYearTo = null;
-              }),
-            );
-          }
-
-          if (onlyFavorites) {
-            return _niceEmptyState(
-              icon: Icons.star_border,
-              title: 'Sin favoritos',
-              subtitle: 'Marca la estrella en un vinilo para que aparezca aquí.',
-              actionText: 'Ver vinilos',
-              onAction: () => setState(() => vista = Vista.lista),
-            );
-          }
-
-          return _niceEmptyState(
-            icon: Icons.library_music,
-            title: 'Tu lista está vacía',
-            subtitle: 'Agrega vinilos desde Discografías o desde Buscar.',
-            actionText: 'Ir a Discografías',
-            onAction: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen()));
-            },
-          );
-        }
-
-        final showControls = (!onlyFavorites && !conBorrar);
-        final total = baseItems.length;
-        final shown = items.length;
-
-        if (_gridView) {
-
-return Column(
-  children: [
-    if (showControls) _vinylListTopBar(items),
-    Expanded(
-      child: _gridView
-          ? GridView.builder(
-              padding: const EdgeInsets.only(bottom: 80),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.72,
-              ),
-              itemCount: items.length,
-              itemBuilder: (context, i) => _gridVinylCard(items[i], conBorrar: conBorrar),
-            )
-          : ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (context, i) {
-                final v = items[i];
-                final year = (v['year'] as String?)?.trim();
-                final genre = (v['genre'] as String?)?.trim();
-                final country = (v['country'] as String?)?.trim();
-                final fav = _isFav(v);
-
-                return Card(
-                  child: ListTile(
-                    onTap: () => _openDetail(v),
-                    leading: _leadingCover(v),
-                    title: Stack(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 28),
-                          child: Text(
-                            '${v['artista']} — ${v['album']}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Positioned(right: 0, top: 0, child: _numeroBadge(v['numero'])),
-                      ],
-                    ),
-                    subtitle: Text(
-                      'Año: ${(year?.isNotEmpty ?? false) ? year : '—'}'
-                      '  •  Género: ${(genre?.isNotEmpty ?? false) ? genre : '—'}'
-                      '  •  País: ${(country?.isNotEmpty ?? false) ? country : '—'}',
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (conBorrar)
-                          IconButton(
-                            tooltip: 'Borrar',
-                            icon: const Icon(Icons.delete_outline),
-                            onPressed: () async {
-                              await VinylDb.instance.deleteById(v['id'] as int);
-                              await BackupService.autoSaveIfEnabled();
-                              snack('Borrado');
-                              setState(() {});
-                            },
-                          )
-                        else
-                          IconButton(
-                            tooltip: fav ? 'Quitar de favoritos' : 'Marcar favorito',
-                            icon: Icon(fav ? Icons.star : Icons.star_border),
-                            onPressed: () => _toggleFavorite(v),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-    ),
-  ],
-);
-  }
-
-        return Column(
-          children: [
-            if (showControls) _vinylListTopBar(shown: shown, total: total),
-            ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+      if (_gridView) {
+        return GridView.builder(
+          padding: const EdgeInsets.all(12),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 0.72,
+          ),
           itemCount: items.length,
           itemBuilder: (context, i) {
             final v = items[i];
-            final year = (v['year'] as String?)?.trim() ?? '—';
-            final genre = (v['genre'] as String?)?.trim(),
-          ],
-        );
-            final country = (v['country'] as String?)?.trim();
             final fav = _isFav(v);
 
-            return Card(
-              child: ListTile(
-                leading: _leadingCover(v),
-
-                // número como badge + texto artista/album (sin "LP")
-                title: Stack(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 28),
-                      child: Text(
-                        '${v['artista']} — ${v['album']}',
+            return GestureDetector(
+              onTap: () => _openDetail(v),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: _leadingCover(v),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        (v['album'] ?? '').toString(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                    ),
-                    Positioned(right: 0, top: 0, child: _numeroBadge(v['numero'])),
-                  ],
-                ),
-
-                subtitle: Text(
-                  'Año: $year  •  Género: ${genre?.isEmpty ?? true ? '—' : genre}  •  País: ${country?.isEmpty ?? true ? '—' : country}',
-                ),
-                onTap: () => _openDetail(v),
-
-                trailing: conBorrar
-                    ? IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () async {
-                          await VinylDb.instance.deleteById(v['id'] as int);
-                          await BackupService.autoSaveIfEnabled();
-                          snack('Borrado');
-                          _reloadAllData();
-                        },
-                      )
-                    : IconButton(
-                        tooltip: fav ? 'Quitar de favoritos' : 'Agregar a favoritos',
-                        icon: Icon(
-                          fav ? Icons.star : Icons.star_border,
-                          // Borde blanco (no marcado) + relleno gris (marcado)
-                          color: fav ? Colors.grey : Colors.white,
-                        ),
-                        onPressed: () => _toggleFavorite(v),
+                      const SizedBox(height: 4),
+                      Text(
+                        (v['artista'] ?? '').toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                      const Spacer(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
+                            icon: Icon(
+                              fav ? Icons.star : Icons.star_border,
+                              color: fav ? Colors.black : Colors.grey,
+                            ),
+                            onPressed: () => _toggleFavorite(v),
+                          ),
+                          if (conBorrar)
+                            IconButton(
+                              tooltip: 'Borrar',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                await VinylDb.instance.deleteById(v['id'] as int);
+                                await BackupService.autoSaveIfEnabled();
+                                if (!mounted) return;
+                                setState(() {});
+                                snack('Borrado');
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
             );
           },
         );
-      },
-    );
-  }
+      }
+
+      return ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final v = items[i];
+          final fav = _isFav(v);
+
+          final year = (v['year'] as String?)?.trim();
+          final genre = (v['genre'] as String?)?.trim();
+          final country = (v['country'] as String?)?.trim();
+
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: ListTile(
+              onTap: () => _openDetail(v),
+              leading: _leadingCover(v),
+              title: Text('${v['artista']} — ${v['album']}'),
+              subtitle: Text(
+                'Año: ${(year == null || year.isEmpty) ? '—' : year}  •  '
+                'Género: ${(genre == null || genre.isEmpty) ? '—' : genre}  •  '
+                'País: ${(country == null || country.isEmpty) ? '—' : country}',
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
+                    icon: Icon(
+                      fav ? Icons.star : Icons.star_border,
+                      color: fav ? Colors.black : Colors.grey,
+                    ),
+                    onPressed: () => _toggleFavorite(v),
+                  ),
+                  if (conBorrar)
+                    IconButton(
+                      tooltip: 'Borrar',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () async {
+                        await VinylDb.instance.deleteById(v['id'] as int);
+                        await BackupService.autoSaveIfEnabled();
+                        if (!mounted) return;
+                        setState(() {});
+                        snack('Borrado');
+                      },
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+
+
+
 
   PreferredSizeWidget? _buildAppBar() {
     // Usamos vista explícito para evitar problemas de resolución de nombres
