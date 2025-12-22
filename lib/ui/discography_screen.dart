@@ -337,7 +337,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     });
 
     try {
-      await VinylDb.instance.insertWishlist(
+      // VinylDb no tiene insertWishlist; el método real es addToWishlist
+      await VinylDb.instance.addToWishlist(
         artista: artistName,
         album: al.title,
         year: al.year,
@@ -427,7 +428,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                               return Card(
                                 child: ListTile(
                                   title: Text(al.title),
-                                  subtitle: Text('Año: ${al.year.trim().isEmpty ? '—' : al.year}'),
+                                  subtitle: Text('Año: ${((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')}'),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
