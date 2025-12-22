@@ -27,6 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // ⭐ Cache local para favoritos (cambio instantáneo)
   final Map<int, bool> _favCache = {};
 
+  // ✅ fuerza rebuild de listas cuando hay cambios “silenciosos” (ej: toggle favorito optimista)
+  int _reloadTick = 0;
+
   // ✅ micro-opt: evitar File.existsSync() en cada build (especialmente en grid)
   final Map<String, bool> _fileExistsCache = {};
 

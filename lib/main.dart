@@ -43,7 +43,7 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
       ),
       // ThemeData.cardTheme espera CardThemeData (no CardTheme).
-      cardTheme: const CardThemeData(
+      cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 5,
         shadowColor: Color(0x22000000),
@@ -158,7 +158,7 @@ class GaBoLpApp extends StatelessWidget {
         foregroundColor: Color(0xFF0F0F0F),
         elevation: 0,
       ),
-      cardTheme: const CardThemeData(
+      cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -280,7 +280,7 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: surf,
         elevation: 1,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -341,7 +341,7 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: surf,
         elevation: 0,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
