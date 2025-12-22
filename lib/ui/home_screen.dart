@@ -1599,6 +1599,24 @@ sectionTitle('Colección'
     );
   }
 
+  // Compat: versiones anteriores usaban _emptyState().
+  // Ahora centralizamos el diseño en _niceEmptyState().
+  Widget _emptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    String? actionText,
+    VoidCallback? onAction,
+  }) {
+    return _niceEmptyState(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      actionText: actionText,
+      onAction: onAction,
+    );
+  }
+
   Widget _vinylListTopBar({required int shown, required int total}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10, top: 4),
