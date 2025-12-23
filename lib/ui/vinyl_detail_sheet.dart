@@ -47,24 +47,6 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
 
   Widget _cover() {
     final cp = (widget.vinyl['coverPath'] as String?)?.trim() ?? '';
-    // Soporta URL (discografía / wishlist) y path local (colección)
-    if (cp.startsWith('http://') || cp.startsWith('https://')) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Image.network(
-          cp,
-          width: 120,
-          height: 120,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox(
-            width: 120,
-            height: 120,
-            child: Center(child: Icon(Icons.album, size: 52)),
-          ),
-        ),
-      );
-    }
-
     if (cp.isNotEmpty) {
       final f = File(cp);
       if (f.existsSync()) {

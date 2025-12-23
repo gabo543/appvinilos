@@ -1,225 +1,41 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'ui/home_screen.dart';
 import 'services/app_theme_service.dart';
 import 'services/view_mode_service.dart';
 
-
-
-class RootApp extends StatefulWidget {
-  const RootApp({super.key});
-
-  @override
-  State<RootApp> createState() => _RootAppState();
-}
-
-class _RootAppState extends State<RootApp> {
-  bool _ready = false;
-  String? _bootError;
-
-  @override
-  void initState() {
-    super.initState();
-    _boot();
-  }
-
-  Future<void> _boot() async {
-    try {
-      // Cargar prefs/plugins DESPUÉS del primer render para no quedar pegados en el splash del sistema.
-      await AppThemeService.load();
-      await ViewModeService.load();
-    } catch (e, st) {
-      _bootError = '$e\n\n$st';
-      debugPrint('Boot error: $e');
-      debugPrintStack(stackTrace: st);
-    } finally {
-      if (mounted) setState(() => _ready = true);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: AppThemeService.themeNotifier,
-      builder: (context, themeId, _) {
-        final theme = _buildTheme(themeId);
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'Colección vinilos',
-          theme: theme,
-          home: _bootError != null
-              ? BootErrorScreen(message: _bootError!)
-              : (_ready ? const HomeScreen() : const BootLoadingScreen()),
-        );
-      },
-    );
-  }
-}
-/// Construye un ThemeData a partir del id persistido (1..6).
-/// No usa colores fijos "raros": sólo define brillo y un par de defaults
-/// para que la app arranque siempre aunque falten estilos específicos.
-ThemeData _buildTheme(int themeId) {
-  switch (themeId) {
-    case 2:
-      return ThemeData(
-        brightness: Brightness.light,
-        useMaterial3: true,
-      );
-    case 3:
-      return ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      );
-    case 4:
-      return ThemeData(
-        brightness: Brightness.light,
-        useMaterial3: true,
-      );
-    case 5:
-      return ThemeData(
-        brightness: Brightness.light,
-        useMaterial3: true,
-      );
-    case 6:
-      return ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      );
-    case 1:
-    default:
-      return ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      );
-  }
-}
-class BootLoadingScreen extends StatelessWidget {
-  const BootLoadingScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF121212),
-      body: Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-  }
-}
-
-class BootErrorScreen extends StatelessWidget {
-  final String message;
-  const BootErrorScreen({super.key, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Text(
-              'Error al iniciar (boot):\n\n$message',
-              style: const TextStyle(color: Colors.white),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-  // Captura de errores para que en release no quede “pantalla gris” sin info.
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-  };
-  ErrorWidget.builder = (FlutterErrorDetails details) {
-    return Material(
-      color: const Color(0xFF121212),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Text(
-              'Error al iniciar:\n\n${details.exceptionAsString()}',
-              style: const TextStyle(color: Colors.white),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
-    );
-  };
-
-  runZonedGuarded(() {
-    // IMPORTANT: arrancamos UI altiro para que Android quite el splash nativo.
-    runApp(const RootApp());
-  }, (error, stack) {
-    debugPrint('Unhandled error: $error');
-    debugPrintStack(stackTrace: stack);
-  });
-}
-
-
-class BootErrorApp extends StatelessWidget {
-  final String message;
-  const BootErrorApp({super.key, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Colección vinilos',
-      home: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Text(
-                'Error al iniciar (boot):\n\n$message',
-                style: const TextStyle(color: Colors.white),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // ✅ Cargamos preferencias 1 vez para cambios instantáneos (tema + grid/list).
+  await AppThemeService.load();
+  await ViewModeService.load();
+  runApp(const GaBoLpApp());
 }
 
 class GaBoLpApp extends StatelessWidget {
   const GaBoLpApp({super.key});
 
   ThemeData _theme1() {
-    // ✅ Solo UI: Vinyl Pro (naranjo + azul + lila, base gris/negro).
-    const seed = Color(0xFFF97316); // naranjo
+    // ✅ Solo UI: tema oscuro "premium" (negro/gris) sin tocar lógica.
+    const seed = Color(0xFF8E8E8E);
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.dark,
     ).copyWith(
-      surface: const Color(0xFF15181D),
-      onSurface: const Color(0xFFF4F5F7),
-      primary: const Color(0xFFF97316), // naranjo
-      onPrimary: const Color(0xFF1A1A1A),
-      secondary: const Color(0xFF3B82F6), // azul
-      onSecondary: Colors.white,
-      tertiary: const Color(0xFFA78BFA), // lila
-      outline: const Color(0xFF2E3440),
+      surface: const Color(0xFF141414),
+      onSurface: const Color(0xFFEDEDED),
+      primary: const Color(0xFFEDEDED),
+      onPrimary: const Color(0xFF0F0F0F),
+      secondary: const Color(0xFFA7A7A7),
+      onSecondary: const Color(0xFF0F0F0F),
+      outline: const Color(0xFF2B2B2B),
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: const Color(0xFF0B0D10),
+      scaffoldBackgroundColor: const Color(0xFF0F0F0F),
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFF0F0F0F),
         foregroundColor: Colors.white,
@@ -227,13 +43,13 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
       ),
       // ThemeData.cardTheme espera CardThemeData (no CardTheme).
-      cardTheme: const CardThemeData(
-        color: Color(0xFF12151A),
-        elevation: 6,
-        shadowColor: Color(0x33000000),
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        elevation: 5,
+        shadowColor: Color(0x22000000),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(22)),
-          side: BorderSide(color: Color(0xFF2E3440)),
+          borderRadius: BorderRadius.all(Radius.circular(26)),
+          side: BorderSide(color: Color(0xFFF0F0F0)),
         ),
         margin: EdgeInsets.symmetric(vertical: 10),
       ),
@@ -246,29 +62,29 @@ class GaBoLpApp extends StatelessWidget {
         labelLarge: TextStyle(fontWeight: FontWeight.w800),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color(0xFF0F1318),
+        backgroundColor: const Color(0xFF1B1B1B),
         contentTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF15181D),
+        fillColor: const Color(0xFF141414),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF2E3440)),
+          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFF97316)),
+          borderSide: const BorderSide(color: Color(0xFFBDBDBD)),
         ),
-        labelStyle: const TextStyle(color: Color(0xFFC7CBD1)),
+        labelStyle: const TextStyle(color: Color(0xFFBDBDBD)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFF97316),
-          foregroundColor: const Color(0xFF141414),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
@@ -277,7 +93,7 @@ class GaBoLpApp extends StatelessWidget {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white,
-          side: const BorderSide(color: Color(0xFF2E3440)),
+          side: const BorderSide(color: Color(0xFF2A2A2A)),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
@@ -443,11 +259,11 @@ class GaBoLpApp extends StatelessWidget {
 
 
   ThemeData _theme4() {
-    // Diseño 4: Pastel Citrus (amarillo/dorado + celeste, gris/negro para contraste)
-    const bg = Color(0xFFFFF6E5);
+    // Diseño 4: Pastel Citrus (claro, suave)
+    const bg = Color(0xFFF7F7F3);
     const surf = Color(0xFFFFFFFF);
-    const accent = Color(0xFFD4A017); // dorado
-    const accent2 = Color(0xFF38BDF8); // celeste
+    const accent = Color(0xFF2E7D32); // verde
+    const accent2 = Color(0xFFFFA000); // ámbar
 
     return ThemeData(
       useMaterial3: true,
@@ -474,16 +290,16 @@ class GaBoLpApp extends StatelessWidget {
       iconTheme: const IconThemeData(color: Colors.black87, size: 22),
       dividerColor: const Color(0xFFE6E6E6),
       chipTheme: ChipThemeData(
-        backgroundColor: const Color(0xFFF3F4F6),
-        selectedColor: accent2.withOpacity(0.22),
-        labelStyle: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w700),
-        secondaryLabelStyle: const TextStyle(color: Color(0xFF111827)),
+        backgroundColor: const Color(0xFFF0F0F0),
+        selectedColor: accent.withOpacity(0.18),
+        labelStyle: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+        secondaryLabelStyle: const TextStyle(color: Colors.black87),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: accent,
-          foregroundColor: const Color(0xFF111827),
+          foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
@@ -498,7 +314,7 @@ class GaBoLpApp extends StatelessWidget {
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: accent2,
-        foregroundColor: Color(0xFF0B1220),
+        foregroundColor: Colors.black,
       ),
     );
   }
