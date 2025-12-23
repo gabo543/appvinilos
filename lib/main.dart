@@ -51,9 +51,60 @@ class _RootAppState extends State<RootApp> {
     }
 
     return const GaBoLpApp();
+    return ValueListenableBuilder<int>(
+      valueListenable: AppThemeService.themeNotifier,
+      builder: (context, themeId, _) {
+        final theme = _buildTheme(themeId);
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Colección vinilos',
+          theme: theme,
+          home: _bootError != null
+              ? BootErrorScreen(message: _bootError!)
+              : (_ready ? const HomeScreen() : const BootLoadingScreen()),
+        );
+      },
+    );
   }
 }
-
+/// Construye un ThemeData a partir del id persistido (1..6).
+/// No usa colores fijos "raros": sólo define brillo y un par de defaults
+/// para que la app arranque siempre aunque falten estilos específicos.
+ThemeData _buildTheme(int themeId) {
+  switch (themeId) {
+    case 2:
+      return ThemeData(
+        brightness: Brightness.light,
+        useMaterial3: true,
+      );
+    case 3:
+      return ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      );
+    case 4:
+      return ThemeData(
+        brightness: Brightness.light,
+        useMaterial3: true,
+      );
+    case 5:
+      return ThemeData(
+        brightness: Brightness.light,
+        useMaterial3: true,
+      );
+    case 6:
+      return ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      );
+    case 1:
+    default:
+      return ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      );
+  }
+}
 class BootLoadingScreen extends StatelessWidget {
   const BootLoadingScreen({super.key});
 
