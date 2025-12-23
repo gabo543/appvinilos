@@ -80,7 +80,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     String genre = '';
     String bio = '';
 
-    final artistId = _pickedArtist?.id ?? '';
+    final artistId = pickedArtist?.id ?? '';
     if (artistId.trim().isNotEmpty) {
       try {
         final info = await DiscographyService.getArtistInfoById(artistId.trim(), artistName: artistName);
@@ -524,7 +524,7 @@ Future<String?> _askWishlistStatus() async {
 
                               return Card(
                                 child: ListTile(
-                                  onTap: () => _openAlbumDetail(artistName, al),
+                                  onTap: () => _openDetail(artistName, al),
                                   leading: _leadingCover(al),
                                   title: Text(al.title),
                                   subtitle: Text('Año: ${((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')}'),
