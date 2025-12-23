@@ -5,11 +5,100 @@ import 'ui/home_screen.dart';
 import 'services/app_theme_service.dart';
 import 'services/view_mode_service.dart';
 
-void main() async {
+
+
+class RootApp extends StatefulWidget {
+  const RootApp({super.key});
+
+  @override
+  State<RootApp> createState() => _RootAppState();
+}
+
+class _RootAppState extends State<RootApp> {
+  bool _ready = false;
+  String? _bootError;
+
+  @override
+  void initState() {
+    super.initState();
+    _boot();
+  }
+
+  Future<void> _boot() async {
+    try {
+      // Cargar prefs/plugins DESPUÉS del primer render para no quedar pegados en el splash del sistema.
+      await AppThemeService.load();
+      await ViewModeService.load();
+    } catch (e, st) {
+      _bootError = '$e\n\n$st';
+      debugPrint('Boot error: $e');
+      debugPrintStack(stackTrace: st);
+    } finally {
+      if (mounted) setState(() => _ready = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeData>(
+      valueListenable: AppThemeService.themeNotifier,
+      builder: (context, theme, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Colección vinilos',
+          theme: theme,
+          home: _bootError != null
+              ? BootErrorScreen(message: _bootError!)
+              : (_ready ? const HomeScreen() : const BootLoadingScreen()),
+        );
+      },
+    );
+  }
+}
+
+class BootLoadingScreen extends StatelessWidget {
+  const BootLoadingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFF121212),
+      body: Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+}
+
+class BootErrorScreen extends StatelessWidget {
+  final String message;
+  const BootErrorScreen({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Text(
+              'Error al iniciar (boot):\n\n$message',
+              style: const TextStyle(color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  // ✅ Captura de errores para que en release no quede “pantalla gris” sin info.
+  // Captura de errores para que en release no quede “pantalla gris” sin info.
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
   };
@@ -19,27 +108,56 @@ void main() async {
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(
-            'Error al iniciar:\n\n${details.exceptionAsString()}',
-            style: const TextStyle(color: Colors.white),
-            textAlign: TextAlign.center,
+          child: SingleChildScrollView(
+            child: Text(
+              'Error al iniciar:
+
+${details.exceptionAsString()}',
+              style: const TextStyle(color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       ),
     );
   };
 
-  // ✅ Cargamos preferencias 1 vez para cambios instantáneos (tema + grid/list).
-  await AppThemeService.load();
-  await ViewModeService.load();
-
   runZonedGuarded(() {
-    runApp(const GaBoLpApp());
+    // IMPORTANT: arrancamos UI altiro para que Android quite el splash nativo.
+    runApp(const RootApp());
   }, (error, stack) {
-    // En release, al menos mostramos algo útil.
     debugPrint('Unhandled error: $error');
     debugPrintStack(stackTrace: stack);
   });
+}
+
+
+class BootErrorApp extends StatelessWidget {
+  final String message;
+  const BootErrorApp({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Colección vinilos',
+      home: Scaffold(
+        backgroundColor: const Color(0xFF121212),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Text(
+                'Error al iniciar (boot):\n\n$message',
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class GaBoLpApp extends StatelessWidget {
