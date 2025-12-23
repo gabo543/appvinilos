@@ -15,13 +15,8 @@ dependencies:
   sqflite: ^2.3.3
   path: ^1.9.0
   http: ^1.2.2
-
-  # Media / Files
-  image_picker: ^1.1.2
-  path_provider: ^2.1.5
-
-  # Preferences
   shared_preferences: ^2.3.2
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:
