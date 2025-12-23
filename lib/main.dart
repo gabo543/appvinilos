@@ -42,8 +42,8 @@ class GaBoLpApp extends StatelessWidget {
         centerTitle: false,
         elevation: 0,
       ),
-      // ThemeData.cardTheme usa CardTheme.
-      cardTheme: CardTheme(
+      // ThemeData.cardTheme usa CardThemeData (Flutter 3.27+ / theme normalization).
+      cardTheme: CardThemeData(
         // ✅ En tema oscuro, las cards NO pueden ser blancas porque el texto/iconos
         // del ListTile están pensados para fondo oscuro.
         color: scheme.surface,
@@ -133,7 +133,7 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2)
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
       ),
-      dialogTheme: const DialogTheme(
+      dialogTheme: const DialogThemeData(
         backgroundColor: Color(0xFF141414),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18)), side: BorderSide(color: Color(0xFF242424))),
@@ -167,7 +167,7 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2)
         foregroundColor: Color(0xFF0F0F0F),
         elevation: 0,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -208,7 +208,7 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2)
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
       ),
-      dialogTheme: const DialogTheme(
+      dialogTheme: const DialogThemeData(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18)), side: BorderSide(color: Color(0xFFE6E6E6))),
@@ -244,7 +244,7 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2)
         elevation: 0,
       ),
       // Minimal: tarjetas planas, esquinas más rectas y bordes finos.
-      cardTheme: const CardTheme(
+      cardTheme: const CardThemeData(
         color: Color(0xFF050505),
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -296,7 +296,7 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
         elevation: 0,
         centerTitle: true,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: surf,
         elevation: 1,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -357,7 +357,7 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
         elevation: 0,
         centerTitle: true,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: surf,
         elevation: 0,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -432,7 +432,7 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
         centerTitle: true,
       ),
       dividerColor: const Color(0xFF1C1C1C),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: surf,
         elevation: 1,
         shadowColor: Colors.black,
