@@ -20,9 +20,7 @@ void main() async {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            'Error al iniciar:
-
-${details.exceptionAsString()}',
+            'Error al iniciar:\n\n${details.exceptionAsString()}',
             style: const TextStyle(color: Colors.white),
             textAlign: TextAlign.center,
           ),
