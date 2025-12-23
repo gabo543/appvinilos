@@ -17,25 +17,26 @@ class GaBoLpApp extends StatelessWidget {
   const GaBoLpApp({super.key});
 
   ThemeData _theme1() {
-    // ✅ Solo UI: tema oscuro "premium" (negro/gris) sin tocar lógica.
-    const seed = Color(0xFF8E8E8E);
+    // ✅ Solo UI: Vinyl Pro (naranjo + azul + lila, base gris/negro).
+    const seed = Color(0xFFF97316); // naranjo
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.dark,
     ).copyWith(
-      surface: const Color(0xFF141414),
-      onSurface: const Color(0xFFEDEDED),
-      primary: const Color(0xFFEDEDED),
-      onPrimary: const Color(0xFF0F0F0F),
-      secondary: const Color(0xFFA7A7A7),
-      onSecondary: const Color(0xFF0F0F0F),
-      outline: const Color(0xFF2B2B2B),
+      surface: const Color(0xFF15181D),
+      onSurface: const Color(0xFFF4F5F7),
+      primary: const Color(0xFFF97316), // naranjo
+      onPrimary: const Color(0xFF1A1A1A),
+      secondary: const Color(0xFF3B82F6), // azul
+      onSecondary: Colors.white,
+      tertiary: const Color(0xFFA78BFA), // lila
+      outline: const Color(0xFF2E3440),
     );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: const Color(0xFF0F0F0F),
+      scaffoldBackgroundColor: const Color(0xFF0B0D10),
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFF0F0F0F),
         foregroundColor: Colors.white,
@@ -43,13 +44,13 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
       ),
       // ThemeData.cardTheme espera CardThemeData (no CardTheme).
-      cardTheme: CardThemeData(
-        color: Colors.white,
-        elevation: 5,
-        shadowColor: Color(0x22000000),
+      cardTheme: const CardThemeData(
+        color: Color(0xFF12151A),
+        elevation: 6,
+        shadowColor: Color(0x33000000),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(26)),
-          side: BorderSide(color: Color(0xFFF0F0F0)),
+          borderRadius: BorderRadius.all(Radius.circular(22)),
+          side: BorderSide(color: Color(0xFF2E3440)),
         ),
         margin: EdgeInsets.symmetric(vertical: 10),
       ),
@@ -62,29 +63,29 @@ class GaBoLpApp extends StatelessWidget {
         labelLarge: TextStyle(fontWeight: FontWeight.w800),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: const Color(0xFF1B1B1B),
+        backgroundColor: const Color(0xFF0F1318),
         contentTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF141414),
+        fillColor: const Color(0xFF15181D),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
+          borderSide: const BorderSide(color: Color(0xFF2E3440)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFBDBDBD)),
+          borderSide: const BorderSide(color: Color(0xFFF97316)),
         ),
-        labelStyle: const TextStyle(color: Color(0xFFBDBDBD)),
+        labelStyle: const TextStyle(color: Color(0xFFC7CBD1)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
+          backgroundColor: const Color(0xFFF97316),
+          foregroundColor: const Color(0xFF141414),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
@@ -93,7 +94,7 @@ class GaBoLpApp extends StatelessWidget {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.white,
-          side: const BorderSide(color: Color(0xFF2A2A2A)),
+          side: const BorderSide(color: Color(0xFF2E3440)),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontWeight: FontWeight.w800),
@@ -259,11 +260,11 @@ class GaBoLpApp extends StatelessWidget {
 
 
   ThemeData _theme4() {
-    // Diseño 4: Pastel Citrus (claro, suave)
-    const bg = Color(0xFFF7F7F3);
+    // Diseño 4: Pastel Citrus (amarillo/dorado + celeste, gris/negro para contraste)
+    const bg = Color(0xFFFFF6E5);
     const surf = Color(0xFFFFFFFF);
-    const accent = Color(0xFF2E7D32); // verde
-    const accent2 = Color(0xFFFFA000); // ámbar
+    const accent = Color(0xFFD4A017); // dorado
+    const accent2 = Color(0xFF38BDF8); // celeste
 
     return ThemeData(
       useMaterial3: true,
@@ -290,16 +291,16 @@ class GaBoLpApp extends StatelessWidget {
       iconTheme: const IconThemeData(color: Colors.black87, size: 22),
       dividerColor: const Color(0xFFE6E6E6),
       chipTheme: ChipThemeData(
-        backgroundColor: const Color(0xFFF0F0F0),
-        selectedColor: accent.withOpacity(0.18),
-        labelStyle: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
-        secondaryLabelStyle: const TextStyle(color: Colors.black87),
+        backgroundColor: const Color(0xFFF3F4F6),
+        selectedColor: accent2.withOpacity(0.22),
+        labelStyle: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w700),
+        secondaryLabelStyle: const TextStyle(color: Color(0xFF111827)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: accent,
-          foregroundColor: Colors.white,
+          foregroundColor: const Color(0xFF111827),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
@@ -314,7 +315,7 @@ class GaBoLpApp extends StatelessWidget {
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: accent2,
-        foregroundColor: Colors.black,
+        foregroundColor: Color(0xFF0B1220),
       ),
     );
   }

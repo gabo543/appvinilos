@@ -1879,25 +1879,32 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (vista == Vista.inicio) ...[
-                      encabezadoInicio(),
-                      const SizedBox(height: 14),
-                      botonesInicio(),
-                    ],
-                    if (vista == Vista.buscar) vistaBuscar(),
-                    if (vista == Vista.lista) listaCompleta(conBorrar: false, onlyFavorites: false),
-                    if (vista == Vista.favoritos) listaCompleta(conBorrar: false, onlyFavorites: true),
-                    if (vista == Vista.borrar) listaCompleta(conBorrar: true, onlyFavorites: false),
-                  ],
-                ),
-              ),
+              child: (vista == Vista.lista || vista == Vista.favoritos || vista == Vista.borrar)
+                                ? Column(
+                                    children: [
+                                      Expanded(
+                                        child: vista == Vista.lista
+                                            ? listaCompleta(conBorrar: false, onlyFavorites: false)
+                                            : vista == Vista.favoritos
+                                                ? listaCompleta(conBorrar: false, onlyFavorites: true)
+                                                : listaCompleta(conBorrar: true, onlyFavorites: false),
+                                      ),
+                                    ],
+                                  )
+                                : SingleChildScrollView(
+                                    child: Column(
+                                      children: [
+                                        if (vista == Vista.inicio) ...[
+                                          encabezadoInicio(),
+                                          botonesInicio(),
+                                        ],
+                                        if (vista == Vista.buscar) vistaBuscar(),
+                                        gabolpMarca(),
+                                      ],
+                                    ),
+                                  ),
             ),
           ),
-          gabolpMarca(),
         ],
       ),
     );

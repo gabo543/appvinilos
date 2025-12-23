@@ -1,3 +1,29 @@
+
+
+/// Inserta un vinilo desde un item de wishlist.
+/// Es un wrapper para mantener la lógica en un solo lugar.
+Future<int> insertVinylFromWishlist({
+  required String artista,
+  required String album,
+  String? year,
+  String? coverPath,
+  String? genre,
+  String? country,
+  String? condition,
+  String? format,
+}) async {
+  return insertVinyl(
+    artista: artista,
+    album: album,
+    year: year,
+    coverPath: coverPath,
+    genre: genre,
+    country: country,
+    favorite: false,
+    condition: condition,
+    format: format,
+  );
+}
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 

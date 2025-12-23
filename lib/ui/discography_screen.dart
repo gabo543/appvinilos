@@ -6,6 +6,7 @@ import '../db/vinyl_db.dart';
 import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import '../services/vinyl_add_service.dart';
+import 'vinyl_detail_sheet.dart';
 
 class DiscographyScreen extends StatefulWidget {
   const DiscographyScreen({super.key});
@@ -44,6 +45,75 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   void _snack(String t) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  Widget _coverPlaceholder() {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: Colors.black12,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Icon(Icons.library_music, color: Colors.black45),
+    );
+  }
+
+  Widget _leadingCover(AlbumItem al) {
+    final url = (al.cover250 ?? '').trim();
+    if (url.isEmpty) return _coverPlaceholder();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.network(
+        url,
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _coverPlaceholder(),
+      ),
+    );
+  }
+
+  Future<void> _openDetail(String artistName, AlbumItem al) async {
+    // intentamos obtener info del artista para enriquecer el sheet
+    String country = '';
+    String genre = '';
+    String bio = '';
+
+    final artistId = _pickedArtist?.id ?? '';
+    if (artistId.trim().isNotEmpty) {
+      try {
+        final info = await DiscographyService.getArtistInfoById(artistId.trim(), artistName: artistName);
+        country = (info.country ?? '').trim();
+        genre = info.genres.isNotEmpty ? info.genres.join(', ') : '';
+        bio = (info.bio ?? '').trim();
+      } catch (_) {}
+    }
+
+    final cover = (al.cover500 ?? '').trim().isNotEmpty
+        ? (al.cover500 ?? '').trim()
+        : (al.cover250 ?? '').trim();
+
+    final vinylLike = <String, dynamic>{
+      // IMPORTANTE: en discografía tenemos release-group id
+      'mbid': (al.releaseGroupId ?? '').trim(),
+      'coverPath': cover,
+      'artista': artistName,
+      'album': al.title,
+      'year': (al.year ?? '').trim(),
+      'genre': genre,
+      'country': country,
+      'artistBio': bio,
+    };
+
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => VinylDetailSheet(vinyl: vinylLike),
+    );
   }
 
   void _onArtistTextChanged(String _) {
@@ -136,6 +206,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   }
 
   Future<Map<String, String>?> _askConditionAndFormat() async {
+    // Evita que el buscador (u otro TextField) quede con foco y el teclado
+    // aparezca justo después de aceptar/cerrar el diálogo.
+    FocusManager.instance.primaryFocus?.unfocus();
     String condition = 'VG+';
     String format = 'LP';
 
@@ -174,9 +247,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            TextButton(
+              onPressed: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.pop(ctx);
+              },
+              child: const Text('Cancelar'),
+            ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, {'condition': condition, 'format': format}),
+              onPressed: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.pop(ctx, {'condition': condition, 'format': format});
+              },
               child: const Text('Aceptar'),
             ),
           ],
@@ -185,45 +267,60 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     );
   }
 
-  Future<String?> _askWishlistStatus() async {
-    String picked = 'Por comprar';
+  
+Future<String?> _askWishlistStatus() async {
+  String picked = 'Por comprar';
 
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Estado (wishlist)'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RadioListTile<String>(
-                value: 'Por comprar',
-                groupValue: picked,
-                title: const Text('Por comprar'),
-                onChanged: (v) => setState(() => picked = v ?? picked),
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setStateDialog) {
+          return AlertDialog(
+            title: const Text('Estado (wishlist)'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  value: 'Por comprar',
+                  groupValue: picked,
+                  title: const Text('Por comprar'),
+                  onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                ),
+                RadioListTile<String>(
+                  value: 'En camino',
+                  groupValue: picked,
+                  title: const Text('En camino'),
+                  onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                ),
+                RadioListTile<String>(
+                  value: 'Comprado',
+                  groupValue: picked,
+                  title: const Text('Comprado'),
+                  onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
               ),
-              RadioListTile<String>(
-                value: 'En camino',
-                groupValue: picked,
-                title: const Text('En camino'),
-                onChanged: (v) => setState(() => picked = v ?? picked),
-              ),
-              RadioListTile<String>(
-                value: 'Comprado',
-                groupValue: picked,
-                title: const Text('Comprado'),
-                onChanged: (v) => setState(() => picked = v ?? picked),
+              ElevatedButton(
+                onPressed: () {
+                  // Cierra teclado por si acaso
+                  FocusScope.of(ctx).unfocus();
+                  Navigator.pop(ctx, picked);
+                },
+                child: const Text('Aceptar'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, picked), child: const Text('Aceptar')),
-          ],
-        );
-      },
-    );
-  }
+          );
+        },
+      );
+    },
+  );
+}
 
   Future<void> _addAlbumOptimistic({
     required String artistName,
@@ -427,6 +524,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
                               return Card(
                                 child: ListTile(
+                                  onTap: () => _openAlbumDetail(artistName, al),
+                                  leading: _leadingCover(al),
                                   title: Text(al.title),
                                   subtitle: Text('Año: ${((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')}'),
                                   trailing: Row(
@@ -437,8 +536,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                         onPressed: addDisabled
                                             ? null
                                             : () async {
+                                              FocusManager.instance.primaryFocus?.unfocus();
                                                 final opts = await _askConditionAndFormat();
-                                                if (!mounted || opts == null) return;
+                                              FocusManager.instance.primaryFocus?.unfocus();
+                                              if (!mounted || opts == null) return;
                                                 await _addAlbumOptimistic(
                                                   artistName: artistName,
                                                   album: al,
@@ -460,8 +561,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                         onPressed: wishDisabled
                                             ? null
                                             : () async {
+                                                FocusManager.instance.primaryFocus?.unfocus();
                                                 final st = await _askWishlistStatus();
-                                                if (!mounted || st == null) return;
+                                              FocusManager.instance.primaryFocus?.unfocus();
+                                              if (!mounted || st == null) return;
                                                 await _addWishlist(artistName, al, st);
                                               },
                                         icon: Icon(wishIcon, color: wishDisabled ? Colors.grey : Colors.white),
