@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'ui/home_screen.dart';
@@ -7,10 +8,40 @@ import 'services/view_mode_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  // ✅ Captura de errores para que en release no quede “pantalla gris” sin info.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+  };
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: const Color(0xFF121212),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Error al iniciar:
+
+${details.exceptionAsString()}',
+            style: const TextStyle(color: Colors.white),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  };
+
   // ✅ Cargamos preferencias 1 vez para cambios instantáneos (tema + grid/list).
   await AppThemeService.load();
   await ViewModeService.load();
-  runApp(const GaBoLpApp());
+
+  runZonedGuarded(() {
+    runApp(const GaBoLpApp());
+  }, (error, stack) {
+    // En release, al menos mostramos algo útil.
+    debugPrint('Unhandled error: $error');
+    debugPrintStack(stackTrace: stack);
+  });
 }
 
 class GaBoLpApp extends StatelessWidget {
