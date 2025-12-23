@@ -40,9 +40,10 @@ class _RootAppState extends State<RootApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeData>(
+    return ValueListenableBuilder<int>(
       valueListenable: AppThemeService.themeNotifier,
-      builder: (context, theme, _) {
+      builder: (context, themeId, _) {
+        final theme = _buildTheme(themeId);
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'Colección vinilos',
@@ -55,7 +56,44 @@ class _RootAppState extends State<RootApp> {
     );
   }
 }
-
+/// Construye un ThemeData a partir del id persistido (1..6).
+/// No usa colores fijos "raros": sólo define brillo y un par de defaults
+/// para que la app arranque siempre aunque falten estilos específicos.
+ThemeData _buildTheme(int themeId) {
+  switch (themeId) {
+    case 2:
+      return ThemeData(
+        brightness: Brightness.light,
+        useMaterial3: true,
+      );
+    case 3:
+      return ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      );
+    case 4:
+      return ThemeData(
+        brightness: Brightness.light,
+        useMaterial3: true,
+      );
+    case 5:
+      return ThemeData(
+        brightness: Brightness.light,
+        useMaterial3: true,
+      );
+    case 6:
+      return ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      );
+    case 1:
+    default:
+      return ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      );
+  }
+}
 class BootLoadingScreen extends StatelessWidget {
   const BootLoadingScreen({super.key});
 
