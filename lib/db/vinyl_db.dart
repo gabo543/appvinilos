@@ -4,7 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 /// Inserta un vinilo desde un item de wishlist.
 /// Es un wrapper para mantener la lógica en un solo lugar.
-Future<int> insertVinylFromWishlist({
+Future<void> insertVinylFromWishlist({
   required String artista,
   required String album,
   String? year,
@@ -14,7 +14,7 @@ Future<int> insertVinylFromWishlist({
   String? condition,
   String? format,
 }) async {
-  return VinylDb.instance.insertVinyl(
+  await VinylDb.instance.insertVinyl(
     artista: artista,
     album: album,
     year: year,
