@@ -110,9 +110,7 @@ void main() {
           padding: const EdgeInsets.all(16),
           child: SingleChildScrollView(
             child: Text(
-              'Error al iniciar:
-
-${details.exceptionAsString()}',
+              'Error al iniciar:\n\n${details.exceptionAsString()}',
               style: const TextStyle(color: Colors.white),
               textAlign: TextAlign.center,
             ),
