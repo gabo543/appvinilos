@@ -40,6 +40,17 @@ class _RootAppState extends State<RootApp> {
 
   @override
   Widget build(BuildContext context) {
+    if (_bootError != null) {
+      return GaBoLpApp(
+        home: BootErrorScreen(message: _bootError!),
+      );
+    }
+
+    if (!_ready) {
+      return const GaBoLpApp(home: BootLoadingScreen());
+    }
+
+    return const GaBoLpApp();
     return ValueListenableBuilder<int>(
       valueListenable: AppThemeService.themeNotifier,
       builder: (context, themeId, _) {
@@ -168,36 +179,10 @@ void main() {
 }
 
 
-class BootErrorApp extends StatelessWidget {
-  final String message;
-  const BootErrorApp({super.key, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Colección vinilos',
-      home: Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Text(
-                'Error al iniciar (boot):\n\n$message',
-                style: const TextStyle(color: Colors.white),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class GaBoLpApp extends StatelessWidget {
-  const GaBoLpApp({super.key});
+  final Widget? home;
+
+  const GaBoLpApp({super.key, this.home});
 
   ThemeData _theme1() {
     // ✅ Solo UI: Vinyl Pro (naranjo + azul + lila, base gris/negro).
@@ -763,7 +748,7 @@ class GaBoLpApp extends StatelessWidget {
                       debugShowCheckedModeBanner: false,
                       title: 'Colección vinilos',
                       theme: theme,
-                      home: const HomeScreen(),
+                      home: home ?? const HomeScreen(),
                     );
                   },
                 );
