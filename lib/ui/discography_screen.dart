@@ -292,7 +292,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
 
     await _hydrateIfNeeded(artistName, al);
-    final id = _vinylId[key] ?? 0;
+
+    if (!mounted) return;
+
+        final id = _vinylId[key] ?? 0;
     if (id <= 0) return;
 
     final currentFav = _fav[key] == true;

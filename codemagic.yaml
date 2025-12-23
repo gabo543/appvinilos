@@ -86,8 +86,10 @@ workflows:
             head -n 60 "$MERGED"
             exit 1
           fi
-                - name: Verificar INTERNET en manifest final
+
+      - name: Verificar INTERNET en merged manifest final (build/app)
         script: |
+          set -e
           echo "Buscando merged manifest de la APP..."
           MERGED="$(find build/app -path "*merged_manifests*" -path "*release*" -name "AndroidManifest.xml" | head -n 1)"
           echo "MERGED=$MERGED"

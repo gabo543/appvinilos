@@ -268,10 +268,18 @@ if (oldV < 9) {
     await d.transaction((txn) async {
       await txn.delete('vinyls');
       for (final v in vinyls) {
+        final nRaw = v['numero'];
+        final numero = (nRaw is int)
+            ? nRaw
+            : int.tryParse(nRaw?.toString() ?? '') ?? 0;
+
+        final favRaw = v['favorite'];
+        final fav01 = (favRaw == 1 || favRaw == true || favRaw == '1' || favRaw == 'true' || favRaw == 'TRUE') ? 1 : 0;
+
         await txn.insert(
           'vinyls',
           {
-            'numero': v['numero'],
+            'numero': numero,
             'artista': (v['artista'] ?? '').toString().trim(),
             'album': (v['album'] ?? '').toString().trim(),
             'year': v['year']?.toString().trim(),
@@ -280,7 +288,10 @@ if (oldV < 9) {
             'artistBio': v['artistBio']?.toString().trim(),
             'coverPath': v['coverPath']?.toString().trim(),
             'mbid': v['mbid']?.toString().trim(),
-            'favorite': (v['favorite'] == 1 || v['favorite'] == true) ? 1 : 0,
+            // ✅ v9: preserva condition/format si existen
+            'condition': v['condition']?.toString().trim(),
+            'format': v['format']?.toString().trim(),
+            'favorite': fav01,
           },
           conflictAlgorithm: ConflictAlgorithm.abort,
         );

@@ -49,6 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ti = await AppThemeService.getTextIntensity();
     final bg = await AppThemeService.getBgLevel();
     final cl = await AppThemeService.getCardLevel();
+    if (!mounted) return;
     setState(() {
       _auto = v;
       _grid = g;

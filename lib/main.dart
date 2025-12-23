@@ -42,25 +42,34 @@ class GaBoLpApp extends StatelessWidget {
         centerTitle: false,
         elevation: 0,
       ),
-      // ThemeData.cardTheme espera CardThemeData (no CardTheme).
-      cardTheme: CardThemeData(
-        color: Colors.white,
-        elevation: 5,
-        shadowColor: Color(0x22000000),
+      // ThemeData.cardTheme usa CardTheme.
+      cardTheme: CardTheme(
+        // ✅ En tema oscuro, las cards NO pueden ser blancas porque el texto/iconos
+        // del ListTile están pensados para fondo oscuro.
+        color: scheme.surface,
+        elevation: 2,
+        shadowColor: const Color(0x22000000),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(26)),
-          side: BorderSide(color: Color(0xFFF0F0F0)),
+          side: BorderSide(color: scheme.outline),
         ),
         margin: EdgeInsets.symmetric(vertical: 10),
       ),
-      textTheme: const TextTheme(
-        headlineSmall: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2),
-        titleLarge: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2),
-        titleMedium: TextStyle(fontWeight: FontWeight.w800),
-        bodyLarge: TextStyle(fontWeight: FontWeight.w600),
-        bodyMedium: TextStyle(fontWeight: FontWeight.w500),
-        labelLarge: TextStyle(fontWeight: FontWeight.w800),
-      ),
+            textTheme: ThemeData(
+              useMaterial3: true,
+              colorScheme: scheme,
+              brightness: Brightness.dark,
+            )
+                .textTheme
+                .apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface)
+                .copyWith(
+headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2),
+        titleLarge: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.2),
+        titleMedium: const TextStyle(fontWeight: FontWeight.w800),
+        bodyLarge: const TextStyle(fontWeight: FontWeight.w600),
+        bodyMedium: const TextStyle(fontWeight: FontWeight.w500),
+        labelLarge: const TextStyle(fontWeight: FontWeight.w800),
+                ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: const Color(0xFF1B1B1B),
         contentTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
@@ -101,10 +110,10 @@ class GaBoLpApp extends StatelessWidget {
       ),
       iconTheme: const IconThemeData(color: Colors.white),
 
-      listTileTheme: const ListTileThemeData(
-        iconColor: Colors.white,
-        textColor: Colors.white,
-        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      listTileTheme: ListTileThemeData(
+        iconColor: scheme.onSurface,
+        textColor: scheme.onSurface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
@@ -124,7 +133,7 @@ class GaBoLpApp extends StatelessWidget {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
       ),
-      dialogTheme: const DialogThemeData(
+      dialogTheme: const DialogTheme(
         backgroundColor: Color(0xFF141414),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18)), side: BorderSide(color: Color(0xFF242424))),
@@ -158,7 +167,7 @@ class GaBoLpApp extends StatelessWidget {
         foregroundColor: Color(0xFF0F0F0F),
         elevation: 0,
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -199,7 +208,7 @@ class GaBoLpApp extends StatelessWidget {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
       ),
-      dialogTheme: const DialogThemeData(
+      dialogTheme: const DialogTheme(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18)), side: BorderSide(color: Color(0xFFE6E6E6))),
@@ -235,7 +244,7 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
       ),
       // Minimal: tarjetas planas, esquinas más rectas y bordes finos.
-      cardTheme: const CardThemeData(
+      cardTheme: const CardTheme(
         color: Color(0xFF050505),
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -244,14 +253,21 @@ class GaBoLpApp extends StatelessWidget {
         ),
         margin: EdgeInsets.symmetric(vertical: 6),
       ),
-      textTheme: const TextTheme(
-        headlineSmall: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, fontSize: 20),
-        titleLarge: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, fontSize: 18),
-        titleMedium: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-        bodyLarge: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-        bodyMedium: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-        labelLarge: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.0, fontSize: 12),
-      ),
+            textTheme: ThemeData(
+              useMaterial3: true,
+              colorScheme: scheme,
+              brightness: Brightness.dark,
+            )
+                .textTheme
+                .apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface)
+                .copyWith(
+headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, fontSize: 20),
+        titleLarge: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, fontSize: 18),
+        titleMedium: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+        bodyLarge: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        bodyMedium: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        labelLarge: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.0, fontSize: 12),
+                ),
       iconTheme: const IconThemeData(color: Colors.white, size: 22),
       dividerColor: const Color(0xFF1A1A1A),
     );
@@ -280,7 +296,7 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: surf,
         elevation: 1,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -341,7 +357,7 @@ class GaBoLpApp extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: surf,
         elevation: 0,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -416,7 +432,7 @@ class GaBoLpApp extends StatelessWidget {
         centerTitle: true,
       ),
       dividerColor: const Color(0xFF1C1C1C),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: surf,
         elevation: 1,
         shadowColor: Colors.black,

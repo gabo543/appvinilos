@@ -560,7 +560,10 @@ Future<void> _loadViewMode() async {
 
     final res = await VinylDb.instance.search(artista: artista, album: album);
 
-    setState(() {
+
+    if (!mounted) return;
+
+        setState(() {
       resultados = res;
       prepared = null;
       mostrarAgregar = res.isEmpty && artista.isNotEmpty && album.isNotEmpty;
@@ -614,7 +617,10 @@ Future<void> _loadViewMode() async {
 
     await BackupService.autoSaveIfEnabled();
 
-    setState(() {
+
+    if (!mounted) return;
+
+        setState(() {
       prepared = null;
       mostrarAgregar = false;
       resultados = [];
@@ -1691,6 +1697,11 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
 
       if (_gridView) {
         return GridView.builder(
+          // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
+          // Sin shrinkWrap/physics el Grid puede quedar sin altura
+          // (o lanzar "unbounded height") y verse como "lista vacía".
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.all(12),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -1738,7 +1749,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
                             tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
                             icon: Icon(
                               fav ? Icons.star : Icons.star_border,
-                              color: fav ? Colors.black : Colors.grey,
+                              color: fav ? Colors.amber : Colors.grey,
                             ),
                             onPressed: () => _toggleFavorite(v),
                           ),
@@ -1766,6 +1777,11 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
       }
 
       return ListView.builder(
+        // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
+        // Sin shrinkWrap/physics el ListView puede quedar sin altura
+        // y verse como "lista vacía".
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: items.length,
         itemBuilder: (context, i) {
@@ -1794,7 +1810,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
                     tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
                     icon: Icon(
                       fav ? Icons.star : Icons.star_border,
-                      color: fav ? Colors.black : Colors.grey,
+                      color: fav ? Colors.amber : Colors.grey,
                     ),
                     onPressed: () => _toggleFavorite(v),
                   ),

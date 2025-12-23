@@ -49,6 +49,9 @@ class BackupService {
               'artistBio': v['artistBio'],
               'coverPath': v['coverPath'],
               'mbid': v['mbid'],
+              // ✅ v9: nuevos campos
+              'condition': v['condition'],
+              'format': v['format'],
               'favorite': fav01(v['favorite']),
             })
         .toList();
@@ -70,7 +73,8 @@ class BackupService {
 
     final vinyls = data.map<Map<String, dynamic>>((e) {
       final m = (e as Map).cast<String, dynamic>();
-      m['favorite'] = (m['favorite'] == 1 || m['favorite'] == true) ? 1 : 0;
+      // Compat: si el backup no trae favorite/condition/format, quedan null/0.
+      m['favorite'] = (m['favorite'] == 1 || m['favorite'] == true || m['favorite'] == '1') ? 1 : 0;
       return m;
     }).toList();
 

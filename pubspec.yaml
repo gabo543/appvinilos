@@ -5,7 +5,8 @@ publish_to: "none"
 version: 1.0.3+4
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  # Más compatible: shared_preferences 2.5.3 requiere Dart >= 3.5 (2.5.4 sube a 3.9)
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -14,8 +15,9 @@ dependencies:
   path: ^1.9.0
   image_picker: ^1.1.2
   http: ^1.2.2
-  path_provider: ^2.1.4
-  shared_preferences: ^2.2.3
+  path_provider: ^2.1.5
+  # Mantiene compatibilidad con más versiones de Flutter/Dart.
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
