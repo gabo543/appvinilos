@@ -141,7 +141,7 @@ class VinylAddService {
 
   static Future<String?> _downloadCoverToLocal(String url) async {
     try {
-      final res = await http.get(Uri.parse(url));
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) return null;
 
       final dir = await getApplicationDocumentsDirectory();

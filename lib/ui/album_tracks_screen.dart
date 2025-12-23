@@ -4,11 +4,13 @@ import '../services/discography_service.dart';
 class AlbumTracksScreen extends StatefulWidget {
   final AlbumItem album;
   final String artistName;
+  final String? artistId;
 
   const AlbumTracksScreen({
     super.key,
     required this.album,
     required this.artistName,
+    this.artistId,
   });
 
   @override
@@ -19,6 +21,9 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
   bool loading = true;
   String? msg;
   List<TrackItem> tracks = [];
+
+  bool loadingInfo = true;
+  ArtistInfo? info;
 
   @override
   void initState() {
@@ -31,22 +36,44 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
       loading = true;
       msg = null;
       tracks = [];
+      loadingInfo = true;
+      info = null;
     });
 
-    final list = await DiscographyService.getTracksFromReleaseGroup(widget.album.releaseGroupId);
+    try {
+      final futTracks = DiscographyService.getTracksFromReleaseGroup(widget.album.releaseGroupId);
+      final futInfo = (widget.artistId != null && widget.artistId!.trim().isNotEmpty)
+          ? DiscographyService.getArtistInfoById(widget.artistId!, artistName: widget.artistName)
+          : DiscographyService.getArtistInfo(widget.artistName);
 
-    if (!mounted) return;
+      final results = await Future.wait([futTracks, futInfo]);
+      final list = results[0] as List<TrackItem>;
+      final ainfo = results[1] as ArtistInfo;
 
-    setState(() {
-      tracks = list;
-      loading = false;
-      msg = list.isEmpty ? 'No encontré canciones.' : null;
-    });
+      if (!mounted) return;
+      setState(() {
+        tracks = list;
+        info = ainfo;
+        loading = false;
+        loadingInfo = false;
+        msg = list.isEmpty ? 'No encontré canciones.' : null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        tracks = [];
+        info = null;
+        loading = false;
+        loadingInfo = false;
+        msg = 'Error cargando información.';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final y = widget.album.year ?? '—';
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -84,6 +111,39 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            if (loadingInfo) const LinearProgressIndicator(),
+            if (!loadingInfo && info != null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        if ((info!.country ?? '').trim().isNotEmpty)
+                          Chip(label: Text('País: ${info!.country}')),
+                        ...info!.genres.take(4).map((g) => Chip(label: Text(g))),
+                      ],
+                    ),
+                    if ((info!.bio ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        info!.bio!,
+                        maxLines: 6,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             const SizedBox(height: 12),
             if (loading) const LinearProgressIndicator(),
             if (!loading && msg != null)

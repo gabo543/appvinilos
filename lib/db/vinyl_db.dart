@@ -18,7 +18,7 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 9, // ✅ v9: condition/format + wishlistStatus
+      version: 10, // ✅ v9: condition/format + wishlistStatus
       onOpen: (d) async {
         // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
         try {
@@ -66,6 +66,29 @@ class VinylDb {
           );
         ''');
         await d.execute('CREATE UNIQUE INDEX idx_wish_unique ON wishlist(artista, album);');
+
+        // ✅ tabla trash (papelera)
+        await d.execute('''
+          CREATE TABLE trash(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vinylId INTEGER,
+            numero INTEGER NOT NULL,
+            artista TEXT NOT NULL,
+            album TEXT NOT NULL,
+            year TEXT,
+            genre TEXT,
+            country TEXT,
+            artistBio TEXT,
+            coverPath TEXT,
+            mbid TEXT,
+            condition TEXT,
+            format TEXT,
+            favorite INTEGER NOT NULL DEFAULT 0,
+            deletedAt INTEGER NOT NULL
+          );
+        ''');
+        await d.execute('CREATE INDEX idx_trash_deleted ON trash(deletedAt);');
+        await d.execute('CREATE UNIQUE INDEX idx_trash_unique ON trash(artista, album);');
       },
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 3) {
@@ -117,6 +140,32 @@ if (oldV < 9) {
     await d.execute('ALTER TABLE wishlist ADD COLUMN status TEXT;');
   } catch (_) {}
 }
+
+        if (oldV < 10) {
+          // v10: papelera (trash)
+          await d.execute('''
+            CREATE TABLE IF NOT EXISTS trash(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              vinylId INTEGER,
+              numero INTEGER NOT NULL,
+              artista TEXT NOT NULL,
+              album TEXT NOT NULL,
+              year TEXT,
+              genre TEXT,
+              country TEXT,
+              artistBio TEXT,
+              coverPath TEXT,
+              mbid TEXT,
+              condition TEXT,
+              format TEXT,
+              favorite INTEGER NOT NULL DEFAULT 0,
+              deletedAt INTEGER NOT NULL
+            );
+          ''');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_trash_deleted ON trash(deletedAt);');
+          await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_trash_unique ON trash(artista, album);');
+        }
+
       },
     );
   }
@@ -136,7 +185,12 @@ if (oldV < 9) {
 
   Future<List<Map<String, dynamic>>> getFavorites() async {
     final d = await db;
-    return d.query('vinyls', where: "(favorite = 1 OR favorite = '1' OR favorite = 'true' OR favorite = 'TRUE')", orderBy: 'numero ASC');
+    // Robusto ante backups antiguos (favorite como texto).
+    return d.query(
+      'vinyls',
+      where: "CAST(favorite AS INTEGER) = 1 OR LOWER(CAST(favorite AS TEXT)) = 'true'",
+      orderBy: 'numero ASC',
+    );
   }
 
   Future<void> setFavorite({required int id, required bool favorite}) async {
@@ -263,15 +317,155 @@ if (oldV < 9) {
     await d.delete('vinyls', where: 'id = ?', whereArgs: [id]);
   }
 
+
+// ---------------- TRASH (papelera) ----------------
+
+Future<List<Map<String, dynamic>>> getTrash() async {
+  final d = await db;
+  return d.query('trash', orderBy: 'deletedAt DESC');
+}
+
+Future<int> countTrash() async {
+  final d = await db;
+  final r = await d.rawQuery('SELECT COUNT(*) as c FROM trash');
+  final v = r.first['c'];
+  return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
+}
+
+int _asInt(dynamic v) {
+  if (v is int) return v;
+  return int.tryParse(v?.toString() ?? '') ?? 0;
+}
+
+int _fav01(dynamic v) {
+  if (v == null) return 0;
+  if (v is int) return v == 1 ? 1 : 0;
+  if (v is bool) return v ? 1 : 0;
+  final s = v.toString().trim().toLowerCase();
+  return (s == '1' || s == 'true') ? 1 : 0;
+}
+
+Future<void> moveToTrash(int vinylId) async {
+  final d = await db;
+  await d.transaction((txn) async {
+    final rows = await txn.query('vinyls', where: 'id = ?', whereArgs: [vinylId], limit: 1);
+    if (rows.isEmpty) return;
+    final v = rows.first;
+
+    await txn.insert(
+      'trash',
+      {
+        'vinylId': _asInt(v['id']),
+        'numero': _asInt(v['numero']),
+        'artista': (v['artista'] ?? '').toString(),
+        'album': (v['album'] ?? '').toString(),
+        'year': v['year']?.toString(),
+        'genre': v['genre']?.toString(),
+        'country': v['country']?.toString(),
+        'artistBio': v['artistBio']?.toString(),
+        'coverPath': v['coverPath']?.toString(),
+        'mbid': v['mbid']?.toString(),
+        'condition': v['condition']?.toString(),
+        'format': v['format']?.toString(),
+        'favorite': _fav01(v['favorite']),
+        'deletedAt': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace, // si ya estaba en papelera, se actualiza
+    );
+
+    await txn.delete('vinyls', where: 'id = ?', whereArgs: [vinylId]);
+  });
+}
+
+Future<bool> restoreFromTrash(int trashId) async {
+  final d = await db;
+  return d.transaction((txn) async {
+    final rows = await txn.query('trash', where: 'id = ?', whereArgs: [trashId], limit: 1);
+    if (rows.isEmpty) return false;
+    final t = rows.first;
+
+    // Si 'numero' vino vacío por alguna razón, asignamos el siguiente.
+    final numero = _asInt(t['numero']) == 0
+        ? (() async {
+            final r = await txn.rawQuery('SELECT MAX(numero) as m FROM vinyls');
+            final m = (r.first['m'] as int?) ?? 0;
+            return m + 1;
+          })()
+        : Future.value(_asInt(t['numero']));
+
+    final n = await numero;
+
+    try {
+      await txn.insert(
+        'vinyls',
+        {
+          'numero': n,
+          'artista': (t['artista'] ?? '').toString().trim(),
+          'album': (t['album'] ?? '').toString().trim(),
+          'year': t['year']?.toString(),
+          'genre': t['genre']?.toString(),
+          'country': t['country']?.toString(),
+          'artistBio': t['artistBio']?.toString(),
+          'coverPath': t['coverPath']?.toString(),
+          'mbid': t['mbid']?.toString(),
+          'condition': t['condition']?.toString(),
+          'format': t['format']?.toString(),
+          'favorite': _fav01(t['favorite']),
+        },
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    } catch (_) {
+      // Si existe duplicado (índice exacto), no restauramos.
+      return false;
+    }
+
+    await txn.delete('trash', where: 'id = ?', whereArgs: [trashId]);
+    return true;
+  });
+}
+
+Future<void> deleteTrashById(int trashId) async {
+  final d = await db;
+  await d.delete('trash', where: 'id = ?', whereArgs: [trashId]);
+}
+
   Future<void> replaceAll(List<Map<String, dynamic>> vinyls) async {
     final d = await db;
     await d.transaction((txn) async {
       await txn.delete('vinyls');
+      // ✅ Asegura numeración estable:
+      // - Si el backup trae "numero" válido (>0), lo respetamos.
+      // - Si viene vacío/0, asignamos el siguiente disponible.
+      final used = <int>{};
+      var next = 1;
       for (final v in vinyls) {
         final nRaw = v['numero'];
         final numero = (nRaw is int)
             ? nRaw
             : int.tryParse(nRaw?.toString() ?? '') ?? 0;
+
+        // Si el backup trae numero inválido, asignamos uno nuevo.
+        int finalNumero = numero;
+        if (finalNumero <= 0) {
+          while (used.contains(next)) {
+            next++;
+          }
+          finalNumero = next;
+          used.add(finalNumero);
+          next++;
+        } else {
+          // evita colisiones (si vinieron repetidos)
+          if (used.contains(finalNumero)) {
+            while (used.contains(next)) {
+              next++;
+            }
+            finalNumero = next;
+            used.add(finalNumero);
+            next++;
+          } else {
+            used.add(finalNumero);
+          }
+        }
 
         final favRaw = v['favorite'];
         final fav01 = (favRaw == 1 || favRaw == true || favRaw == '1' || favRaw == 'true' || favRaw == 'TRUE') ? 1 : 0;
@@ -279,7 +473,7 @@ if (oldV < 9) {
         await txn.insert(
           'vinyls',
           {
-            'numero': numero,
+            'numero': finalNumero,
             'artista': (v['artista'] ?? '').toString().trim(),
             'album': (v['album'] ?? '').toString().trim(),
             'year': v['year']?.toString().trim(),

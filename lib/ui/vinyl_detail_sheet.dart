@@ -47,6 +47,33 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
 
   Widget _cover() {
     final cp = (widget.vinyl['coverPath'] as String?)?.trim() ?? '';
+
+if (cp.startsWith('http://') || cp.startsWith('https://')) {
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(14),
+    child: Image.network(
+      cp,
+      width: 120,
+      height: 120,
+      fit: BoxFit.cover,
+      cacheWidth: 360,
+      cacheHeight: 360,
+      errorBuilder: (_, __, ___) => const SizedBox(
+        width: 120,
+        height: 120,
+        child: Center(child: Icon(Icons.album, size: 52)),
+      ),
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const SizedBox(
+          width: 120,
+          height: 120,
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        );
+      },
+    ),
+  );
+}
     if (cp.isNotEmpty) {
       final f = File(cp);
       if (f.existsSync()) {
@@ -71,6 +98,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final sub = dark ? const Color(0xFFBDBDBD) : Colors.black54;
     final artista = (widget.vinyl['artista'] as String?) ?? '';
     final album = (widget.vinyl['album'] as String?) ?? '';
+    final numero = widget.vinyl['numero'];
     final year = (widget.vinyl['year'] as String?)?.trim() ?? '';
     final genre = (widget.vinyl['genre'] as String?)?.trim() ?? '';
     final country = (widget.vinyl['country'] as String?)?.trim() ?? '';
@@ -107,6 +135,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
               spacing: 10,
               runSpacing: 8,
               children: [
+                _pill(context, 'N°', (numero == null || numero.toString().trim().isEmpty) ? '—' : numero.toString()),
                 _pill(context, 'Año', year.isEmpty ? '—' : year),
                 _pill(context, 'Género', genre.isEmpty ? '—' : genre),
                 _pill(context, 'País', country.isEmpty ? '—' : country),

@@ -6,6 +6,7 @@ import '../db/vinyl_db.dart';
 import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import '../services/vinyl_add_service.dart';
+import 'album_tracks_screen.dart';
 
 class DiscographyScreen extends StatefulWidget {
   const DiscographyScreen({super.key});
@@ -15,6 +16,21 @@ class DiscographyScreen extends StatefulWidget {
 }
 
 class _DiscographyScreenState extends State<DiscographyScreen> {
+
+  int _asInt(dynamic v) {
+    if (v is int) return v;
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  bool _asFav(dynamic v) {
+    return (v == 1 || v == true || v == '1' || v == 'true' || v == 'TRUE');
+  }
+
+
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   final TextEditingController artistCtrl = TextEditingController();
   Timer? _debounce;
 
@@ -124,8 +140,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     try {
       final row = await VinylDb.instance.findByExact(artista: artistName, album: al.title);
       _exists[key] = row != null;
-      _vinylId[key] = (row?['id'] is int) ? row!['id'] as int : 0;
-      _fav[key] = (row?['favorite'] ?? 0) == 1;
+      _vinylId[key] = _asInt(row?['id']);
+      _fav[key] = _asFav(row?['favorite']);
 
       final w = await VinylDb.instance.findWishlistByExact(artista: artistName, album: al.title);
       _wish[key] = w != null;
@@ -136,6 +152,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   }
 
   Future<Map<String, String>?> _askConditionAndFormat() async {
+    _dismissKeyboard();
     String condition = 'VG+';
     String format = 'LP';
 
@@ -174,9 +191,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            TextButton(onPressed: () { _dismissKeyboard(); Navigator.pop(ctx); }, child: const Text('Cancelar')),
             ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, {'condition': condition, 'format': format}),
+              onPressed: () { _dismissKeyboard(); Navigator.pop(ctx, {'condition': condition, 'format': format}); },
               child: const Text('Aceptar'),
             ),
           ],
@@ -186,40 +203,57 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   }
 
   Future<String?> _askWishlistStatus() async {
+    _dismissKeyboard();
     String picked = 'Por comprar';
 
     return showDialog<String>(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Estado (wishlist)'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RadioListTile<String>(
-                value: 'Por comprar',
-                groupValue: picked,
-                title: const Text('Por comprar'),
-                onChanged: (v) => setState(() => picked = v ?? picked),
+        return StatefulBuilder(
+          builder: (ctx, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Estado (wishlist)'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String>(
+                    value: 'Por comprar',
+                    groupValue: picked,
+                    title: const Text('Por comprar'),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                  RadioListTile<String>(
+                    value: 'Buscando',
+                    groupValue: picked,
+                    title: const Text('Buscando'),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                  RadioListTile<String>(
+                    value: 'Comprado',
+                    groupValue: picked,
+                    title: const Text('Comprado'),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                ],
               ),
-              RadioListTile<String>(
-                value: 'En camino',
-                groupValue: picked,
-                title: const Text('En camino'),
-                onChanged: (v) => setState(() => picked = v ?? picked),
-              ),
-              RadioListTile<String>(
-                value: 'Comprado',
-                groupValue: picked,
-                title: const Text('Comprado'),
-                onChanged: (v) => setState(() => picked = v ?? picked),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, picked), child: const Text('Aceptar')),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    _dismissKeyboard();
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    _dismissKeyboard();
+                    Navigator.pop(ctx, picked);
+                  },
+                  child: const Text('Aceptar'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -295,7 +329,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
     if (!mounted) return;
 
-        final id = _vinylId[key] ?? 0;
+    final id = _vinylId[key] ?? 0;
     if (id <= 0) return;
 
     final currentFav = _fav[key] == true;
@@ -430,8 +464,39 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
                               return Card(
                                 child: ListTile(
+                                  leading: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      al.cover250,
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 34),
+                                      loadingBuilder: (ctx, child, prog) {
+                                        if (prog == null) return child;
+                                        return const SizedBox(
+                                          width: 56,
+                                          height: 56,
+                                          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                        );
+                                      },
+                                    ),
+                                  ),
                                   title: Text(al.title),
                                   subtitle: Text('Año: ${((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')}'),
+                                  onTap: () {
+                                    if (artistName.trim().isEmpty) return;
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => AlbumTracksScreen(
+                                          album: al,
+                                          artistName: artistName,
+                                          artistId: pickedArtist?.id,
+                                        ),
+                                      ),
+                                    );
+                                  },
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -440,6 +505,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                         onPressed: addDisabled
                                             ? null
                                             : () async {
+                                                _dismissKeyboard();
                                                 final opts = await _askConditionAndFormat();
                                                 if (!mounted || opts == null) return;
                                                 await _addAlbumOptimistic(
@@ -449,14 +515,14 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                   format: opts['format'] ?? 'LP',
                                                 );
                                               },
-                                        icon: Icon(addIcon, color: addDisabled ? Colors.grey : Colors.white),
+                                        icon: Icon(addIcon, color: addDisabled ? Colors.grey : null),
                                       ),
                                       IconButton(
                                         tooltip: favDisabled
                                             ? (exists ? 'Cargando...' : 'Primero agrega a tu lista')
                                             : (fav ? 'Quitar favorito' : 'Marcar favorito'),
                                         onPressed: favDisabled ? null : () => _toggleFavorite(artistName, al),
-                                        icon: Icon(favIcon, color: favDisabled ? Colors.grey : Colors.white),
+                                        icon: Icon(favIcon, color: favDisabled ? Colors.grey : null),
                                       ),
                                       IconButton(
                                         tooltip: wishDisabled ? 'No disponible' : 'Wishlist',
@@ -467,7 +533,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                 if (!mounted || st == null) return;
                                                 await _addWishlist(artistName, al, st);
                                               },
-                                        icon: Icon(wishIcon, color: wishDisabled ? Colors.grey : Colors.white),
+                                        icon: Icon(wishIcon, color: wishDisabled ? Colors.grey : null),
                                       ),
                                     ],
                                   ),

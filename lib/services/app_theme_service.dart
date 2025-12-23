@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 6 = Diseño 6 (Rasta Vibes)
 ///
 /// Intensidad de texto (contraste global):
-/// 0..10 (más niveles = más contraste)
+/// 1..10 (más niveles = más contraste)
 class AppThemeService {
   static const String _kTheme = 'app_theme_variant';
   static const String _kTextIntensity = 'app_text_intensity';
@@ -20,23 +20,39 @@ class AppThemeService {
   static const String _kCardLevel = 'app_card_level';
 
   static final ValueNotifier<int> themeNotifier = ValueNotifier<int>(1);
-  // 0..10
-  static final ValueNotifier<int> textIntensityNotifier = ValueNotifier<int>(5);
-  // 0..4
-  static final ValueNotifier<int> bgLevelNotifier = ValueNotifier<int>(2);
-  // 0..4
-  static final ValueNotifier<int> cardLevelNotifier = ValueNotifier<int>(2);
+  // 1..10
+  static final ValueNotifier<int> textIntensityNotifier = ValueNotifier<int>(6);
+  // 1..10
+  static final ValueNotifier<int> bgLevelNotifier = ValueNotifier<int>(5);
+  // 1..10
+  static final ValueNotifier<int> cardLevelNotifier = ValueNotifier<int>(5);
 
   static int _clampTheme(int v) => (v < 1 || v > 6) ? 1 : v;
-  static int _clampIntensity(int v) => v.clamp(0, 10);
-  static int _clampLevel(int v) => v.clamp(0, 4);
+  static int _clampIntensity(int v) => v.clamp(1, 10);
+  static int _clampLevel(int v) => v.clamp(1, 10);
+
+  // Migración: versiones antiguas guardaban 0..4 en niveles visuales.
+  static int _migrateOldLevel(int v) {
+    if (v <= 4) {
+      // 0..4 -> 1..10
+      final mapped = ((v / 4.0) * 9.0).round() + 1;
+      return _clampLevel(mapped);
+    }
+    return _clampLevel(v);
+  }
+
+  // Migración: versiones antiguas guardaban 0..10 en intensidad.
+  static int _migrateOldIntensity(int v) {
+    if (v <= 0) return 1;
+    return _clampIntensity(v);
+  }
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     themeNotifier.value = _clampTheme(prefs.getInt(_kTheme) ?? 1);
-    textIntensityNotifier.value = _clampIntensity(prefs.getInt(_kTextIntensity) ?? 5);
-    bgLevelNotifier.value = _clampLevel(prefs.getInt(_kBgLevel) ?? 2);
-    cardLevelNotifier.value = _clampLevel(prefs.getInt(_kCardLevel) ?? 2);
+    textIntensityNotifier.value = _migrateOldIntensity(prefs.getInt(_kTextIntensity) ?? 6);
+    bgLevelNotifier.value = _migrateOldLevel(prefs.getInt(_kBgLevel) ?? 5);
+    cardLevelNotifier.value = _migrateOldLevel(prefs.getInt(_kCardLevel) ?? 5);
   }
 
   static Future<void> setTheme(int v) async {
@@ -60,7 +76,7 @@ class AppThemeService {
 
   static Future<int> getTextIntensity() async {
     final prefs = await SharedPreferences.getInstance();
-    return _clampIntensity(prefs.getInt(_kTextIntensity) ?? 2);
+    return _migrateOldIntensity(prefs.getInt(_kTextIntensity) ?? 6);
   }
 
   static Future<void> setBackgroundLevel(int v) async {
@@ -72,7 +88,7 @@ class AppThemeService {
 
   static Future<int> getBackgroundLevel() async {
     final prefs = await SharedPreferences.getInstance();
-    return _clampLevel(prefs.getInt(_kBgLevel) ?? 2);
+    return _migrateOldLevel(prefs.getInt(_kBgLevel) ?? 5);
   }
 
   static Future<void> setCardLevel(int v) async {
@@ -84,7 +100,7 @@ class AppThemeService {
 
   static Future<int> getCardLevel() async {
     final prefs = await SharedPreferences.getInstance();
-    return _clampLevel(prefs.getInt(_kCardLevel) ?? 2);
+    return _migrateOldLevel(prefs.getInt(_kCardLevel) ?? 5);
   }
   // Compat: nombres antiguos
   static Future<int> getBgLevel() => getBackgroundLevel();

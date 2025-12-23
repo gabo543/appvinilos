@@ -70,7 +70,7 @@ class MetadataService {
 
   static Future<http.Response> _getJson(Uri url) async {
     await _throttle();
-    return http.get(url, headers: _headers());
+    return http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
   }
 
   static bool _looksLikeYearTag(String s) {

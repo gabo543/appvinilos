@@ -497,17 +497,165 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
     );
   }
 
-  ThemeData _applyTextIntensity(ThemeData base, int level) {
-    // level: 0..10 (más niveles = más contraste)
+  
+  ThemeData _applyProSystem(ThemeData base) {
+    // ✅ Sistema visual global: tipografía + jerarquía + componentes.
+    final cs = base.colorScheme;
+
+    TextStyle _t(TextStyle? s) => s ?? const TextStyle();
+
+    // Tipografía: más contraste visual por tamaños/pesos (sin romper layouts).
+    final tt = base.textTheme;
+    final proTextTheme = tt.copyWith(
+      displaySmall: _t(tt.displaySmall).copyWith(
+        fontSize: 34,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.8,
+        height: 1.05,
+      ),
+      headlineMedium: _t(tt.headlineMedium).copyWith(
+        fontSize: 26,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.6,
+        height: 1.10,
+      ),
+      headlineSmall: _t(tt.headlineSmall).copyWith(
+        fontSize: 22,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.4,
+        height: 1.12,
+      ),
+      titleLarge: _t(tt.titleLarge).copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.2,
+        height: 1.15,
+      ),
+      titleMedium: _t(tt.titleMedium).copyWith(
+        fontSize: 16,
+        fontWeight: FontWeight.w800,
+        height: 1.18,
+      ),
+      titleSmall: _t(tt.titleSmall).copyWith(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        height: 1.18,
+      ),
+      bodyLarge: _t(tt.bodyLarge).copyWith(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        height: 1.28,
+      ),
+      bodyMedium: _t(tt.bodyMedium).copyWith(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        height: 1.30,
+      ),
+      bodySmall: _t(tt.bodySmall).copyWith(
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        height: 1.30,
+      ),
+      labelLarge: _t(tt.labelLarge).copyWith(
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+      ),
+      labelMedium: _t(tt.labelMedium).copyWith(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+      ),
+      labelSmall: _t(tt.labelSmall).copyWith(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+
     final isDark = base.brightness == Brightness.dark;
-    final t = (level.clamp(0, 10)) / 10.0;
+    final surfaceFill = isDark ? cs.surface.withOpacity(0.65) : cs.surface;
+
+    return base.copyWith(
+      textTheme: proTextTheme,
+      primaryTextTheme: base.primaryTextTheme.merge(proTextTheme),
+      appBarTheme: base.appBarTheme.copyWith(
+        toolbarHeight: 60,
+        titleTextStyle: proTextTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w900,
+          color: cs.onSurface,
+        ),
+      ),
+      cardTheme: base.cardTheme.copyWith(
+        elevation: base.cardTheme.elevation ?? 1.5,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      listTileTheme: base.listTileTheme.copyWith(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        horizontalTitleGap: 12,
+        minLeadingWidth: 28,
+        iconColor: cs.onSurface,
+        titleTextStyle: proTextTheme.titleMedium?.copyWith(color: cs.onSurface),
+        subtitleTextStyle: proTextTheme.bodyMedium?.copyWith(
+          color: cs.onSurface.withOpacity(0.75),
+        ),
+      ),
+      chipTheme: base.chipTheme.copyWith(
+        labelStyle: proTextTheme.labelMedium?.copyWith(color: cs.onSurface),
+        side: BorderSide(color: cs.outline.withOpacity(0.7)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+      dividerTheme: base.dividerTheme.copyWith(
+        color: cs.outline.withOpacity(isDark ? 0.55 : 0.35),
+        thickness: 1,
+        space: 1,
+      ),
+      dialogTheme: base.dialogTheme.copyWith(
+        titleTextStyle: proTextTheme.headlineSmall?.copyWith(color: cs.onSurface),
+        contentTextStyle: proTextTheme.bodyMedium?.copyWith(color: cs.onSurface),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      bottomSheetTheme: base.bottomSheetTheme.copyWith(
+        backgroundColor: cs.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+      ),
+      inputDecorationTheme: base.inputDecorationTheme.copyWith(
+        filled: true,
+        fillColor: surfaceFill,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: cs.outline.withOpacity(0.7)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: cs.outline.withOpacity(0.7)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: cs.primary.withOpacity(0.9), width: 1.6),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      ),
+      textSelectionTheme: base.textSelectionTheme.copyWith(
+        cursorColor: cs.primary,
+        selectionColor: cs.primary.withOpacity(0.25),
+        selectionHandleColor: cs.primary,
+      ),
+    );
+  }
+
+ThemeData _applyTextIntensity(ThemeData base, int level) {
+    // level: 1..10 (más niveles = más contraste)
+    final isDark = base.brightness == Brightness.dark;
+    final idx = level.clamp(1, 10);
+    final tRaw = (idx - 1) / 9.0; // 0..1
+    final t = Curves.easeOutCubic.transform(tRaw);
 
     // Fondo oscuro: desde gris a blanco
     // Fondo claro: desde gris oscuro a negro
     final Color c = isDark
-        ? Color.lerp(const Color(0xFFB5B5B5), Colors.white, t)!
-        : Color.lerp(const Color(0xFF4A4A4A), Colors.black, t)!
-;
+        ? Color.lerp(const Color(0xFF8E8E8E), Colors.white, t)!
+        : Color.lerp(const Color(0xFF2E2E2E), Colors.black, t)!;
 
     final textTheme = base.textTheme.apply(bodyColor: c, displayColor: c);
     final primaryTextTheme = base.primaryTextTheme.apply(bodyColor: c, displayColor: c);
@@ -528,37 +676,50 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
   }
 
   ThemeData _applyBackgroundLevel(ThemeData base, int level) {
-    // level: 0..4
-    final idx = level.clamp(0, 4);
+    // level: 1..10
+    final idx = level.clamp(1, 10);
     final isDark = base.brightness == Brightness.dark;
 
-    // 0 = base, 4 = más contraste entre fondo/superficie
-    final t = idx / 4.0;
+    // 1 = base, 10 = más contraste entre fondo/superficie
+    final tRaw = (idx - 1) / 9.0;
+    final t = Curves.easeOutCubic.transform(tRaw);
     final bgBase = base.scaffoldBackgroundColor;
-    final bgTarget = isDark ? const Color(0xFF060606) : const Color(0xFFF7F7F7);
-    final bg = Color.lerp(bgBase, bgTarget, t * 0.55) ?? bgBase;
+    final bgTarget = isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F2);
+    final bg = Color.lerp(bgBase, bgTarget, t * 0.9) ?? bgBase;
 
-    return base.copyWith(scaffoldBackgroundColor: bg);
+    final cs = base.colorScheme;
+    return base.copyWith(
+      scaffoldBackgroundColor: bg,
+      colorScheme: cs.copyWith(background: bg),
+    );
   }
 
   ThemeData _applyCardLevel(ThemeData base, int level) {
-    // level: 0..4
-    final idx = level.clamp(0, 4);
+    // level: 1..10
+    final idx = level.clamp(1, 10);
     final isDark = base.brightness == Brightness.dark;
 
-    final elev = (idx * 2).toDouble();
-    final radius = 12.0 + (idx * 2).toDouble();
+    final tRaw = (idx - 1) / 9.0;
+    final t = Curves.easeOutCubic.transform(tRaw);
+
+    final elev = (t * 14.0);
+    final radius = 12.0 + (t * 14.0);
     final borderColor = isDark
-        ? Color.lerp(const Color(0xFF1A1A1A), const Color(0xFF3A3A3A), idx / 4.0)!
-        : Color.lerp(const Color(0xFFE0E0E0), const Color(0xFFBDBDBD), idx / 4.0)!;
+        ? Color.lerp(const Color(0xFF141414), const Color(0xFF4A4A4A), t)!
+        : Color.lerp(const Color(0xFFEAEAEA), const Color(0xFFB0B0B0), t)!;
+    final cardColor = isDark
+        ? Color.lerp(base.cardColor, const Color(0xFF2B2B2B), t * 0.9)
+        : Color.lerp(base.cardColor, Colors.white, t * 0.9);
 
     final card = base.cardTheme;
     return base.copyWith(
       cardTheme: card.copyWith(
         elevation: elev,
+        color: cardColor,
+        shadowColor: base.colorScheme.shadow.withOpacity(0.35),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
-          side: BorderSide(color: borderColor, width: idx == 0 ? 0.5 : 1.0),
+          side: BorderSide(color: borderColor, width: 0.6 + (t * 1.0)),
         ),
       ),
     );
@@ -586,6 +747,8 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
                       6 => _theme6(),
                       _ => _theme1(),
                     };
+
+                    base = _applyProSystem(base);
 
                     ThemeData theme = _applyTextIntensity(base, intensity);
                     theme = _applyBackgroundLevel(theme, bgLevel);

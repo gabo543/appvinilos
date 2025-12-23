@@ -73,6 +73,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Vista vista = Vista.inicio;
 
+  // 🗑️ En vista borrar: false = 'Para borrar' (colección), true = 'Papelera' (recuperar/eliminar definitivo)
+  bool _borrarPapelera = false;
+
   bool _gridView = false;
   late final VoidCallback _gridListener;
 
@@ -244,16 +247,23 @@ Future<void> _loadViewMode() async {
   }
 
   bool _isFav(Map<String, dynamic> v) {
-    final id = v['id'];
-    final dbFav = (v['favorite'] ?? 0) == 1;
-    if (id is int) return _favCache[id] ?? dbFav;
+    final id = _asInt(v['id']);
+    final raw = v['favorite'];
+    final dbFav = (raw == 1 || raw == true || raw == '1' || raw == 'true' || raw == 'TRUE');
+    if (id > 0) return _favCache[id] ?? dbFav;
     return dbFav;
   }
 
+  int _asInt(dynamic v) {
+    if (v is int) return v;
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+
 
   Future<void> _toggleFavorite(Map<String, dynamic> v) async {
-    final id = v['id'];
-    if (id is! int) return;
+    final id = _asInt(v['id']);
+    if (id <= 0) return;
 
     final current = _isFav(v);
     final next = !current;
@@ -308,19 +318,24 @@ Future<void> _loadViewMode() async {
     });
   }
 
-  Widget _numeroBadge(dynamic numero) {
+  /// Badge para el número de orden (NO editable).
+  /// Se apoya en el ColorScheme para que se vea bien en todos los temas.
+  Widget _numeroBadge(BuildContext context, dynamic numero) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.70),
-        borderRadius: BorderRadius.circular(6),
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Text(
-        '$numero',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
+        '${numero ?? ''}',
+        style: TextStyle(
+          color: scheme.onPrimaryContainer,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.2,
         ),
       ),
     );
@@ -328,6 +343,25 @@ Future<void> _loadViewMode() async {
 
   Widget _leadingCover(Map<String, dynamic> v) {
     final cp = (v['coverPath'] as String?)?.trim() ?? '';
+
+if (cp.startsWith('http://') || cp.startsWith('https://')) {
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(8),
+    child: Image.network(
+      cp,
+      width: 48,
+      height: 48,
+      fit: BoxFit.cover,
+      cacheWidth: 96,
+      cacheHeight: 96,
+      errorBuilder: (_, __, ___) => const Icon(Icons.album),
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      },
+    ),
+  );
+}
     if (cp.isNotEmpty && _fileExistsCached(cp)) {
       final f = File(cp);
       return ClipRRect(
@@ -347,6 +381,24 @@ Future<void> _loadViewMode() async {
 
   Widget _gridCover(Map<String, dynamic> v) {
     final cp = (v['coverPath'] as String?)?.trim() ?? '';
+
+if (cp.startsWith('http://') || cp.startsWith('https://')) {
+  return Image.network(
+    cp,
+    fit: BoxFit.cover,
+    cacheWidth: 600,
+    cacheHeight: 600,
+    errorBuilder: (_, __, ___) => Container(
+      color: Colors.black12,
+      alignment: Alignment.center,
+      child: const Icon(Icons.album, size: 48),
+    ),
+    loadingBuilder: (context, child, progress) {
+      if (progress == null) return child;
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    },
+  );
+}
     if (cp.isNotEmpty && _fileExistsCached(cp)) {
       final f = File(cp);
       return Image.file(
@@ -408,7 +460,7 @@ Future<void> _loadViewMode() async {
             Positioned(
               right: 8,
               top: 8,
-              child: _numeroBadge(v['numero']),
+              child: _numeroBadge(context, v['numero']),
             ),
 
             // ⭐ Favoritos abajo derecha (lista grid + favoritos grid)
@@ -438,7 +490,9 @@ Future<void> _loadViewMode() async {
 
                   icon: const Icon(Icons.delete),
                   onPressed: () async {
-                    await VinylDb.instance.deleteById(v['id'] as int);
+                    final id = _asInt(v['id']);
+                        if (id == 0) return;
+                        await VinylDb.instance.deleteById(id);
                     await BackupService.autoSaveIfEnabled();
                     snack('Borrado');
                     _reloadAllData();
@@ -632,6 +686,9 @@ Future<void> _loadViewMode() async {
     return FutureBuilder<int>(
       future: VinylDb.instance.getCount(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return const SizedBox(width: 90, height: 70);
+        }
         final total = snap.data ?? 0;
         return Container(
           width: 90,
@@ -902,6 +959,18 @@ Widget recentGrid() {
       return FutureBuilder<List<Map<String, dynamic>>>(
         future: _futureAll,
         builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError) {
+            return _emptyState(
+              icon: Icons.wifi_off,
+              title: 'Sin conexión',
+              subtitle: 'No pude cargar tus vinilos ahora. Intenta de nuevo.',
+              actionText: 'Reintentar',
+              onAction: () => setState(() => _futureAll = VinylDb.instance.getAll()),
+            );
+          }
           final items = (snap.data ?? const <Map<String, dynamic>>[]).toList();
           if (items.isEmpty) {
             return const Text(
@@ -1115,7 +1184,12 @@ sectionTitle('Colección'
           icon: Icons.delete_outline,
           title: 'Borrar',
           subtitle: 'Eliminar de tu lista',
-          onTap: () => setState(() => vista = Vista.borrar),
+          onTap: () {
+            _borrarPapelera = false;
+            _reloadAllData();
+            if (!mounted) return;
+            setState(() => vista = Vista.borrar);
+          },
         ),
 
         sectionTitle('Últimos agregados', subtitle: 'Acceso rápido a lo último que guardaste.'),
@@ -1124,6 +1198,58 @@ sectionTitle('Colección'
       ],
     );
   }
+
+
+
+Widget vistaBorrar() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: _borrarPapelera
+                ? OutlinedButton.icon(
+                    onPressed: () => setState(() {
+                      _borrarPapelera = false;
+                      _reloadTick++;
+                    }),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Para borrar'),
+                  )
+                : ElevatedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Para borrar'),
+                  ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _borrarPapelera
+                ? ElevatedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.restore),
+                    label: const Text('Papelera'),
+                  )
+                : OutlinedButton.icon(
+                    onPressed: () async {
+                      // Carga rápida para mostrar papelera
+                      setState(() {
+                        _borrarPapelera = true;
+                        _reloadTick++;
+                      });
+                    },
+                    icon: const Icon(Icons.restore),
+                    label: const Text('Papelera'),
+                  ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      listaCompleta(conBorrar: true, onlyFavorites: false),
+    ],
+  );
+}
 
 
 
@@ -1677,23 +1803,45 @@ sectionTitle('Colección'
   }
 
 Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
-  final future = onlyFavorites ? VinylDb.instance.getFavorites() : VinylDb.instance.getAll();
+  final future = conBorrar
+      ? (_borrarPapelera ? VinylDb.instance.getTrash() : VinylDb.instance.getAll())
+      : (onlyFavorites ? VinylDb.instance.getFavorites() : VinylDb.instance.getAll());
 
   return FutureBuilder<List<Map<String, dynamic>>>(
+    key: ValueKey("list_${onlyFavorites ? 'fav' : 'all'}_${conBorrar ? (_borrarPapelera ? 'trash' : 'pick') : 'keep'}_$_reloadTick"),
     future: future,
     builder: (context, snap) {
+      if (snap.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snap.hasError) {
+        return _emptyState(
+          icon: Icons.error_outline,
+          title: 'Error cargando',
+          subtitle: 'Algo falló al leer la base de datos. Cierra y vuelve a abrir la app.',
+        );
+      }
       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
       final items = snap.data ?? const <Map<String, dynamic>>[];
 
-      if (items.isEmpty) {
-        return _emptyState(
-          icon: onlyFavorites ? Icons.star_outline : Icons.library_music_outlined,
-          title: onlyFavorites ? 'No hay favoritos' : 'No hay vinilos',
-          subtitle: onlyFavorites
-              ? 'Marca un vinilo como favorito y aparecerá aquí.'
-              : 'Agrega tu primer vinilo desde Discografía o Buscar.',
-        );
-      }
+      
+if (items.isEmpty) {
+  if (conBorrar && _borrarPapelera) {
+    return _emptyState(
+      icon: Icons.delete_sweep_outlined,
+      title: 'Papelera vacía',
+      subtitle: 'Aquí aparecerán los vinilos que borres para que puedas recuperarlos.',
+    );
+  }
+  return _emptyState(
+    icon: onlyFavorites ? Icons.star_outline : Icons.library_music_outlined,
+    title: onlyFavorites ? 'No hay favoritos' : 'No hay vinilos',
+    subtitle: onlyFavorites
+        ? 'Marca un vinilo como favorito y aparecerá aquí.'
+        : 'Agrega tu primer vinilo desde Discografía o Buscar.',
+  );
+}
+
 
       if (_gridView) {
         return GridView.builder(
@@ -1717,58 +1865,106 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
             return GestureDetector(
               onTap: () => _openDetail(v),
               child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: _leadingCover(v),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        (v['album'] ?? '').toString(),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        (v['artista'] ?? '').toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const Spacer(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          IconButton(
-                            tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
-                            icon: Icon(
-                              fav ? Icons.star : Icons.star_border,
-                              color: fav ? Colors.amber : Colors.grey,
+                          Center(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: _leadingCover(v),
                             ),
-                            onPressed: () => _toggleFavorite(v),
                           ),
-                          if (conBorrar)
+                          const SizedBox(height: 10),
+                          Text(
+                            (v['album'] ?? '').toString(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            (v['artista'] ?? '').toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const Spacer(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                          if (!conBorrar)
                             IconButton(
-                              tooltip: 'Borrar',
+                              tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
+                              icon: Icon(
+                                fav ? Icons.star : Icons.star_border,
+                                color: fav ? Colors.amber : Colors.grey,
+                              ),
+                              onPressed: () => _toggleFavorite(v),
+                            ),
+
+                          // 🗑️ Mover a papelera (desde colección)
+                          if (conBorrar && !_borrarPapelera)
+                            IconButton(
+                              tooltip: 'Enviar a papelera',
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () async {
-                                await VinylDb.instance.deleteById(v['id'] as int);
+                                final id = _asInt(v['id']);
+                                if (id == 0) return;
+                                await VinylDb.instance.moveToTrash(id);
                                 await BackupService.autoSaveIfEnabled();
+                                await _refreshHomeCounts();
                                 if (!mounted) return;
-                                setState(() {});
-                                snack('Borrado');
+                                setState(() => _reloadTick++);
+                                snack('Enviado a papelera');
                               },
                             ),
+
+                          // ♻️ Papelera: recuperar / eliminar definitivo
+                          if (conBorrar && _borrarPapelera) ...[
+                            IconButton(
+                              tooltip: 'Recuperar a Vinilos',
+                              icon: const Icon(Icons.restore),
+                              onPressed: () async {
+                                final trashId = _asInt(v['id']);
+                                if (trashId == 0) return;
+                                final ok = await VinylDb.instance.restoreFromTrash(trashId);
+                                await BackupService.autoSaveIfEnabled();
+                                await _refreshHomeCounts();
+                                if (!mounted) return;
+                                setState(() => _reloadTick++);
+                                snack(ok ? 'Recuperado' : 'No se pudo recuperar (duplicado)');
+                              },
+                            ),
+                            IconButton(
+                              tooltip: 'Eliminar definitivo',
+                              icon: const Icon(Icons.delete_forever),
+                              onPressed: () async {
+                                final trashId = _asInt(v['id']);
+                                if (trashId == 0) return;
+                                await VinylDb.instance.deleteTrashById(trashId);
+                                await BackupService.autoSaveIfEnabled();
+                                if (!mounted) return;
+                                setState(() => _reloadTick++);
+                                snack('Eliminado');
+                              },
+                            ),
+                          ],
+                            ],
+                          ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+
+                    // 🔢 Número arriba derecha (orden de colección)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: _numeroBadge(context, v['numero']),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -1797,7 +1993,13 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
             child: ListTile(
               onTap: () => _openDetail(v),
               leading: _leadingCover(v),
-              title: Text('${v['artista']} — ${v['album']}'),
+              title: Row(
+                children: [
+                  _numeroBadge(context, v['numero']),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('${v['artista']} — ${v['album']}')),
+                ],
+              ),
               subtitle: Text(
                 'Año: ${(year == null || year.isEmpty) ? '—' : year}  •  '
                 'Género: ${(genre == null || genre.isEmpty) ? '—' : genre}  •  '
@@ -1806,26 +2008,63 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
-                    icon: Icon(
-                      fav ? Icons.star : Icons.star_border,
-                      color: fav ? Colors.amber : Colors.grey,
-                    ),
-                    onPressed: () => _toggleFavorite(v),
-                  ),
-                  if (conBorrar)
+                  if (!conBorrar)
                     IconButton(
-                      tooltip: 'Borrar',
+                      tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
+                      icon: Icon(
+                        fav ? Icons.star : Icons.star_border,
+                        color: fav ? Colors.amber : Colors.grey,
+                      ),
+                      onPressed: () => _toggleFavorite(v),
+                    ),
+
+                  // 🗑️ Mover a papelera (desde colección)
+                  if (conBorrar && !_borrarPapelera)
+                    IconButton(
+                      tooltip: 'Enviar a papelera',
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {
-                        await VinylDb.instance.deleteById(v['id'] as int);
+                        final id = _asInt(v['id']);
+                        if (id == 0) return;
+                        await VinylDb.instance.moveToTrash(id);
                         await BackupService.autoSaveIfEnabled();
+                        await _refreshHomeCounts();
                         if (!mounted) return;
-                        setState(() {});
-                        snack('Borrado');
+                        setState(() => _reloadTick++);
+                        snack('Enviado a papelera');
                       },
                     ),
+
+                  // ♻️ Papelera: recuperar / eliminar definitivo
+                  if (conBorrar && _borrarPapelera) ...[
+                    IconButton(
+                      tooltip: 'Recuperar a Vinilos',
+                      icon: const Icon(Icons.restore),
+                      onPressed: () async {
+                        final trashId = _asInt(v['id']);
+                        if (trashId == 0) return;
+                        final ok = await VinylDb.instance.restoreFromTrash(trashId);
+                        await BackupService.autoSaveIfEnabled();
+                        await _refreshHomeCounts();
+                        if (!mounted) return;
+                        setState(() => _reloadTick++);
+                        snack(ok ? 'Recuperado' : 'No se pudo recuperar (duplicado)');
+                      },
+                    ),
+                    IconButton(
+                      tooltip: 'Eliminar definitivo',
+                      icon: const Icon(Icons.delete_forever),
+                      onPressed: () async {
+                        final trashId = _asInt(v['id']);
+                        if (trashId == 0) return;
+                        await VinylDb.instance.deleteTrashById(trashId);
+                        await BackupService.autoSaveIfEnabled();
+                        if (!mounted) return;
+                        setState(() => _reloadTick++);
+                        snack('Eliminado');
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1907,7 +2146,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
                     if (vista == Vista.buscar) vistaBuscar(),
                     if (vista == Vista.lista) listaCompleta(conBorrar: false, onlyFavorites: false),
                     if (vista == Vista.favoritos) listaCompleta(conBorrar: false, onlyFavorites: true),
-                    if (vista == Vista.borrar) listaCompleta(conBorrar: true, onlyFavorites: false),
+                    if (vista == Vista.borrar) vistaBorrar(),
                   ],
                 ),
               ),

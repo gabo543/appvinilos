@@ -77,7 +77,7 @@ class DiscographyService {
 
   static Future<http.Response> _get(Uri url) async {
     await _throttle();
-    return http.get(url, headers: _headers());
+    return http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
   }
 
   // ===============================
@@ -265,7 +265,7 @@ class DiscographyService {
         final search = Uri.parse(
           'https://$lang.wikipedia.org/w/api.php?action=opensearch&search=${Uri.encodeQueryComponent(name)}&limit=1&format=json',
         );
-        final sRes = await http.get(search);
+        final sRes = await http.get(search, headers: _headers()).timeout(const Duration(seconds: 15));
         if (sRes.statusCode != 200) continue;
 
         final data = jsonDecode(sRes.body);
@@ -275,7 +275,7 @@ class DiscographyService {
         final sum = Uri.parse(
           'https://$lang.wikipedia.org/api/rest_v1/page/summary/$title',
         );
-        final sumRes = await http.get(sum);
+        final sumRes = await http.get(sum, headers: _headers()).timeout(const Duration(seconds: 15));
         if (sumRes.statusCode != 200) continue;
 
         final extract = jsonDecode(sumRes.body)['extract'];

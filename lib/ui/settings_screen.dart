@@ -22,18 +22,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
 
   static String _labelIntensity(int v) {
-    if (v <= 1) return 'Suave';
-    if (v <= 4) return 'Normal';
-    if (v <= 7) return 'Fuerte';
+    if (v <= 2) return 'Suave';
+    if (v <= 5) return 'Normal';
+    if (v <= 8) return 'Fuerte';
     return 'Máx';
   }
 
   bool _auto = false;
   bool _grid = false;
   int _theme = 1;
-  int _textIntensity = 5;
-  int _bgLevel = 2;
-  int _cardLevel = 2;
+  int _textIntensity = 6;
+  int _bgLevel = 5;
+  int _cardLevel = 5;
   bool _loading = true;
 
   @override
@@ -181,10 +181,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 10),
                         Slider(
                           value: _textIntensity.toDouble(),
-                          min: 0,
+                          min: 1,
                           max: 10,
-                          divisions: 10,
-                          label: '${_textIntensity + 1}',
+                          divisions: 9,
+                          label: '$_textIntensity',
                           onChanged: (v) {
                             final iv = v.round();
                             setState(() => _textIntensity = iv);
@@ -215,15 +215,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             const Text('Fondo', style: TextStyle(fontWeight: FontWeight.w800)),
                             const Spacer(),
-                            Text('Nivel ${_bgLevel + 1}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                            Text('Nivel $_bgLevel', style: const TextStyle(fontWeight: FontWeight.w900)),
                           ],
                         ),
                         Slider(
                           value: _bgLevel.toDouble(),
-                          min: 0,
-                          max: 4,
-                          divisions: 4,
-                          label: '${_bgLevel + 1}',
+                          min: 1,
+                          max: 10,
+                          divisions: 9,
+                          label: '$_bgLevel',
                           onChanged: (v) {
                             final iv = v.round();
                             setState(() => _bgLevel = iv);
@@ -235,15 +235,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             const Text('Cuadros', style: TextStyle(fontWeight: FontWeight.w800)),
                             const Spacer(),
-                            Text('Nivel ${_cardLevel + 1}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                            Text('Nivel $_cardLevel', style: const TextStyle(fontWeight: FontWeight.w900)),
                           ],
                         ),
                         Slider(
                           value: _cardLevel.toDouble(),
-                          min: 0,
-                          max: 4,
-                          divisions: 4,
-                          label: '${_cardLevel + 1}',
+                          min: 1,
+                          max: 10,
+                          divisions: 9,
+                          label: '$_cardLevel',
                           onChanged: (v) {
                             final iv = v.round();
                             setState(() => _cardLevel = iv);
