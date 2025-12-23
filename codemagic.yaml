@@ -64,33 +64,12 @@ workflows:
         script: |
           flutter build apk --release
 
-      - name: Verificar que el Manifest final (merge) tenga INTERNET
-        script: |
-          set -e
-          echo "Buscando merged manifests..."
-          find build -path "*merged_manifests*" -name "AndroidManifest.xml" -print || true
-
-          MERGED="$(find build -path "*merged_manifests*" -path "*release*" -name "AndroidManifest.xml" | head -n 1)"
-          echo "MERGED=$MERGED"
-
-          if [ -z "$MERGED" ]; then
-            echo "No encontré merged manifest (no pasa nada, pero raro)."
-            exit 0
-          fi
-
-          if grep -q "android.permission.INTERNET" "$MERGED"; then
-            echo "OK ✅ El merged manifest tiene INTERNET."
-          else
-            echo "ERROR ❌ El merged manifest NO tiene INTERNET."
-            echo "Mostrando primeras 60 líneas:"
-            head -n 60 "$MERGED"
-            exit 1
-          fi
 
       - name: Verificar INTERNET en merged manifest final (build/app)
         script: |
           set -e
           echo "Buscando merged manifest de la APP..."
+          find build/app -path "*merged_manifests*" -name "AndroidManifest.xml" -print || true
           MERGED="$(find build/app -path "*merged_manifests*" -path "*release*" -name "AndroidManifest.xml" | head -n 1)"
           echo "MERGED=$MERGED"
 
