@@ -350,6 +350,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         album: al.title,
         favorite: !currentFav,
       );
+
+      // ✅ Confirmar en DB (evita estado UI marcado pero no persistido)
+      final row = await VinylDb.instance.findByExact(artista: artistName, album: al.title);
+      final dbFav = _asFav(row?['favorite']);
+      _vinylId[key] = _asInt(row?['id']);
+      _exists[key] = row != null;
+      _fav[key] = dbFav;
+
+      if (dbFav != (!currentFav)) {
+        throw Exception('Favorito no persistió');
+      }
+
       await BackupService.autoSaveIfEnabled();
     } catch (_) {
       if (!mounted) return;

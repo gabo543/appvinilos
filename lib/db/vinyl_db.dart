@@ -196,11 +196,9 @@ if (oldV < 9) {
   /// Marca/Desmarca favorito.
   ///
   /// ✅ Ruta principal: actualiza por `id`.
-  /// ✅ Fallback: si el `id` no actualiza ninguna fila (por alguna
-  /// razón rara del mapa/estado), intenta por artista+álbum.
+  /// ✅ Fallback: si el `id` no actualiza ninguna fila, intenta por `artista` + `album`.
   ///
-  /// Esto arregla casos donde la UI tiene un mapa sin `id` correcto,
-  /// pero sí tiene el par (artista, album).
+  /// Esto evita estados “marcado pero no guardado” cuando la UI tiene un mapa sin `id` válido.
   Future<void> setFavoriteSafe({
     required bool favorite,
     int? id,
@@ -210,30 +208,36 @@ if (oldV < 9) {
     final d = await db;
     final fav01 = favorite ? 1 : 0;
 
-    int changed = 0;
-    final safeId = id ?? 0;
-    if (safeId > 0) {
-      changed = await d.update(
+    // 1) Ruta principal: por id
+    if (id != null && id > 0) {
+      final changed = await d.update(
         'vinyls',
         {'favorite': fav01},
         where: 'id = ?',
-        whereArgs: [safeId],
+        whereArgs: [id],
       );
+      if (changed > 0) return;
     }
 
-    if (changed == 0 && artista != null && album != null) {
-      final a = artista.trim().toLowerCase();
-      final al = album.trim().toLowerCase();
-      await d.update(
+    // 2) Fallback: por artista + álbum
+    if (artista != null && album != null) {
+      final a = artista.trim();
+      final al = album.trim();
+
+      final changed = await d.update(
         'vinyls',
         {'favorite': fav01},
-        where: 'LOWER(artista)=? AND LOWER(album)=?',
+        where: 'LOWER(TRIM(artista))=LOWER(TRIM(?)) AND LOWER(TRIM(album))=LOWER(TRIM(?))',
         whereArgs: [a, al],
       );
+      if (changed > 0) return;
     }
+
+    throw Exception('No se pudo actualizar favorito (0 filas afectadas).');
   }
 
   /// Compat: firma antigua usada en varias pantallas.
+
   Future<void> setFavorite({required int id, required bool favorite}) async {
     await setFavoriteSafe(favorite: favorite, id: id);
   }

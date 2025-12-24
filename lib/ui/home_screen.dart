@@ -145,6 +145,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final albumCtrl = TextEditingController();
   final yearCtrl = TextEditingController();
 
+  // ✅ Focus dedicado para poder abrir el buscador desde Home con un tap.
+  final FocusNode _artistFocus = FocusNode();
+
   Timer? _debounceArtist;
   bool buscandoArtistas = false;
   List<ArtistHit> sugerenciasArtistas = [];
@@ -293,6 +296,7 @@ Future<void> _loadViewMode() async {
     artistaCtrl.dispose();
     albumCtrl.dispose();
     yearCtrl.dispose();
+    _artistFocus.dispose();
     super.dispose();
   }
 
@@ -327,12 +331,6 @@ Future<void> _loadViewMode() async {
     setState(() {
       _favCache[id] = next;
       v['favorite'] = next ? 1 : 0;
-      _reloadTick++;
-
-      // si estás en la vista de favoritos y lo desmarcas, lo ocultamos altiro
-      if (vista == Vista.favoritos && !next) {
-        // la lista se recalcula desde la DB, pero forzamos rebuild inmediato
-      }
     });
 
     try {
@@ -345,6 +343,12 @@ Future<void> _loadViewMode() async {
       await BackupService.autoSaveIfEnabled();
       // refresca contadores (inicio)
       await _refreshHomeCounts();
+
+      // ⚠️ Importante: si estás en la vista "Favoritos" y desmarcas,
+      // el FutureBuilder podría haberse reconstruido ANTES de que terminara
+      // el update. Forzamos un refresh DESPUÉS de persistir.
+      if (!mounted) return;
+      setState(() => _reloadTick++);
     } catch (_) {
       // revertir si falla
       if (!mounted) return;
@@ -850,6 +854,15 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     final fav = _homeCounts['fav'] ?? 0;
     final wish = _homeCounts['wish'] ?? 0;
 
+    void openBuscar() {
+      // ✅ UX premium: al abrir el buscador desde Home, enfocamos Artista.
+      setState(() => vista = Vista.buscar);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        FocusScope.of(context).requestFocus(_artistFocus);
+      });
+    }
+
 	Widget _statPill({required String label, required int value}) {
   final pillBg = isDark ? const Color(0xFF0F0F0F) : cs.surface;
   final pillBorder = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
@@ -1271,6 +1284,38 @@ Container(
 	      ),
 	      const SizedBox(height: 12),
 
+	      // 🔎 Barra de búsqueda “falsa” (abre la vista Buscar y enfoca Artista)
+	      InkWell(
+	        onTap: openBuscar,
+	        borderRadius: BorderRadius.circular(16),
+	        child: Container(
+	          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+	          decoration: BoxDecoration(
+	            color: cs.surfaceVariant.withOpacity(isDark ? 0.18 : 0.75),
+	            borderRadius: BorderRadius.circular(16),
+	            border: Border.all(color: cs.outline.withOpacity(isDark ? 0.75 : 1.0)),
+	          ),
+	          child: Row(
+	            children: [
+	              Icon(Icons.search, size: 20, color: cs.onSurface.withOpacity(0.85)),
+	              const SizedBox(width: 10),
+	              Expanded(
+	                child: Text(
+	                  'Buscar artista o álbum…',
+	                  style: t.textTheme.bodyMedium?.copyWith(
+	                    color: cs.onSurface.withOpacity(0.72),
+	                    fontWeight: FontWeight.w700,
+	                  ),
+	                ),
+	              ),
+	              Icon(Icons.keyboard_arrow_right, color: cs.onSurface.withOpacity(0.55)),
+	            ],
+	          ),
+	        ),
+	      ),
+
+	      const SizedBox(height: 12),
+
       // mini stats
       Wrap(
         spacing: 8,
@@ -1289,7 +1334,7 @@ Container(
         spacing: 8,
         runSpacing: 8,
         children: [
-          quickAction(icon: Icons.search, label: 'Buscar', onTap: () => setState(() => vista = Vista.buscar)),
+          quickAction(icon: Icons.search, label: 'Buscar', onTap: openBuscar),
           quickAction(
             icon: Icons.library_music,
             label: 'Discografías',
@@ -1419,6 +1464,8 @@ Widget vistaBorrar() {
     final p = prepared;
     final showXArtist = artistaCtrl.text.trim().isNotEmpty;
     final showXAlbum = albumCtrl.text.trim().isNotEmpty;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     Widget suggestionBox<T>({
       required List<T> items,
@@ -1427,9 +1474,9 @@ Widget vistaBorrar() {
       return Container(
         margin: const EdgeInsets.only(top: 6),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
+          border: Border.all(color: cs.outline.withOpacity(isDark ? 0.85 : 1.0)),
         ),
         child: ListView.separated(
           shrinkWrap: true,
@@ -1447,6 +1494,7 @@ Widget vistaBorrar() {
         // ✅ SOLO: Artista, Álbum y botón Buscar
         TextField(
           controller: artistaCtrl,
+          focusNode: _artistFocus,
           onChanged: _onArtistChanged,
           decoration: InputDecoration(
             labelText: 'Artista',
@@ -1531,16 +1579,16 @@ Widget vistaBorrar() {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F0F0F),
+              color: cs.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
+              border: Border.all(color: cs.outline.withOpacity(isDark ? 0.85 : 1.0)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Ya lo tienes en tu colección:',
-                  style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white),
+                  style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface),
                 ),
                 const SizedBox(height: 8),
                 ...resultados.map((v) {
@@ -1555,7 +1603,7 @@ Widget vistaBorrar() {
                         Expanded(
                           child: Text(
                             '${v['numero']} — ${v['artista']} — ${v['album']}$yTxt',
-                            style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
+                            style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface),
                           ),
                         ),
                       ],
@@ -1573,14 +1621,14 @@ Widget vistaBorrar() {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F0F0F),
+              color: cs.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
+              border: Border.all(color: cs.outline.withOpacity(isDark ? 0.85 : 1.0)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Agregar este vinilo', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white)),
+                Text('Agregar este vinilo', style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
                 const SizedBox(height: 8),
                 if (autocompletando) const LinearProgressIndicator(),
                 if (!autocompletando && p != null) ...[
@@ -1616,12 +1664,12 @@ Widget vistaBorrar() {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Artista: ${p.artist}', style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
-                            Text('Álbum: ${p.album}', style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+                            Text('Artista: ${p.artist}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
+                            Text('Álbum: ${p.album}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
                             const SizedBox(height: 6),
-                            Text('Año: ${p.year ?? '—'}', style: const TextStyle(color: Color(0xFFBDBDBD))),
-                            Text('Género: ${p.genre ?? '—'}', style: const TextStyle(color: Color(0xFFBDBDBD))),
-                            Text('País: ${p.country ?? '—'}', style: const TextStyle(color: Color(0xFFBDBDBD))),
+                            Text('Año: ${p.year ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
+                            Text('Género: ${p.genre ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
+                            Text('País: ${p.country ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -1635,19 +1683,9 @@ Widget vistaBorrar() {
                     decoration: InputDecoration(
                       labelText: 'Año (opcional: corregir)',
                       filled: true,
-                      fillColor: const Color(0xFF151515),
-                      labelStyle: const TextStyle(color: Color(0xFFBDBDBD)),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Colors.white),
-                      ),
+                      fillColor: cs.surfaceVariant.withOpacity(isDark ? 0.14 : 0.65),
                     ),
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 10),
                   ElevatedButton(
@@ -2320,15 +2358,29 @@ const SizedBox(height: 8),
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: _buildAppBar(),
       floatingActionButton: _buildFab(),
-      body: Stack(
-        children: [
-          Positioned.fill(child: Container(color: Colors.grey.shade300)),
-          Positioned.fill(child: Container(color: Colors.black.withOpacity(0.35))),
-          SafeArea(
+      body: Container(
+        // ✅ Respeta el “Fondo (1–10)” y la paleta global (no overlays fijos).
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              cs.background,
+              Color.lerp(cs.background, cs.surfaceVariant, 0.10) ?? cs.background,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
             child: Padding(
+              key: ValueKey(vista),
               padding: const EdgeInsets.all(16),
               child: SingleChildScrollView(
                 child: Column(
@@ -2348,8 +2400,7 @@ const SizedBox(height: 8),
               ),
             ),
           ),
-          gabolpMarca(),
-        ],
+        ),
       ),
     );
   }
