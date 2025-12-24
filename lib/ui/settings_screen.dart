@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/backup_service.dart';
 import '../services/app_theme_service.dart';
 import '../services/view_mode_service.dart';
+import '../services/recent_added_text_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -32,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _auto = false;
   bool _grid = false;
+  bool _recentText = false;
   int _theme = 1;
   int _textIntensity = 6;
   int _bgLevel = 5;
@@ -47,6 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final v = await BackupService.isAutoEnabled();
     final g = await ViewModeService.isGridEnabled();
+    final r = await RecentAddedTextService.isEnabled();
     final t = await AppThemeService.getTheme();
     final ti = await AppThemeService.getTextIntensity();
     final bg = await AppThemeService.getBgLevel();
@@ -55,6 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _auto = v;
       _grid = g;
+      _recentText = r;
       _theme = t;
       _textIntensity = ti;
       _bgLevel = bg;
@@ -94,6 +98,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _snack('No se pudo exportar: $e');
     }
   }
+
+  Future<void> _importarDescargas() async {
+    try {
+      final f = await BackupService.importFromDownloads();
+      _snack('Importado desde Descargas ✅\n${f.path}');
+    } catch (e) {
+      _snack('No se pudo importar: $e');
+    }
+  }
+
 
   Future<void> _compartirBackup() async {
     try {
@@ -137,6 +151,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onTap: _exportarDescargas,
                       ),
                       const Divider(height: 1),
+
+                      ListTile(
+                        leading: const Icon(Icons.file_download_outlined),
+                        title: const Text('Importar desde Descargas'),
+                        subtitle: const Text('Busca "vinyl_backup.json" o el último "GaBoLP_backup_*.json" en Descargas y lo carga (reemplaza tu lista).'),
+                        onTap: _importarDescargas,
+                      ),
+                      const Divider(height: 1),
+
                       ListTile(
                         leading: const Icon(Icons.share_outlined),
                         title: const Text('Compartir backup'),
@@ -337,6 +360,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _grid
                           ? 'Muestra tus vinilos en cuadrícula (tarjetas).'
                           : 'Muestra tus vinilos en lista vertical.',
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Card(
+                  child: SwitchListTile(
+                    value: _recentText,
+                    onChanged: (v) async {
+                      setState(() => _recentText = v);
+                      await RecentAddedTextService.setEnabled(v);
+                      _snack(v ? 'Últimos agregados: con texto ✅' : 'Últimos agregados: solo carátula ✅');
+                    },
+                    secondary: Icon(
+                      _recentText ? Icons.subtitles_outlined : Icons.crop_original_outlined,
+                    ),
+                    title: const Text('Mostrar texto en “Últimos agregados”'),
+                    subtitle: const Text(
+                      'Muestra un texto pequeño debajo de la carátula (artista / álbum).',
                     ),
                   ),
                 ),

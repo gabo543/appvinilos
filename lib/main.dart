@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'ui/home_screen.dart';
 import 'services/app_theme_service.dart';
 import 'services/view_mode_service.dart';
+import 'services/recent_added_text_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -10,6 +11,7 @@ void main() async {
   // ✅ Cargamos preferencias 1 vez para cambios instantáneos (tema + grid/list).
   await AppThemeService.load();
   await ViewModeService.load();
+  await RecentAddedTextService.load();
   runApp(const GaBoLpApp());
 }
 

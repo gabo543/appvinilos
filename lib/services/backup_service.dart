@@ -75,6 +75,93 @@ class BackupService {
     );
   }
 
+  /// Importa un respaldo desde la carpeta pública *Descargas* (Android) y lo carga en la app.
+  /// Busca un archivo llamado `vinyl_backup.json` (o el nombre indicado).
+  ///
+  /// Si no lo encuentra, verifica que el archivo esté en /Download y tenga exactamente ese nombre.
+  static Future<File> importFromDownloads({String fileName = _kFile}) async {
+    if (!Platform.isAndroid) {
+      throw Exception('Importar desde Descargas está disponible solo en Android.');
+    }
+
+    // Rutas típicas para Descargas en Android.
+    final candidates = <String>[
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Downloads',
+      '/sdcard/Download',
+      '/sdcard/Downloads',
+    ];
+
+    File? found;
+    Object? lastError;
+
+    // 1) Intenta por nombre exacto (por defecto: vinyl_backup.json).
+    for (final dirPath in candidates) {
+      try {
+        final f = File(p.join(dirPath, fileName));
+        if (await f.exists()) {
+          found = f;
+          break;
+        }
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    // 2) Si no existe, busca el último exportado por la app: GaBoLP_backup_*.json
+    if (found == null) {
+      for (final dirPath in candidates) {
+        try {
+          final dir = Directory(dirPath);
+          if (!await dir.exists()) continue;
+
+          final files = dir
+              .listSync()
+              .whereType<File>()
+              .where((f) => p.basename(f.path).startsWith('GaBoLP_backup_') && f.path.toLowerCase().endsWith('.json'))
+              .toList();
+
+          if (files.isEmpty) continue;
+
+          files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+          found = files.first;
+          break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+    }
+
+    if (found == null) {
+      throw Exception(
+        'No encontré un respaldo en Descargas. '
+        'Busca un archivo llamado "$fileName" o uno tipo "GaBoLP_backup_....json" en /Download. '
+        '${lastError != null ? 'Error: $lastError' : ''}',
+      );
+    }
+
+    // Validación rápida del formato para dar un error amigable.
+    final txt = await found.readAsString();
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(txt);
+    } catch (e) {
+      throw Exception('El archivo no parece ser un JSON válido: $e');
+    }
+
+    if (decoded is! Map || decoded['vinyls'] is! List) {
+      throw Exception('El archivo no tiene el formato esperado (debe incluir "vinyls": [...]).');
+    }
+
+    // Copia el archivo a la ubicación interna usada por la app y luego carga a DB.
+    final dest = await _backupFile();
+    await dest.writeAsString(txt);
+    await loadList();
+
+    return found;
+  }
+
+
   /// Guarda la lista completa en JSON (incluye `favorite`).
   static Future<void> saveListNow() async {
     final vinyls = await VinylDb.instance.getAll();
