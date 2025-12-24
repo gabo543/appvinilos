@@ -26,6 +26,55 @@ class BackupService {
     return File(p.join(dir.path, _kFile));
   }
 
+  /// Devuelve el archivo de respaldo local (en la carpeta interna de documentos).
+  /// Si `ensureLatest` es true, primero guarda el estado actual en ese archivo.
+  static Future<File> getLocalBackupFile({bool ensureLatest = true}) async {
+    if (ensureLatest) {
+      await saveListNow();
+    }
+    return _backupFile();
+  }
+
+  /// Exporta el respaldo a la carpeta pública *Descargas* (Android).
+  /// Nota: en Android modernos, el acceso directo a /Download puede estar restringido.
+  /// Si falla, se recomienda usar "Compartir backup".
+  static Future<File> exportToDownloads() async {
+    if (!Platform.isAndroid) {
+      throw Exception('Exportar a Descargas está disponible solo en Android.');
+    }
+
+    final src = await getLocalBackupFile(ensureLatest: true);
+    final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final fileName = 'GaBoLP_backup_$ts.json';
+
+    // Rutas típicas para Descargas en Android.
+    final candidates = <String>[
+      '/storage/emulated/0/Download',
+      '/sdcard/Download',
+    ];
+
+    File? lastAttempt;
+    Object? lastError;
+
+    for (final dirPath in candidates) {
+      try {
+        final dir = Directory(dirPath);
+        if (!await dir.exists()) continue;
+        final dest = File(p.join(dir.path, fileName));
+        await dest.writeAsBytes(await src.readAsBytes(), flush: true);
+        return dest;
+      } catch (e) {
+        lastError = e;
+        lastAttempt = File(p.join(dirPath, fileName));
+      }
+    }
+
+    throw Exception(
+      'No pude exportar a Descargas. ${lastAttempt != null ? 'Intenté: ${lastAttempt.path}. ' : ''}'
+      'Sugerencia: usa “Compartir backup”. Error: $lastError',
+    );
+  }
+
   /// Guarda la lista completa en JSON (incluye `favorite`).
   static Future<void> saveListNow() async {
     final vinyls = await VinylDb.instance.getAll();

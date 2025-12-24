@@ -204,6 +204,8 @@ if (oldV < 9) {
     int? id,
     String? artista,
     String? album,
+    int? numero,
+    String? mbid,
   }) async {
     final d = await db;
     final fav01 = favorite ? 1 : 0;
@@ -233,7 +235,73 @@ if (oldV < 9) {
       if (changed > 0) return;
     }
 
+
+    // 3) Fallback: por mbid (ReleaseGroupID) si existe (suele ser único)
+    if (mbid != null && mbid.trim().isNotEmpty) {
+      final key = mbid.trim();
+      final changed = await d.update(
+        'vinyls',
+        {'favorite': fav01},
+        where: 'TRIM(mbid) = TRIM(?)',
+        whereArgs: [key],
+      );
+      if (changed > 0) return;
+    }
+
+    // 4) Fallback: por número (colección). Útil si el mapa de UI trae id desincronizado.
+    if (numero != null && numero > 0) {
+      // Si tenemos artista/álbum, acotamos para evitar colisiones si existieran números repetidos.
+      final where = (artista != null && album != null)
+          ? 'numero = ? AND LOWER(TRIM(artista))=LOWER(TRIM(?)) AND LOWER(TRIM(album))=LOWER(TRIM(?))'
+          : 'numero = ?';
+      final args = (artista != null && album != null)
+          ? [numero, artista.trim(), album.trim()]
+          : [numero];
+
+      final changed = await d.update(
+        'vinyls',
+        {'favorite': fav01},
+        where: where,
+        whereArgs: args,
+      );
+      if (changed > 0) return;
+    }
+
     throw Exception('No se pudo actualizar favorito (0 filas afectadas).');
+  }
+
+  /// ✅ Actualización estricta por ID.
+  ///
+  /// Esto es útil cuando la UI está mostrando una fila concreta (por ejemplo,
+  /// en la pantalla de Favoritos). Evita que un fallback actualice otra fila
+  /// distinta y deje el vinilo “pegado” en Favoritos.
+  Future<void> setFavoriteStrictById({
+    required int id,
+    required bool favorite,
+  }) async {
+    final d = await db;
+    final fav01 = favorite ? 1 : 0;
+
+    // Hacemos el UPDATE y luego verificamos el valor real guardado.
+    await d.rawUpdate(
+      'UPDATE vinyls SET favorite = ? WHERE id = ?',
+      [fav01, id],
+    );
+
+    final rows = await d.query(
+      'vinyls',
+      columns: ['favorite'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) throw Exception('Vinilo no encontrado.');
+
+    final v = rows.first['favorite'];
+    final saved = (v == 1 || v == true || v == '1' || v == 'true' || v == 'TRUE');
+    if (saved != favorite) {
+      throw Exception('No se pudo persistir favorito.');
+    }
   }
 
   /// Compat: firma antigua usada en varias pantallas.

@@ -322,7 +322,34 @@ Future<void> _loadViewMode() async {
 
   Future<void> _toggleFavorite(Map<String, dynamic> v) async {
     final id = _asInt(v['id']);
-    if (id <= 0) return;
+    if (id <= 0) {
+      // Si por algún motivo no hay ID, intentamos igualmente con fallback.
+      // (Evita que la UI marque ⭐ pero no persista nada.)
+      final current = _isFav(v);
+      final next = !current;
+      setState(() {
+        v['favorite'] = next ? 1 : 0;
+      });
+      try {
+        await VinylDb.instance.setFavoriteSafe(
+          id: null,
+          artista: (v['artista'] ?? '').toString(),
+          album: (v['album'] ?? '').toString(),
+          numero: _asInt(v['numero']),
+          mbid: (v['mbid'] ?? '').toString(),
+          favorite: next,
+        );
+        await BackupService.autoSaveIfEnabled();
+        await _refreshHomeCounts();
+        if (!mounted) return;
+        setState(() => _reloadTick++);
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _reloadTick++);
+        snack('Error actualizando favorito.');
+      }
+      return;
+    }
 
     final current = _isFav(v);
     final next = !current;
@@ -334,12 +361,29 @@ Future<void> _loadViewMode() async {
     });
 
     try {
-      await VinylDb.instance.setFavoriteSafe(
-        id: id,
-        artista: (v['artista'] ?? '').toString(),
-        album: (v['album'] ?? '').toString(),
-        favorite: next,
-      );
+      // ✅ Si estamos en la vista Favoritos, actualizamos ESTRICTO por ID.
+      // Esto evita el bug: “se desmarca ⭐ pero no se sale de Favoritos”.
+      if (vista == Vista.favoritos) {
+        await VinylDb.instance.setFavoriteStrictById(id: id, favorite: next);
+      } else {
+        // ✅ 1) Intento estricto por ID.
+        try {
+          await VinylDb.instance.setFavoriteStrictById(id: id, favorite: next);
+        } catch (_) {
+          // ✅ 2) Fallback robusto si el ID no calza por algún motivo.
+          await VinylDb.instance.setFavoriteSafe(
+            id: id,
+            artista: (v['artista'] ?? '').toString(),
+            album: (v['album'] ?? '').toString(),
+            numero: _asInt(v['numero']),
+            mbid: (v['mbid'] ?? '').toString(),
+            favorite: next,
+          );
+        }
+      }
+
+      // Limpia cache local para no “enmascarar” el estado real de DB en Favoritos.
+      _favCache.remove(id);
       await BackupService.autoSaveIfEnabled();
       // refresca contadores (inicio)
       await _refreshHomeCounts();
@@ -384,23 +428,23 @@ Future<void> _loadViewMode() async {
 
   /// Badge para el número de orden (NO editable).
   /// Se apoya en el ColorScheme para que se vea bien en todos los temas.
-  Widget _numeroBadge(BuildContext context, dynamic numero, {bool compact = false}) {
+  Widget _numeroBadge(BuildContext context, dynamic numero, {bool compact = false, bool micro = false}) {
     final scheme = Theme.of(context).colorScheme;
     final txt = (numero ?? '').toString().trim();
 
     // En grid/overlays queremos que NO tape la carátula.
     // En lista puede ir un pelín más grande, pero igual compacto.
-    final padH = compact ? 6.0 : 7.0;
-    final padV = compact ? 2.0 : 3.0;
-    final fontSize = compact ? 10.0 : 11.0;
-    final radius = compact ? 6.0 : 7.0;
+    final padH = micro ? 5.0 : (compact ? 6.0 : 7.0);
+    final padV = micro ? 1.5 : (compact ? 2.0 : 3.0);
+    final fontSize = micro ? 9.0 : (compact ? 10.0 : 11.0);
+    final radius = micro ? 5.0 : (compact ? 6.0 : 7.0);
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
-      constraints: const BoxConstraints(minWidth: 22, minHeight: 18),
+      constraints: BoxConstraints(minWidth: micro ? 18 : 22, minHeight: micro ? 16 : 18),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: scheme.primaryContainer.withOpacity(0.92),
+        color: scheme.primaryContainer.withOpacity(micro ? 0.88 : 0.92),
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.8)),
       ),
@@ -527,10 +571,11 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   Text(
-                    album,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                          album,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
                   const SizedBox(height: 4),
                   Text(year.isEmpty ? '—' : year),
                 ],
@@ -1133,7 +1178,7 @@ Widget recentGrid() {
               crossAxisCount: 2,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: 1.05,
+              childAspectRatio: 0.92,
             ),
             itemBuilder: (_, i) {
               final v = top[i];
@@ -1143,40 +1188,58 @@ Widget recentGrid() {
 
               return InkWell(
                 onTap: () => _openDetail(v),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(18),
                 child: Card(
                   clipBehavior: Clip.antiAlias,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: _gridCover(v),
-                          ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            Positioned.fill(child: _gridCover(v)),
+
+                            // 🔢 número (compacto, no tapa la carátula)
+                            Positioned(
+                              right: 6,
+                              top: 6,
+                              child: _numeroBadge(context, v['numero'], compact: true),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          artista.isEmpty ? '—' : artista,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              artista.isEmpty ? '—' : artista,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: (Theme.of(context).textTheme.labelMedium ?? const TextStyle(fontSize: 12))
+                                  .copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              album.isEmpty ? '—' : album,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: (Theme.of(context).textTheme.bodySmall ?? const TextStyle(fontSize: 12))
+                                  .copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              year.isEmpty ? '—' : year,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: (Theme.of(context).textTheme.labelSmall ?? const TextStyle(fontSize: 11))
+                                  .copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            ),
+                          ],
                         ),
-                        Text(
-                          album.isEmpty ? '—' : album,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          year.isEmpty ? '—' : year,
-                          style: const TextStyle(color: Color(0xFFA7A7A7), fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -2061,49 +2124,87 @@ if (items.isEmpty) {
           itemBuilder: (context, i) {
             final v = items[i];
             final fav = _isFav(v);
+            final artista = ((v['artista'] ?? '').toString().trim());
+            final album = ((v['album'] ?? '').toString().trim());
+            final year = ((v['year'] ?? '').toString().trim());
+            final genre = ((v['genre'] ?? '').toString().trim());
 
             return GestureDetector(
               onTap: () => _openDetail(v),
               child: Card(
-                child: Stack(
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // 🖼️ Carátula: ocupa toda la parte superior de la card (sin padding).
+                    Expanded(
+                      child: _gridCover(v),
+                    ),
+
+                    // Texto compacto: Artista / Álbum / Año / Género
                     Padding(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 🖼️ Carátula protagonista en grid
-Expanded(
-  child: ClipRRect(
-    borderRadius: BorderRadius.circular(12),
-    child: _gridCover(v),
-  ),
-),
-const SizedBox(height: 10),
-Text(
-  ((v['album'] ?? '').toString().trim().isEmpty ? '—' : (v['album'] ?? '').toString()),
-  maxLines: 2,
-  overflow: TextOverflow.ellipsis,
-  style: Theme.of(context)
-      .textTheme
-      .titleSmall
-      ?.copyWith(fontWeight: FontWeight.w800),
-),
-const SizedBox(height: 4),
-Text(
-  ((v['artista'] ?? '').toString().trim().isEmpty ? '—' : (v['artista'] ?? '').toString()),
-  maxLines: 1,
-  overflow: TextOverflow.ellipsis,
-  style: Theme.of(context)
-      .textTheme
-      .bodyMedium
-      ?.copyWith(fontWeight: FontWeight.w700),
-),
-const SizedBox(height: 8),
-
+                          Text(
+                            artista.isEmpty ? '—' : artista,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            album.isEmpty ? '—' : album,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
                             children: [
+                              Expanded(
+                                child: Text(
+                                  'Año: ${year.isEmpty ? '—' : year}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              // 🔢 Número: va en el bloque de texto (no tapa la carátula)
+                              _numeroBadge(context, v['numero'], micro: true),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Género: ${genre.isEmpty ? '—' : genre}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Acciones (compactas)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
                           if (!conBorrar)
                             IconButton(
                               tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
@@ -2111,6 +2212,8 @@ const SizedBox(height: 8),
                                 fav ? Icons.star : Icons.star_border,
                                 color: fav ? Colors.amber : Colors.grey,
                               ),
+                              visualDensity: VisualDensity.compact,
+                              iconSize: 20,
                               onPressed: () => _toggleFavorite(v),
                             ),
 
@@ -2119,6 +2222,8 @@ const SizedBox(height: 8),
                             IconButton(
                               tooltip: 'Enviar a papelera',
                               icon: const Icon(Icons.delete_outline),
+                              visualDensity: VisualDensity.compact,
+                              iconSize: 20,
                               onPressed: () async {
                                 final id = _asInt(v['id']);
                                 if (id == 0) return;
@@ -2136,6 +2241,8 @@ const SizedBox(height: 8),
                             IconButton(
                               tooltip: 'Recuperar a Vinilos',
                               icon: const Icon(Icons.restore),
+                              visualDensity: VisualDensity.compact,
+                              iconSize: 20,
                               onPressed: () async {
                                 final trashId = _asInt(v['id']);
                                 if (trashId == 0) return;
@@ -2150,6 +2257,8 @@ const SizedBox(height: 8),
                             IconButton(
                               tooltip: 'Eliminar definitivo',
                               icon: const Icon(Icons.delete_forever),
+                              visualDensity: VisualDensity.compact,
+                              iconSize: 20,
                               onPressed: () async {
                                 final trashId = _asInt(v['id']);
                                 if (trashId == 0) return;
@@ -2161,17 +2270,8 @@ const SizedBox(height: 8),
                               },
                             ),
                           ],
-                            ],
-                          ),
                         ],
                       ),
-                    ),
-
-                    // 🔢 Número arriba derecha (orden de colección)
-                    Positioned(
-                      right: 6,
-                      top: 6,
-                      child: _numeroBadge(context, v['numero'], compact: true),
                     ),
                   ],
                 ),
@@ -2203,7 +2303,7 @@ const SizedBox(height: 8),
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: ListTile(
               onTap: () => _openDetail(v),
-              leading: _leadingCover(v, size: 72),
+              leading: _leadingCover(v, size: 92),
 	              // 🎚️ Ajuste visual: carátula grande + texto (álbum) más contenido
 	              title: Row(
 	                children: [
@@ -2227,7 +2327,7 @@ const SizedBox(height: 8),
 	                          artista,
 	                          maxLines: 1,
 	                          overflow: TextOverflow.ellipsis,
-	                          style: Theme.of(context).textTheme.bodySmall,
+	                          style: Theme.of(context).textTheme.labelMedium,
 	                        ),
 	                      ],
 	                    ),
@@ -2236,8 +2336,8 @@ const SizedBox(height: 8),
 	              ),
               subtitle: Text(
                 'Año: ${(year == null || year.isEmpty) ? '—' : year}  •  '
-                'Género: ${(genre == null || genre.isEmpty) ? '—' : genre}  •  '
-                'País: ${(country == null || country.isEmpty) ? '—' : country}',
+                'Género: ${(genre == null || genre.isEmpty) ? '—' : genre}',
+                style: Theme.of(context).textTheme.labelSmall,
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,

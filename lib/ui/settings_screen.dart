@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cross_file/cross_file.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../services/backup_service.dart';
 import '../services/app_theme_service.dart';
@@ -84,6 +86,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _exportarDescargas() async {
+    try {
+      final f = await BackupService.exportToDownloads();
+      _snack('Exportado a Descargas ✅\n${f.path}');
+    } catch (e) {
+      _snack('No se pudo exportar: $e');
+    }
+  }
+
+  Future<void> _compartirBackup() async {
+    try {
+      final f = await BackupService.getLocalBackupFile(ensureLatest: true);
+      await Share.shareXFiles(
+        [XFile(f.path)],
+        text: 'Respaldo de mi colección (GaBoLP)',
+        subject: 'Backup GaBoLP',
+      );
+    } catch (e) {
+      _snack('No se pudo compartir: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeName = _themeLabels[_theme] ?? 'Vinyl Pro';
@@ -104,6 +128,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: const Text('Guardar lista'),
                         subtitle: const Text('Crea/actualiza un respaldo local (JSON).'),
                         onTap: _guardar,
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.download_for_offline_outlined),
+                        title: const Text('Exportar a Descargas'),
+                        subtitle: const Text('Copia el respaldo a /Download (para no perderlo al desinstalar).'),
+                        onTap: _exportarDescargas,
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.share_outlined),
+                        title: const Text('Compartir backup'),
+                        subtitle: const Text('Enviar a Google Drive / WhatsApp / correo.'),
+                        onTap: _compartirBackup,
                       ),
                       const Divider(height: 1),
                       ListTile(
