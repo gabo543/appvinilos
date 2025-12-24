@@ -355,6 +355,8 @@ Future<void> _loadViewMode() async {
     final next = !current;
 
     // ✅ UI instantáneo (optimista)
+    // Guardamos el estado en _favCache para que el cambio se vea *al instante*
+    // tanto en lista como en grid y (en Favoritos) desaparezca inmediatamente.
     setState(() {
       _favCache[id] = next;
       v['favorite'] = next ? 1 : 0;
@@ -382,8 +384,38 @@ Future<void> _loadViewMode() async {
         }
       }
 
-      // Limpia cache local para no “enmascarar” el estado real de DB en Favoritos.
-      _favCache.remove(id);
+
+      // ✅ Verificación extra: asegurar que ESTE vinilo (por artista+álbum) quedó persistido.
+      // Esto evita el caso raro en que el mapa de UI trae un ID desincronizado y se actualiza otra fila.
+      if (vista != Vista.favoritos) {
+        final a = (v['artista'] ?? '').toString();
+        final al = (v['album'] ?? '').toString();
+        if (a.trim().isNotEmpty && al.trim().isNotEmpty) {
+          final exact = await VinylDb.instance.findByExact(artista: a, album: al);
+          if (exact != null) {
+            final rawFav = exact['favorite'];
+            final savedFav =
+                (rawFav == 1 || rawFav == true || rawFav == '1' || rawFav == 'true' || rawFav == 'TRUE');
+            if (savedFav != next) {
+              // Corrige por match exacto.
+              await VinylDb.instance.setFavoriteSafe(
+                id: _asInt(exact['id']),
+                artista: a,
+                album: al,
+                numero: _asInt(exact['numero']),
+                mbid: (exact['mbid'] ?? '').toString(),
+                favorite: next,
+              );
+            }
+          }
+        }
+      }
+
+      // ⚡ Importante: NO borramos _favCache aquí.
+      // Si lo borramos antes de que el FutureBuilder termine de recargar,
+      // puede ocurrir un "parpadeo" donde el item reaparece (porque la lista
+      // aún trae favorite=1 desde el snapshot viejo). Mantener el cache
+      // garantiza toggle instantáneo y estable.
       await BackupService.autoSaveIfEnabled();
       // refresca contadores (inicio)
       await _refreshHomeCounts();
@@ -2084,7 +2116,10 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
         );
       }
       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-      final items = snap.data ?? const <Map<String, dynamic>>[];
+      final rawItems = snap.data ?? const <Map<String, dynamic>>[];
+      // En Favoritos filtramos por el estado real (DB + cache) para que al desmarcar ⭐
+      // el item desaparezca al instante, incluso si el FutureBuilder aún muestra datos antiguos.
+      final items = onlyFavorites ? rawItems.where(_isFav).toList() : rawItems;
 
       
 if (items.isEmpty) {
