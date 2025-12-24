@@ -29,6 +29,57 @@ class _WishlistScreenState extends State<WishlistScreen> {
     });
   }
 
+  /// Badge de estado para Wishlist (se ve bien tanto en tema claro como oscuro).
+  Widget _statusChip(BuildContext context, String status) {
+    final s = status.trim().toLowerCase();
+    final scheme = Theme.of(context).colorScheme;
+
+    Color bg;
+    Color fg;
+    IconData icon;
+
+    if (s.contains('busc')) {
+      // Buscando
+      bg = scheme.secondaryContainer;
+      fg = scheme.onSecondaryContainer;
+      icon = Icons.search;
+    } else if (s.contains('compr')) {
+      // Por comprar / Comprar
+      bg = scheme.tertiaryContainer;
+      fg = scheme.onTertiaryContainer;
+      icon = Icons.shopping_cart_outlined;
+    } else if (s.contains('esper') || s.contains('pend') || s.contains('en lista')) {
+      // En espera / Pendiente
+      bg = scheme.primaryContainer;
+      fg = scheme.onPrimaryContainer;
+      icon = Icons.hourglass_bottom;
+    } else {
+      bg = scheme.surfaceVariant;
+      fg = scheme.onSurfaceVariant;
+      icon = Icons.bookmark_border;
+    }
+
+    final textStyle = (Theme.of(context).textTheme.labelMedium ?? const TextStyle())
+        .copyWith(color: fg, fontWeight: FontWeight.w800);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 6),
+          Text(status, style: textStyle),
+        ],
+      ),
+    );
+  }
+
   
 
 Future<Map<String, String>?> _askConditionAndFormat() async {
@@ -261,12 +312,10 @@ void _snack(String t) {
                     ),
                     if (status.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          status,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _statusChip(context, status),
                         ),
                       ),
                   ],

@@ -193,14 +193,49 @@ if (oldV < 9) {
     );
   }
 
-  Future<void> setFavorite({required int id, required bool favorite}) async {
+  /// Marca/Desmarca favorito.
+  ///
+  /// ✅ Ruta principal: actualiza por `id`.
+  /// ✅ Fallback: si el `id` no actualiza ninguna fila (por alguna
+  /// razón rara del mapa/estado), intenta por artista+álbum.
+  ///
+  /// Esto arregla casos donde la UI tiene un mapa sin `id` correcto,
+  /// pero sí tiene el par (artista, album).
+  Future<void> setFavoriteSafe({
+    required bool favorite,
+    int? id,
+    String? artista,
+    String? album,
+  }) async {
     final d = await db;
-    await d.update(
-      'vinyls',
-      {'favorite': favorite ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final fav01 = favorite ? 1 : 0;
+
+    int changed = 0;
+    final safeId = id ?? 0;
+    if (safeId > 0) {
+      changed = await d.update(
+        'vinyls',
+        {'favorite': fav01},
+        where: 'id = ?',
+        whereArgs: [safeId],
+      );
+    }
+
+    if (changed == 0 && artista != null && album != null) {
+      final a = artista.trim().toLowerCase();
+      final al = album.trim().toLowerCase();
+      await d.update(
+        'vinyls',
+        {'favorite': fav01},
+        where: 'LOWER(artista)=? AND LOWER(album)=?',
+        whereArgs: [a, al],
+      );
+    }
+  }
+
+  /// Compat: firma antigua usada en varias pantallas.
+  Future<void> setFavorite({required int id, required bool favorite}) async {
+    await setFavoriteSafe(favorite: favorite, id: id);
   }
 
   Future<Map<String, dynamic>?> findByExact({

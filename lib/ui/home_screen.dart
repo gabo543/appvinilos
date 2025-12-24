@@ -36,6 +36,61 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+/// Logo tipo “rombo con líneas”, usado como marca en el header.
+///
+/// Se dibuja con `CustomPaint` para no depender de assets extra y para
+/// adaptarse automáticamente al color del tema.
+class _DiamondLogoPainter extends CustomPainter {
+  final Color color;
+  const _DiamondLogoPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final center = Offset(size.width / 2, size.height / 2);
+    final r = s * 0.46;
+
+    final outline = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (s * 0.12).clamp(1.2, 2.4)
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final diamond = Path()
+      ..moveTo(center.dx, center.dy - r)
+      ..lineTo(center.dx + r, center.dy)
+      ..lineTo(center.dx, center.dy + r)
+      ..lineTo(center.dx - r, center.dy)
+      ..close();
+
+    canvas.drawPath(diamond, outline);
+
+    // Líneas internas diagonales (3 trazos), estilo “rombo con líneas”.
+    final lines = Paint()
+      ..color = color.withOpacity(0.90)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (s * 0.10).clamp(1.0, 2.0)
+      ..strokeCap = StrokeCap.round;
+
+    // Direcciones normalizadas para diagonales.
+    const dir = Offset(1, -1);
+    const perp = Offset(1, 1);
+    final dirN = dir / dir.distance;
+    final perpN = perp / perp.distance;
+
+    for (final t in const [-0.18, 0.0, 0.18]) {
+      final shift = perpN * (t * r * 1.10);
+      final a = center + shift - dirN * (r * 0.55);
+      final b = center + shift + dirN * (r * 0.55);
+      canvas.drawLine(a, b, lines);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DiamondLogoPainter oldDelegate) => oldDelegate.color != color;
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   // ⭐ Cache local para favoritos (cambio instantáneo)
   final Map<int, bool> _favCache = {};
@@ -281,7 +336,12 @@ Future<void> _loadViewMode() async {
     });
 
     try {
-      await VinylDb.instance.setFavorite(id: id, favorite: next);
+      await VinylDb.instance.setFavoriteSafe(
+        id: id,
+        artista: (v['artista'] ?? '').toString(),
+        album: (v['album'] ?? '').toString(),
+        favorite: next,
+      );
       await BackupService.autoSaveIfEnabled();
       // refresca contadores (inicio)
       await _refreshHomeCounts();
@@ -320,59 +380,76 @@ Future<void> _loadViewMode() async {
 
   /// Badge para el número de orden (NO editable).
   /// Se apoya en el ColorScheme para que se vea bien en todos los temas.
-  Widget _numeroBadge(BuildContext context, dynamic numero) {
+  Widget _numeroBadge(BuildContext context, dynamic numero, {bool compact = false}) {
     final scheme = Theme.of(context).colorScheme;
+    final txt = (numero ?? '').toString().trim();
+
+    // En grid/overlays queremos que NO tape la carátula.
+    // En lista puede ir un pelín más grande, pero igual compacto.
+    final padH = compact ? 6.0 : 7.0;
+    final padV = compact ? 2.0 : 3.0;
+    final fontSize = compact ? 10.0 : 11.0;
+    final radius = compact ? 6.0 : 7.0;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 18),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: scheme.outlineVariant),
+        color: scheme.primaryContainer.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.8)),
       ),
       child: Text(
-        '${numero ?? ''}',
+        txt,
+        maxLines: 1,
+        overflow: TextOverflow.fade,
+        softWrap: false,
         style: TextStyle(
           color: scheme.onPrimaryContainer,
-          fontSize: 12,
+          fontSize: fontSize,
           fontWeight: FontWeight.w900,
+          height: 1.0,
           letterSpacing: 0.2,
         ),
       ),
     );
   }
 
-  Widget _leadingCover(Map<String, dynamic> v) {
+  Widget _leadingCover(Map<String, dynamic> v, {double size = 56}) {
     final cp = (v['coverPath'] as String?)?.trim() ?? '';
 
 if (cp.startsWith('http://') || cp.startsWith('https://')) {
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(8),
-    child: Image.network(
-      cp,
-      width: 48,
-      height: 48,
-      fit: BoxFit.cover,
-      cacheWidth: 96,
-      cacheHeight: 96,
-      errorBuilder: (_, __, ___) => const Icon(Icons.album),
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-      },
-    ),
-  );
+	  final cache = (size * 2).round().clamp(64, 512);
+	  return ClipRRect(
+	    borderRadius: BorderRadius.circular(8),
+	    child: Image.network(
+	      cp,
+	      width: size,
+	      height: size,
+	      fit: BoxFit.cover,
+	      cacheWidth: cache,
+	      cacheHeight: cache,
+	      errorBuilder: (_, __, ___) => const Icon(Icons.album),
+	      loadingBuilder: (context, child, progress) {
+	        if (progress == null) return child;
+	        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+	      },
+	    ),
+	  );
 }
     if (cp.isNotEmpty && _fileExistsCached(cp)) {
       final f = File(cp);
+      final cache = (size * 2).round().clamp(64, 512);
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Image.file(
           f,
-          width: 48,
-          height: 48,
+          width: size,
+          height: size,
           fit: BoxFit.cover,
-          cacheWidth: 96,
-          cacheHeight: 96,
+          cacheWidth: cache,
+          cacheHeight: cache,
         ),
       );
     }
@@ -458,9 +535,9 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 
             // 🔢 número arriba derecha
             Positioned(
-              right: 8,
-              top: 8,
-              child: _numeroBadge(context, v['numero']),
+              right: 6,
+              top: 6,
+              child: _numeroBadge(context, v['numero'], compact: true),
             ),
 
             // ⭐ Favoritos abajo derecha (lista grid + favoritos grid)
@@ -491,9 +568,13 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                   icon: const Icon(Icons.delete),
                   onPressed: () async {
                     final id = _asInt(v['id']);
-                        if (id == 0) return;
-                        await VinylDb.instance.deleteById(id);
+                    if (id == 0) return;
+
+                    await VinylDb.instance.deleteById(id);
                     await BackupService.autoSaveIfEnabled();
+
+                    // Si el usuario salió de la pantalla mientras esperaba, evitamos setState/snack.
+                    if (!mounted) return;
                     snack('Borrado');
                     _reloadAllData();
                   },
@@ -761,41 +842,80 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     // Mantiene EXACTAMENTE la misma lógica/callbacks.
 
     final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final isDark = t.brightness == Brightness.dark;
 
     // ✅ Contadores (ya calculados en _homeCounts)
     final all = _homeCounts['all'] ?? 0;
     final fav = _homeCounts['fav'] ?? 0;
     final wish = _homeCounts['wish'] ?? 0;
 
-Widget _statPill({required String label, required int value}) {
+	Widget _statPill({required String label, required int value}) {
+  final pillBg = isDark ? const Color(0xFF0F0F0F) : cs.surface;
+  final pillBorder = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
+  final labelColor = cs.onSurface.withOpacity(isDark ? 0.78 : 0.72);
+
+  final badgeBg = isDark ? Colors.black : cs.primary;
+  final badgeFg = isDark ? Colors.white : cs.onPrimary;
+
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
     decoration: BoxDecoration(
-      color: const Color(0xFF0F0F0F),
+      color: pillBg,
       borderRadius: BorderRadius.circular(999),
-      border: Border.all(color: const Color(0xFF2A2A2A)),
+      border: Border.all(color: pillBorder),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w800, fontSize: 12)),
+        Text(label, style: TextStyle(color: labelColor, fontWeight: FontWeight.w800, fontSize: 12)),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.black,
+            color: badgeBg,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFF2A2A2A)),
+            border: Border.all(color: pillBorder),
           ),
           child: Text(
             '$value',
-            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900),
+            style: TextStyle(color: badgeFg, fontSize: 11, fontWeight: FontWeight.w900),
           ),
         ),
       ],
     ),
   );
 }
+
+	Widget _topNavPill({required String label, required VoidCallback onTap}) {
+	  final bg = isDark ? const Color(0xFF0F0F0F) : cs.surface;
+	  final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
+	  final fg = cs.onSurface;
+	  return InkWell(
+	    onTap: onTap,
+	    borderRadius: BorderRadius.circular(14),
+	    child: Container(
+	      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+	      decoration: BoxDecoration(
+	        color: bg,
+	        borderRadius: BorderRadius.circular(14),
+	        border: Border.all(color: border),
+	      ),
+	      child: Center(
+	        child: Text(
+	          label,
+	          maxLines: 1,
+	          overflow: TextOverflow.ellipsis,
+	          style: t.textTheme.labelLarge?.copyWith(
+	            fontWeight: FontWeight.w900,
+	            letterSpacing: -0.2,
+	            color: fg,
+	          ),
+	        ),
+	      ),
+	    ),
+	  );
+	}
 
 Widget sectionTitle(String title, {String? subtitle}) {
       return Padding(
@@ -808,7 +928,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
+                style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w600),
               ),
             ]
           ],
@@ -817,15 +937,20 @@ Widget sectionTitle(String title, {String? subtitle}) {
     }
 
     Widget quickAction({required IconData icon, required String label, required VoidCallback onTap}) {
+      final bg = isDark ? const Color(0xFF111111) : cs.surface;
+      final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
+      final fg = cs.onSurface;
+
       return ActionChip(
         onPressed: onTap,
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
-        avatar: Icon(icon, size: 18),
-        backgroundColor: const Color(0xFF111111),
-        side: const BorderSide(color: Color(0xFF2A2A2A)),
+        label: Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: fg)),
+        avatar: Icon(icon, size: 18, color: fg),
+        backgroundColor: bg,
+        side: BorderSide(color: border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       );
     }
+
 
     
     Widget menuRow({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
@@ -924,9 +1049,9 @@ Widget sectionTitle(String title, {String? subtitle}) {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F0F0F),
+                    color: isDark ? const Color(0xFF0F0F0F) : cs.surface,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFF2A2A2A)),
+                    border: Border.all(color: cs.outline.withOpacity(isDark ? 0.90 : 1.00)),
                   ),
                   child: Icon(icon, size: 22, color: t.colorScheme.onSurface),
                 ),
@@ -939,7 +1064,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFFA7A7A7)),
+                        style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -947,7 +1072,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.chevron_right, size: 20, color: Color(0xFFA7A7A7)),
+                Icon(Icons.chevron_right, size: 20, color: cs.onSurface.withOpacity(0.55)),
               ],
             ),
           ),
@@ -1058,57 +1183,93 @@ Container(
   padding: const EdgeInsets.all(16),
   decoration: BoxDecoration(
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: const Color(0xFF2A2A2A)),
-    gradient: const LinearGradient(
+    border: Border.all(color: cs.outline.withOpacity(isDark ? 0.90 : 1.00)),
+    gradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [
-        Color(0xFF1A1A1A),
-        Color(0xFF0F0F0F),
-      ],
+      colors: isDark
+          ? const [Color(0xFF1A1A1A), Color(0xFF0F0F0F)]
+          : const [Color(0xFFFFFFFF), Color(0xFFF1F1F1)],
     ),
   ),
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F0F0F),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
-            ),
-            child: const Icon(Icons.graphic_eq, size: 22, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-	          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('GaBoLP', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3)),
-                const SizedBox(height: 4),
-                Text(
-                  'Colección • favoritos • deseos',
-                  style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFFA7A7A7), fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-          ),
-	          const SizedBox(width: 8),
+	      Row(
+	        children: [
+	          // Marca pequeña en una esquina
+	          Row(
+	            mainAxisSize: MainAxisSize.min,
+	            children: [
+	              SizedBox(
+	                width: 16,
+	                height: 16,
+	                child: CustomPaint(
+	                  painter: _DiamondLogoPainter(
+	                    cs.onSurface.withOpacity(isDark ? 0.92 : 0.85),
+	                  ),
+	                ),
+	              ),
+	              const SizedBox(width: 6),
+	              Text(
+	                'GaBoLP',
+	                style: t.textTheme.labelLarge?.copyWith(
+	                  fontWeight: FontWeight.w900,
+	                  letterSpacing: -0.2,
+	                  color: cs.onSurface.withOpacity(isDark ? 0.92 : 0.85),
+	                ),
+	              ),
+	            ],
+	          ),
+	          const Spacer(),
 	          IconButton(
 	            tooltip: 'Actualizar',
-	            onPressed: () {
-	              _reloadAllData();
-	            },
-	            icon: const Icon(Icons.refresh, color: Colors.white),
+	            onPressed: _reloadAllData,
+	            icon: Icon(Icons.refresh, color: cs.onSurface),
 	          ),
-        ],
-      ),
-      const SizedBox(height: 12),
+	        ],
+	      ),
+	      const SizedBox(height: 10),
+	
+	      // Navegación principal en una sola línea
+	      Row(
+	        children: [
+	          Expanded(
+	            child: _topNavPill(
+	              label: 'Colección',
+	              onTap: () {
+	                _reloadAllData();
+	                if (!mounted) return;
+	                setState(() => vista = Vista.lista);
+	              },
+	            ),
+	          ),
+	          const SizedBox(width: 8),
+	          Expanded(
+	            child: _topNavPill(
+	              label: 'Favoritos',
+	              onTap: () {
+	                _reloadAllData();
+	                if (!mounted) return;
+	                setState(() => vista = Vista.favoritos);
+	              },
+	            ),
+	          ),
+	          const SizedBox(width: 8),
+	          Expanded(
+	            child: _topNavPill(
+	              label: 'Deseos',
+	              onTap: () {
+	                Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen())).then((_) {
+	                  if (!mounted) return;
+	                  _reloadAllData();
+	                });
+	              },
+	            ),
+	          ),
+	        ],
+	      ),
+	      const SizedBox(height: 12),
 
       // mini stats
       Wrap(
@@ -1855,7 +2016,8 @@ if (items.isEmpty) {
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            childAspectRatio: 0.72,
+            // Un poco más vertical para dar protagonismo a la carátula
+            childAspectRatio: 0.68,
           ),
           itemCount: items.length,
           itemBuilder: (context, i) {
@@ -1872,26 +2034,35 @@ if (items.isEmpty) {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Center(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: _leadingCover(v),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            (v['album'] ?? '').toString(),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            (v['artista'] ?? '').toString(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const Spacer(),
+                          // 🖼️ Carátula protagonista en grid
+Expanded(
+  child: ClipRRect(
+    borderRadius: BorderRadius.circular(12),
+    child: _gridCover(v),
+  ),
+),
+const SizedBox(height: 10),
+Text(
+  ((v['album'] ?? '').toString().trim().isEmpty ? '—' : (v['album'] ?? '').toString()),
+  maxLines: 2,
+  overflow: TextOverflow.ellipsis,
+  style: Theme.of(context)
+      .textTheme
+      .titleSmall
+      ?.copyWith(fontWeight: FontWeight.w800),
+),
+const SizedBox(height: 4),
+Text(
+  ((v['artista'] ?? '').toString().trim().isEmpty ? '—' : (v['artista'] ?? '').toString()),
+  maxLines: 1,
+  overflow: TextOverflow.ellipsis,
+  style: Theme.of(context)
+      .textTheme
+      .bodyMedium
+      ?.copyWith(fontWeight: FontWeight.w700),
+),
+const SizedBox(height: 8),
+
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
@@ -1935,7 +2106,7 @@ if (items.isEmpty) {
                                 await _refreshHomeCounts();
                                 if (!mounted) return;
                                 setState(() => _reloadTick++);
-                                snack(ok ? 'Recuperado' : 'No se pudo recuperar (duplicado)');
+                                snack(ok ? 'Devuelto a Vinilos' : 'No se pudo devolver (duplicado)');
                               },
                             ),
                             IconButton(
@@ -1960,9 +2131,9 @@ if (items.isEmpty) {
 
                     // 🔢 Número arriba derecha (orden de colección)
                     Positioned(
-                      right: 8,
-                      top: 8,
-                      child: _numeroBadge(context, v['numero']),
+                      right: 6,
+                      top: 6,
+                      child: _numeroBadge(context, v['numero'], compact: true),
                     ),
                   ],
                 ),
@@ -1987,19 +2158,44 @@ if (items.isEmpty) {
           final year = (v['year'] as String?)?.trim();
           final genre = (v['genre'] as String?)?.trim();
           final country = (v['country'] as String?)?.trim();
+	          final artista = (v['artista'] ?? '').toString();
+	          final album = (v['album'] ?? '').toString();
 
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: ListTile(
               onTap: () => _openDetail(v),
-              leading: _leadingCover(v),
-              title: Row(
-                children: [
-                  _numeroBadge(context, v['numero']),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text('${v['artista']} — ${v['album']}')),
-                ],
-              ),
+              leading: _leadingCover(v, size: 72),
+	              // 🎚️ Ajuste visual: carátula grande + texto (álbum) más contenido
+	              title: Row(
+	                children: [
+	                  _numeroBadge(context, v['numero'], compact: true),
+	                  const SizedBox(width: 8),
+	                  Expanded(
+	                    child: Column(
+	                      crossAxisAlignment: CrossAxisAlignment.start,
+	                      children: [
+	                        Text(
+	                          album,
+	                          maxLines: 1,
+	                          overflow: TextOverflow.ellipsis,
+	                          style: Theme.of(context)
+	                              .textTheme
+	                              .titleMedium
+	                              ?.copyWith(fontWeight: FontWeight.w800),
+	                        ),
+	                        const SizedBox(height: 2),
+	                        Text(
+	                          artista,
+	                          maxLines: 1,
+	                          overflow: TextOverflow.ellipsis,
+	                          style: Theme.of(context).textTheme.bodySmall,
+	                        ),
+	                      ],
+	                    ),
+	                  ),
+	                ],
+	              ),
               subtitle: Text(
                 'Año: ${(year == null || year.isEmpty) ? '—' : year}  •  '
                 'Género: ${(genre == null || genre.isEmpty) ? '—' : genre}  •  '
@@ -2038,8 +2234,8 @@ if (items.isEmpty) {
                   // ♻️ Papelera: recuperar / eliminar definitivo
                   if (conBorrar && _borrarPapelera) ...[
                     IconButton(
-                      tooltip: 'Recuperar a Vinilos',
-                      icon: const Icon(Icons.restore),
+                      tooltip: 'Volver a Vinilos',
+                      icon: const Icon(Icons.add),
                       onPressed: () async {
                         final trashId = _asInt(v['id']);
                         if (trashId == 0) return;
@@ -2048,7 +2244,7 @@ if (items.isEmpty) {
                         await _refreshHomeCounts();
                         if (!mounted) return;
                         setState(() => _reloadTick++);
-                        snack(ok ? 'Recuperado' : 'No se pudo recuperar (duplicado)');
+                        snack(ok ? 'Devuelto a Vinilos' : 'No se pudo devolver (duplicado)');
                       },
                     ),
                     IconButton(

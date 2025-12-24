@@ -275,24 +275,38 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
 
 
   ThemeData _theme4() {
-    // Diseño 4: Pastel Citrus (claro, suave)
-    const bg = Color(0xFFF7F7F3);
-    const surf = Color(0xFFFFFFFF);
-    const accent = Color(0xFF2E7D32); // verde
-    const accent2 = Color(0xFFFFA000); // ámbar
+    // Diseño 4: Pastel Citrus (BRONCE / NEGRO / ROJO) — premium.
+    const bg = Color(0xFF070607); // negro
+    const surf = Color(0xFF121014); // negro cálido
+    const bronze = Color(0xFFB08D57); // bronce
+    const bronze2 = Color(0xFFD1B27C); // bronce claro
+    const red = Color(0xFFE53935); // rojo
+
+    final cs = ColorScheme.fromSeed(
+      seedColor: bronze,
+      brightness: Brightness.dark,
+    ).copyWith(
+      background: bg,
+      surface: surf,
+      primary: bronze,
+      onPrimary: const Color(0xFF0A0A0A),
+      secondary: red,
+      onSecondary: Colors.white,
+      tertiary: bronze2,
+      onTertiary: const Color(0xFF0A0A0A),
+      onSurface: const Color(0xFFF3EBDD),
+      onBackground: const Color(0xFFF3EBDD),
+      outline: const Color(0xFF2B2420),
+    );
 
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.light,
+      brightness: Brightness.dark,
+      colorScheme: cs,
       scaffoldBackgroundColor: bg,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: accent,
-        brightness: Brightness.light,
-        surface: surf,
-      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: bg,
-        foregroundColor: Colors.black,
+        foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
       ),
@@ -300,37 +314,65 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
         color: surf,
         elevation: 1,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: cs.outline),
+        ),
       ),
-      listTileTheme: const ListTileThemeData(iconColor: Colors.black87, textColor: Colors.black87),
-      iconTheme: const IconThemeData(color: Colors.black87, size: 22),
-      dividerColor: const Color(0xFFE6E6E6),
+      listTileTheme: ListTileThemeData(
+        iconColor: cs.onSurface,
+        textColor: cs.onSurface,
+      ),
+      iconTheme: IconThemeData(color: cs.onSurface, size: 22),
+      dividerColor: cs.outline,
       chipTheme: ChipThemeData(
-        backgroundColor: const Color(0xFFF0F0F0),
-        selectedColor: accent.withOpacity(0.18),
-        labelStyle: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
-        secondaryLabelStyle: const TextStyle(color: Colors.black87),
+        backgroundColor: const Color(0xFF1A171B),
+        selectedColor: bronze.withOpacity(0.22),
+        labelStyle: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
+        secondaryLabelStyle: TextStyle(color: cs.onSurface),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+        side: BorderSide(color: cs.outline),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: Colors.white,
+          backgroundColor: bronze,
+          foregroundColor: const Color(0xFF0A0A0A),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.black87,
-          side: const BorderSide(color: Color(0xFFCCCCCC)),
+          foregroundColor: cs.onSurface,
+          side: BorderSide(color: cs.outline),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: accent2,
-        foregroundColor: Colors.black,
+        backgroundColor: red,
+        foregroundColor: Colors.white,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: const Color(0xFF1A171B),
+        contentTextStyle: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
+        actionTextColor: bronze2,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF161318),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: cs.outline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: bronze, width: 1.4),
+        ),
+        labelStyle: TextStyle(color: cs.onSurface.withOpacity(0.75)),
       ),
     );
   }
@@ -646,7 +688,10 @@ headlineSmall: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.2, 
 
 ThemeData _applyTextIntensity(ThemeData base, int level) {
     // level: 1..10 (más niveles = más contraste)
-    final isDark = base.brightness == Brightness.dark;
+    // ✅ No dependemos solo de ThemeData.brightness, porque el usuario puede
+    // cambiar el fondo (1..10) hacia claro/oscuro. Usamos luminancia real.
+    final bg = base.scaffoldBackgroundColor;
+    final isDark = bg.computeLuminance() < 0.42;
     final idx = level.clamp(1, 10);
     final tRaw = (idx - 1) / 9.0; // 0..1
     final t = Curves.easeOutCubic.transform(tRaw);
@@ -676,28 +721,69 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
   }
 
   ThemeData _applyBackgroundLevel(ThemeData base, int level) {
-    // level: 1..10
+    // ✅ "Fondo" debe notarse: controla un *Surface Palette* (fondo + cards + variant)
+    // en una escala suave: blanco cálido -> gris -> violeta suave -> petróleo -> negro.
     final idx = level.clamp(1, 10);
-    final isDark = base.brightness == Brightness.dark;
-
-    // 1 = base, 10 = más contraste entre fondo/superficie
     final tRaw = (idx - 1) / 9.0;
     final t = Curves.easeOutCubic.transform(tRaw);
-    final bgBase = base.scaffoldBackgroundColor;
-    final bgTarget = isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F2);
-    final bg = Color.lerp(bgBase, bgTarget, t * 0.9) ?? bgBase;
+
+    const warmWhite = Color(0xFFF8F6F2); // no muy blanco
+    const softGray = Color(0xFFE9E9EE);
+    const softViolet = Color(0xFFEDE6FA); // violeta MUY suave
+    const petroleum = Color(0xFF121A1D); // negro medio petróleo
+    const deepBlack = Color(0xFF050607); // negro
+
+    Color lerp(Color a, Color b, double tt) => Color.lerp(a, b, tt) ?? a;
+
+    // Interpolación por tramos para que el violeta se note en el medio.
+    Color bg;
+    if (t < 0.25) {
+      bg = lerp(warmWhite, softGray, t / 0.25);
+    } else if (t < 0.50) {
+      bg = lerp(softGray, softViolet, (t - 0.25) / 0.25);
+    } else if (t < 0.78) {
+      bg = lerp(softViolet, petroleum, (t - 0.50) / 0.28);
+    } else {
+      bg = lerp(petroleum, deepBlack, (t - 0.78) / 0.22);
+    }
+
+    // Cards: ligeramente diferente al fondo para que se distingan.
+    Color shiftLightness(Color c, double delta) {
+      final hsl = HSLColor.fromColor(c);
+      final l = (hsl.lightness + delta).clamp(0.0, 1.0);
+      return hsl.withLightness(l).toColor();
+    }
+
+    final isDarkBg = bg.computeLuminance() < 0.42;
+    final card = isDarkBg ? shiftLightness(bg, 0.06) : shiftLightness(bg, 0.02);
+    final variant = isDarkBg ? shiftLightness(bg, 0.10) : shiftLightness(bg, -0.02);
 
     final cs = base.colorScheme;
+    final newCs = cs.copyWith(
+      background: bg,
+      surface: card,
+      surfaceVariant: variant,
+      outline: isDarkBg ? shiftLightness(bg, 0.16) : shiftLightness(bg, -0.18),
+    );
+
     return base.copyWith(
       scaffoldBackgroundColor: bg,
-      colorScheme: cs.copyWith(background: bg),
+      canvasColor: bg,
+      colorScheme: newCs,
+      // ✅ Esto es lo que el usuario quería que se note: el fondo de las cards.
+      cardTheme: base.cardTheme.copyWith(color: card),
+      // Dialogs / sheets también siguen la paleta.
+      dialogTheme: base.dialogTheme.copyWith(backgroundColor: card),
+      bottomSheetTheme: base.bottomSheetTheme.copyWith(backgroundColor: card),
+      chipTheme: base.chipTheme.copyWith(backgroundColor: variant),
+      appBarTheme: base.appBarTheme.copyWith(backgroundColor: bg),
     );
   }
 
   ThemeData _applyCardLevel(ThemeData base, int level) {
     // level: 1..10
     final idx = level.clamp(1, 10);
-    final isDark = base.brightness == Brightness.dark;
+    final isDark = base.scaffoldBackgroundColor.computeLuminance() < 0.42;
 
     final tRaw = (idx - 1) / 9.0;
     final t = Curves.easeOutCubic.transform(tRaw);
@@ -705,17 +791,13 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
     final elev = (t * 14.0);
     final radius = 12.0 + (t * 14.0);
     final borderColor = isDark
-        ? Color.lerp(const Color(0xFF141414), const Color(0xFF4A4A4A), t)!
-        : Color.lerp(const Color(0xFFEAEAEA), const Color(0xFFB0B0B0), t)!;
-    final cardColor = isDark
-        ? Color.lerp(base.cardColor, const Color(0xFF2B2B2B), t * 0.9)
-        : Color.lerp(base.cardColor, Colors.white, t * 0.9);
+        ? Color.lerp(base.colorScheme.outline, Colors.white.withOpacity(0.45), t)!
+        : Color.lerp(base.colorScheme.outline, Colors.black.withOpacity(0.25), t)!;
 
     final card = base.cardTheme;
     return base.copyWith(
       cardTheme: card.copyWith(
         elevation: elev,
-        color: cardColor,
         shadowColor: base.colorScheme.shadow.withOpacity(0.35),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
@@ -750,8 +832,9 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
 
                     base = _applyProSystem(base);
 
-                    ThemeData theme = _applyTextIntensity(base, intensity);
-                    theme = _applyBackgroundLevel(theme, bgLevel);
+                    // ✅ Orden: primero paleta de fondo/superficies, luego contraste de texto.
+                    ThemeData theme = _applyBackgroundLevel(base, bgLevel);
+                    theme = _applyTextIntensity(theme, intensity);
                     theme = _applyCardLevel(theme, cardLevel);
 
                     return MaterialApp(

@@ -129,11 +129,16 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
   }
 
-  Future<void> _hydrateIfNeeded(String artistName, AlbumItem al) async {
+  Future<void> _hydrateIfNeeded(String artistName, AlbumItem al, {bool force = false}) async {
     final key = _k(artistName, al.title);
     if (_busy[key] == true) return;
-    if (_exists.containsKey(key) && _fav.containsKey(key) && _wish.containsKey(key) && _vinylId.containsKey(key)) {
-      return;
+    if (!force && _exists.containsKey(key) && _fav.containsKey(key) && _wish.containsKey(key) && _vinylId.containsKey(key)) {
+      // Si el item existe pero aún no tenemos un id válido, rehidratar.
+      final ex = _exists[key] == true;
+      final id = _vinylId[key] ?? 0;
+      if (!(ex && id <= 0)) {
+        return;
+      }
     }
 
     _busy[key] = true;
@@ -302,7 +307,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
 
       // refrescar cache real
-      await _hydrateIfNeeded(artistName, album);
+      await _hydrateIfNeeded(artistName, album, force: true);
       await BackupService.autoSaveIfEnabled();
       _snack('Agregado ✅');
     } catch (_) {
@@ -325,7 +330,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       return;
     }
 
-    await _hydrateIfNeeded(artistName, al);
+    await _hydrateIfNeeded(artistName, al, force: true);
 
     if (!mounted) return;
 
@@ -339,7 +344,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     });
 
     try {
-      await VinylDb.instance.setFavorite(id: id, favorite: !currentFav);
+      await VinylDb.instance.setFavoriteSafe(
+        id: id,
+        artista: artistName,
+        album: al.title,
+        favorite: !currentFav,
+      );
       await BackupService.autoSaveIfEnabled();
     } catch (_) {
       if (!mounted) return;
