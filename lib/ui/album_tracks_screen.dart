@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
+import 'app_logo.dart';
 
 class AlbumTracksScreen extends StatefulWidget {
   final AlbumItem album;
@@ -77,7 +78,12 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: appLogoLeading(
+          tooltip: 'Volver',
+          onTap: () => Navigator.pop(context),
+        ),
         title: Text(widget.album.title),
+        titleSpacing: 0,
         actions: [
           IconButton(
             onPressed: _load,

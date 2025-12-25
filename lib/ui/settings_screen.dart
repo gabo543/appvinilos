@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/backup_service.dart';
 import '../services/app_theme_service.dart';
 import '../services/view_mode_service.dart';
+import 'app_logo.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -92,7 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _guardar() async {
     try {
       await BackupService.saveListNow();
-      _snack('Lista guardada ✅');
+      _snack('Backup guardado ✅');
     } catch (e) {
       _snack('Error al guardar: $e');
     }
@@ -109,8 +110,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _exportarDescargas() async {
     try {
-      final f = await BackupService.exportToDownloads();
-      _snack('Exportado a Descargas ✅\n${f.path}');
+      final saved = await BackupService.exportToDownloads();
+      if (saved == null || saved.isEmpty) {
+        _snack('Exportación cancelada.');
+        return;
+      }
+      _snack('Exportado ✅\n$saved');
     } catch (e) {
       _snack('No se pudo exportar: $e');
     }
@@ -118,8 +123,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _importarDescargas() async {
     try {
-      final f = await BackupService.importFromDownloads();
-      _snack('Importado desde Descargas ✅\n${f.path}');
+      final f = await BackupService.pickBackupFile();
+      if (f == null) {
+        _snack('Importación cancelada.');
+        return;
+      }
+      final preview = await BackupService.peekBackupFile(f);
+
+      if (!mounted) return;
+
+      final mode = await showDialog<BackupImportMode>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Importar backup'),
+          content: Text(
+            '${preview.pretty()}\n\nArchivo:\n${f.path}\n\n'
+            'Elige cómo importarlo:',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, BackupImportMode.onlyMissing),
+              child: const Text('Solo faltantes'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, BackupImportMode.merge),
+              child: const Text('Fusionar (recomendado)'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, BackupImportMode.replace),
+              child: const Text('Reemplazar todo'),
+            ),
+          ],
+        ),
+      );
+
+      if (mode == null) return;
+
+      final res = await BackupService.importFromFile(
+        f,
+        mode: mode,
+        copyToLocal: true,
+      );
+
+      _snack('Importado ✅\n${res.summary()}');
     } catch (e) {
       _snack('No se pudo importar: $e');
     }
@@ -149,7 +199,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final previewBorder = borderBase.withOpacity(isDark ? 0.90 : 0.70);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ajustes')),
+      appBar: AppBar(
+        leading: appLogoLeading(
+          tooltip: 'Volver',
+          onTap: () => Navigator.pop(context),
+        ),
+        title: const Text('Ajustes'),
+        titleSpacing: 0,
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -160,15 +217,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       ListTile(
                         leading: const Icon(Icons.save_alt),
-                        title: const Text('Guardar lista'),
-                        subtitle: const Text('Crea/actualiza un respaldo local (JSON).'),
+                        title: const Text('Guardar backup'),
+                        subtitle: const Text('Crea/actualiza un backup completo (vinilos + wishlist + ajustes).'),
                         onTap: _guardar,
                       ),
                       const Divider(height: 1),
                       ListTile(
                         leading: const Icon(Icons.download_for_offline_outlined),
                         title: const Text('Exportar a Descargas'),
-                        subtitle: const Text('Copia el respaldo a /Download (para no perderlo al desinstalar).'),
+                        subtitle: const Text('Abre “Guardar como…” para elegir Descargas (no requiere permisos especiales).'),
                         onTap: _exportarDescargas,
                       ),
                       const Divider(height: 1),
@@ -176,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ListTile(
                         leading: const Icon(Icons.file_download_outlined),
                         title: const Text('Importar desde Descargas'),
-                        subtitle: const Text('Busca "vinyl_backup.json" o el último "GaBoLP_backup_*.json" en Descargas y lo carga (reemplaza tu lista).'),
+                        subtitle: const Text('Elige el archivo backup (vinyl_backup.json / GaBoLP_backup_*.json) desde Descargas/Archivos. Permite fusionar, solo faltantes o reemplazar.'),
                         onTap: _importarDescargas,
                       ),
                       const Divider(height: 1),
@@ -190,8 +247,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const Divider(height: 1),
                       ListTile(
                         leading: const Icon(Icons.upload_file),
-                        title: const Text('Cargar lista'),
-                        subtitle: const Text('Reemplaza tu lista por el último respaldo.'),
+                        title: const Text('Cargar backup local'),
+                        subtitle: const Text('Reemplaza TODO (vinilos + wishlist + papelera + ajustes) por el último backup local.'),
                         onTap: _cargar,
                       ),
                     ],

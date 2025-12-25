@@ -18,7 +18,7 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 10, // ✅ v9: condition/format + wishlistStatus
+      version: 11, // ✅ v11: orden Artista.Album (artistNo.albumNo)
       onOpen: (d) async {
         // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
         try {
@@ -33,6 +33,9 @@ class VinylDb {
           CREATE TABLE vinyls(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             numero INTEGER NOT NULL,
+            artistKey TEXT NOT NULL,
+            artistNo INTEGER NOT NULL,
+            albumNo INTEGER NOT NULL,
             artista TEXT NOT NULL,
             album TEXT NOT NULL,
             year TEXT,
@@ -48,8 +51,20 @@ class VinylDb {
         ''');
         await d.execute('CREATE INDEX idx_artist ON vinyls(artista);');
         await d.execute('CREATE INDEX idx_album ON vinyls(album);');
+        await d.execute('CREATE INDEX idx_artist_no ON vinyls(artistNo);');
+        await d.execute('CREATE INDEX idx_album_no ON vinyls(albumNo);');
+        await d.execute('CREATE INDEX idx_artist_key ON vinyls(artistKey);');
         await d.execute('CREATE INDEX idx_fav ON vinyls(favorite);');
         await d.execute('CREATE UNIQUE INDEX idx_vinyl_exact ON vinyls(artista, album);');
+
+        // ✅ tabla artist_orders: asigna un número fijo por artista (sin alfabético)
+        await d.execute('''
+          CREATE TABLE artist_orders(
+            artistKey TEXT PRIMARY KEY,
+            artistNo INTEGER NOT NULL
+          );
+        ''');
+        await d.execute('CREATE UNIQUE INDEX idx_artist_orders_no ON artist_orders(artistNo);');
 
         // ✅ tabla wishlist (no tiene numero)
         await d.execute('''
@@ -73,6 +88,9 @@ class VinylDb {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             vinylId INTEGER,
             numero INTEGER NOT NULL,
+            artistKey TEXT NOT NULL,
+            artistNo INTEGER NOT NULL,
+            albumNo INTEGER NOT NULL,
             artista TEXT NOT NULL,
             album TEXT NOT NULL,
             year TEXT,
@@ -148,6 +166,9 @@ if (oldV < 9) {
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               vinylId INTEGER,
               numero INTEGER NOT NULL,
+              artistKey TEXT NOT NULL,
+              artistNo INTEGER NOT NULL,
+              albumNo INTEGER NOT NULL,
               artista TEXT NOT NULL,
               album TEXT NOT NULL,
               year TEXT,
@@ -166,6 +187,151 @@ if (oldV < 9) {
           await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_trash_unique ON trash(artista, album);');
         }
 
+        if (oldV < 11) {
+          // v11: orden Artista.Album (artistNo.albumNo)
+          await d.execute('''
+            CREATE TABLE IF NOT EXISTS artist_orders(
+              artistKey TEXT PRIMARY KEY,
+              artistNo INTEGER NOT NULL
+            );
+          ''');
+          await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_artist_orders_no ON artist_orders(artistNo);');
+
+          // Añadir columnas a vinyls
+          try {
+            await d.execute("ALTER TABLE vinyls ADD COLUMN artistKey TEXT NOT NULL DEFAULT '';");
+          } catch (_) {}
+          try {
+            await d.execute("ALTER TABLE vinyls ADD COLUMN artistNo INTEGER NOT NULL DEFAULT 0;");
+          } catch (_) {}
+          try {
+            await d.execute("ALTER TABLE vinyls ADD COLUMN albumNo INTEGER NOT NULL DEFAULT 0;");
+          } catch (_) {}
+
+          // Añadir columnas a trash
+          try {
+            await d.execute("ALTER TABLE trash ADD COLUMN artistKey TEXT NOT NULL DEFAULT '';");
+          } catch (_) {}
+          try {
+            await d.execute("ALTER TABLE trash ADD COLUMN artistNo INTEGER NOT NULL DEFAULT 0;");
+          } catch (_) {}
+          try {
+            await d.execute("ALTER TABLE trash ADD COLUMN albumNo INTEGER NOT NULL DEFAULT 0;");
+          } catch (_) {}
+
+          // Índices nuevos
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_artist_no ON vinyls(artistNo);');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_album_no ON vinyls(albumNo);');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_artist_key ON vinyls(artistKey);');
+
+          // ✅ Migración: asigna artistNo y albumNo según el orden actual "numero"
+          final rows = await d.query(
+            'vinyls',
+            columns: ['id', 'numero', 'artista', 'artistKey', 'artistNo', 'albumNo'],
+            orderBy: 'numero ASC',
+          );
+
+          final keyToNo = <String, int>{};
+          final keyToAlbum = <String, int>{};
+          var nextArtistNo = 1;
+
+          for (final r in rows) {
+            final id = r['id'] as int? ?? 0;
+            if (id <= 0) continue;
+
+            final artista = (r['artista'] ?? '').toString();
+            var key = _makeArtistKey(artista);
+            if (key.isEmpty) key = 'unknown';
+
+            // artistNo
+            int aNo = _asInt(r['artistNo']);
+            if (aNo <= 0) {
+              aNo = keyToNo[key] ?? 0;
+              if (aNo <= 0) {
+                aNo = nextArtistNo++;
+                keyToNo[key] = aNo;
+                await d.insert(
+                  'artist_orders',
+                  {'artistKey': key, 'artistNo': aNo},
+                  conflictAlgorithm: ConflictAlgorithm.ignore,
+                );
+              }
+            } else {
+              keyToNo[key] = aNo;
+              // Asegura que el mapping exista
+              await d.insert(
+                'artist_orders',
+                {'artistKey': key, 'artistNo': aNo},
+                conflictAlgorithm: ConflictAlgorithm.ignore,
+              );
+              if (aNo >= nextArtistNo) nextArtistNo = aNo + 1;
+            }
+
+            // albumNo
+            int alNo = _asInt(r['albumNo']);
+            final cur = keyToAlbum[key] ?? 0;
+            if (alNo <= 0) {
+              alNo = cur + 1;
+            }
+            if (alNo > cur) keyToAlbum[key] = alNo;
+
+            await d.update(
+              'vinyls',
+              {'artistKey': key, 'artistNo': aNo, 'albumNo': alNo},
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+          }
+
+          // ✅ Papelera: intenta completar artistKey/artistNo (albumNo se deja si vino)
+          final trashRows = await d.query(
+            'trash',
+            columns: ['id', 'artista', 'artistKey', 'artistNo', 'albumNo'],
+            orderBy: 'deletedAt ASC',
+          );
+          for (final t in trashRows) {
+            final id = t['id'] as int? ?? 0;
+            if (id <= 0) continue;
+
+            final artista = (t['artista'] ?? '').toString();
+            var key = (t['artistKey'] ?? '').toString().trim();
+            if (key.isEmpty) key = _makeArtistKey(artista);
+            if (key.isEmpty) key = 'unknown';
+
+            int aNo = _asInt(t['artistNo']);
+            if (aNo <= 0) {
+              // si ya existe en mapping, úsalo; si no, crea uno nuevo al final
+              final existing = await d.query(
+                'artist_orders',
+                columns: ['artistNo'],
+                where: 'artistKey = ?',
+                whereArgs: [key],
+                limit: 1,
+              );
+              if (existing.isNotEmpty) {
+                aNo = _asInt(existing.first['artistNo']);
+              } else {
+                final r = await d.rawQuery('SELECT MAX(artistNo) as m FROM artist_orders');
+                final m = _asInt(r.first['m']);
+                aNo = m + 1;
+                await d.insert(
+                  'artist_orders',
+                  {'artistKey': key, 'artistNo': aNo},
+                  conflictAlgorithm: ConflictAlgorithm.ignore,
+                );
+              }
+            }
+
+            await d.update(
+              'trash',
+              {'artistKey': key, 'artistNo': aNo},
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+          }
+        }
+
+
       },
     );
   }
@@ -180,7 +346,7 @@ if (oldV < 9) {
 
   Future<List<Map<String, dynamic>>> getAll() async {
     final d = await db;
-    return d.query('vinyls', orderBy: 'numero ASC');
+    return d.query('vinyls', orderBy: 'artistNo ASC, albumNo ASC');
   }
 
   Future<List<Map<String, dynamic>>> getFavorites() async {
@@ -189,7 +355,7 @@ if (oldV < 9) {
     return d.query(
       'vinyls',
       where: "CAST(favorite AS INTEGER) = 1 OR LOWER(CAST(favorite AS TEXT)) = 'true'",
-      orderBy: 'numero ASC',
+      orderBy: 'artistNo ASC, albumNo ASC',
     );
   }
 
@@ -353,7 +519,7 @@ Future<Map<String, dynamic>?> findByExact({
         'vinyls',
         where: 'LOWER(artista) LIKE ? AND LOWER(album) LIKE ?',
         whereArgs: ['%${a.toLowerCase()}%', '%${al.toLowerCase()}%'],
-        orderBy: 'numero ASC',
+        orderBy: 'artistNo ASC, albumNo ASC',
       );
     }
     if (a.isNotEmpty) {
@@ -361,14 +527,14 @@ Future<Map<String, dynamic>?> findByExact({
         'vinyls',
         where: 'LOWER(artista) LIKE ?',
         whereArgs: ['%${a.toLowerCase()}%'],
-        orderBy: 'numero ASC',
+        orderBy: 'artistNo ASC, albumNo ASC',
       );
     }
     return d.query(
       'vinyls',
       where: 'LOWER(album) LIKE ?',
       whereArgs: ['%${al.toLowerCase()}%'],
-      orderBy: 'numero ASC',
+      orderBy: 'artistNo ASC, albumNo ASC',
     );
   }
 
@@ -384,6 +550,86 @@ Future<Map<String, dynamic>?> findByExact({
       limit: 1,
     );
     return rows.isNotEmpty;
+  }
+
+
+  // ---------------- ORDEN Artista.Album ----------------
+  //
+  // Regla:
+  // - Un artista tiene SIEMPRE el mismo número (artistNo).
+  // - Cada álbum del artista se numera 1..n (albumNo).
+  // - El “código” que muestra la UI es: artistNo.albumNo (ej: 1.3)
+
+  String _makeArtistKey(String artista) {
+    var out = artista.toLowerCase().trim();
+    const rep = {
+      'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a',
+      'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+      'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+      'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o',
+      'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+      'ñ': 'n',
+    };
+    rep.forEach((k, v) => out = out.replaceAll(k, v));
+    out = out.replaceAll(RegExp(r'[^a-z0-9# ]'), ' ');
+    out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return out;
+  }
+
+  Future<int> _getOrCreateArtistNo(
+    DatabaseExecutor ex,
+    String artistKey, {
+    int? preferredNo,
+  }) async {
+    final key = artistKey.trim();
+    if (key.isEmpty) return 0;
+
+    final rows = await ex.query(
+      'artist_orders',
+      columns: ['artistNo'],
+      where: 'artistKey = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) return _asInt(rows.first['artistNo']);
+
+    int chosen = 0;
+
+    // Si viene de un backup “replace”, intentamos respetar el número original.
+    if (preferredNo != null && preferredNo > 0) {
+      final used = await ex.query(
+        'artist_orders',
+        columns: ['artistKey'],
+        where: 'artistNo = ?',
+        whereArgs: [preferredNo],
+        limit: 1,
+      );
+      if (used.isEmpty) chosen = preferredNo;
+    }
+
+    if (chosen == 0) {
+      final r = await ex.rawQuery('SELECT MAX(artistNo) as m FROM artist_orders');
+      final m = _asInt(r.first['m']);
+      chosen = m + 1;
+    }
+
+    await ex.insert(
+      'artist_orders',
+      {'artistKey': key, 'artistNo': chosen},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+
+    return chosen;
+  }
+
+  Future<int> _nextAlbumNo(DatabaseExecutor ex, int artistNo) async {
+    if (artistNo <= 0) return 0;
+    final r = await ex.rawQuery(
+      'SELECT MAX(albumNo) as m FROM vinyls WHERE artistNo = ?',
+      [artistNo],
+    );
+    final m = _asInt(r.first['m']);
+    return m + 1;
   }
 
   Future<int> _nextNumero() async {
@@ -413,10 +659,17 @@ Future<Map<String, dynamic>?> findByExact({
 
     final numero = await _nextNumero();
 
+    final aKey = _makeArtistKey(artista);
+    final aNo = await _getOrCreateArtistNo(d, aKey);
+    final alNo = await _nextAlbumNo(d, aNo);
+
     await d.insert(
       'vinyls',
       {
         'numero': numero,
+        'artistKey': aKey,
+        'artistNo': aNo,
+        'albumNo': alNo,
         'artista': artista.trim(),
         'album': album.trim(),
         'year': year?.trim(),
@@ -478,6 +731,9 @@ Future<void> moveToTrash(int vinylId) async {
       {
         'vinylId': _asInt(v['id']),
         'numero': _asInt(v['numero']),
+        'artistKey': (v['artistKey'] ?? '').toString(),
+        'artistNo': _asInt(v['artistNo']),
+        'albumNo': _asInt(v['albumNo']),
         'artista': (v['artista'] ?? '').toString(),
         'album': (v['album'] ?? '').toString(),
         'year': v['year']?.toString(),
@@ -516,11 +772,26 @@ Future<bool> restoreFromTrash(int trashId) async {
 
     final n = await numero;
 
+    final aKey = ((t['artistKey'] ?? '').toString().trim().isNotEmpty)
+        ? (t['artistKey'] ?? '').toString().trim()
+        : _makeArtistKey((t['artista'] ?? '').toString());
+    final prefArtistNo = _asInt(t['artistNo']);
+    final aNo = prefArtistNo > 0
+        ? await _getOrCreateArtistNo(txn, aKey, preferredNo: prefArtistNo)
+        : await _getOrCreateArtistNo(txn, aKey);
+    int alNo = _asInt(t['albumNo']);
+    if (alNo <= 0) {
+      alNo = await _nextAlbumNo(txn, aNo);
+    }
+
     try {
       await txn.insert(
         'vinyls',
         {
           'numero': n,
+          'artistKey': aKey,
+          'artistNo': aNo,
+          'albumNo': alNo,
           'artista': (t['artista'] ?? '').toString().trim(),
           'album': (t['album'] ?? '').toString().trim(),
           'year': t['year']?.toString(),
@@ -554,6 +825,9 @@ Future<void> deleteTrashById(int trashId) async {
     final d = await db;
     await d.transaction((txn) async {
       await txn.delete('vinyls');
+      // ✅ v11: reinicia mapping artista->número
+      try { await txn.delete('artist_orders'); } catch (_) {}
+
       // ✅ Asegura numeración estable:
       // - Si el backup trae "numero" válido (>0), lo respetamos.
       // - Si viene vacío/0, asignamos el siguiente disponible.
@@ -588,6 +862,19 @@ Future<void> deleteTrashById(int trashId) async {
           }
         }
 
+        final artista = (v['artista'] ?? '').toString().trim();
+        final aKey = (v['artistKey'] ?? '').toString().trim().isNotEmpty
+            ? (v['artistKey'] ?? '').toString().trim()
+            : _makeArtistKey(artista);
+        final prefArtistNo = _asInt(v['artistNo']);
+        final aNo = prefArtistNo > 0
+            ? await _getOrCreateArtistNo(txn, aKey, preferredNo: prefArtistNo)
+            : await _getOrCreateArtistNo(txn, aKey);
+        int alNo = _asInt(v['albumNo']);
+        if (alNo <= 0) {
+          alNo = await _nextAlbumNo(txn, aNo);
+        }
+
         final favRaw = v['favorite'];
         final fav01 = (favRaw == 1 || favRaw == true || favRaw == '1' || favRaw == 'true' || favRaw == 'TRUE') ? 1 : 0;
 
@@ -595,6 +882,9 @@ Future<void> deleteTrashById(int trashId) async {
           'vinyls',
           {
             'numero': finalNumero,
+            'artistKey': aKey,
+            'artistNo': aNo,
+            'albumNo': alNo,
             'artista': (v['artista'] ?? '').toString().trim(),
             'album': (v['album'] ?? '').toString().trim(),
             'year': v['year']?.toString().trim(),

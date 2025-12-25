@@ -13,25 +13,39 @@ dependencies:
     sdk: flutter
   sqflite: ^2.3.3
   path: ^1.9.0
-  image_picker: ^1.1.2
   http: ^1.2.2
   path_provider: ^2.1.5
+  # Para exportar/importar backups usando el selector del sistema (evita permisos a /Download en Android moderno)
+  file_picker: ^10.3.8
+  # Usado explícitamente (XFile) en SettingsScreen. Evita depender de imports transitivos.
+  cross_file: ^0.3.4+2
   # Mantiene compatibilidad con más versiones de Flutter/Dart.
   shared_preferences: ^2.5.3
   share_plus: ^10.0.3
+  mobile_scanner: ^7.1.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_native_splash: ^2.4.1
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
   assets:
     - assets/splash/splash.png
+    - assets/icon/app_icon.png
 
 flutter_native_splash:
   color: "#121212"
   image: assets/splash/splash.png
   android: true
+
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#121212"

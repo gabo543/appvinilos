@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/vinyl_db.dart';
 import '../services/discography_service.dart';
@@ -10,13 +11,15 @@ import '../services/backup_service.dart';
 import '../services/view_mode_service.dart';
 import '../services/app_theme_service.dart';
 import 'discography_screen.dart';
+import 'scanner_screen.dart';
 import 'settings_screen.dart';
 import 'vinyl_detail_sheet.dart';
 import 'wishlist_screen.dart';
+import 'app_logo.dart';
 
 enum Vista { inicio, buscar, lista, favoritos, borrar }
 
-enum VinylSortMode { az, yearDesc, recent }
+enum VinylSortMode { az, yearDesc, recent, code }
 
 String vinylSortLabel(VinylSortMode m) {
   switch (m) {
@@ -26,6 +29,8 @@ String vinylSortLabel(VinylSortMode m) {
       return 'Año';
     case VinylSortMode.recent:
       return 'Recientes';
+    case VinylSortMode.code:
+      return 'Código';
   }
 }
 
@@ -92,6 +97,11 @@ class _DiamondLogoPainter extends CustomPainter {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // 🔒 Persistencia UI (última vista / orden) para que al reabrir quede igual.
+  static const String _kPrefLastVista = 'ui.lastVista';
+  static const String _kPrefSortMode = 'ui.sortMode';
+  SharedPreferences? _prefs;
+
   // ⭐ Cache local para favoritos (cambio instantáneo)
   final Map<int, bool> _favCache = {};
 
@@ -101,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _filterCountryQ = '';
   int? _filterYearFrom;
   int? _filterYearTo;
-  VinylSortMode _sortMode = VinylSortMode.recent;
+  VinylSortMode _sortMode = VinylSortMode.code;
 
   bool get _hasAnyFilter =>
       _filterArtistQ.trim().isNotEmpty ||
@@ -246,6 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _loadUiPrefs();
     // ✅ Vista grid/list instantánea (notifier en memoria)
     _gridView = ViewModeService.gridNotifier.value;
     _gridListener = () {
@@ -257,6 +268,45 @@ class _HomeScreenState extends State<HomeScreen> {
     _futureAll = VinylDb.instance.getAll();
     _futureFav = VinylDb.instance.getFavorites();
     _futureTrash = VinylDb.instance.getTrash();
+  }
+
+  Future<void> _loadUiPrefs() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (!mounted) return;
+
+      final vistaIdx = p.getInt(_kPrefLastVista);
+      final sortIdx = p.getInt(_kPrefSortMode);
+
+      setState(() {
+        _prefs = p;
+
+        if (vistaIdx != null && vistaIdx >= 0 && vistaIdx < Vista.values.length) {
+          vista = Vista.values[vistaIdx];
+        }
+        if (sortIdx != null && sortIdx >= 0 && sortIdx < VinylSortMode.values.length) {
+          _sortMode = VinylSortMode.values[sortIdx];
+        }
+      });
+    } catch (_) {
+      // Preferimos fallar silencioso: la app funciona igual sin persistencia.
+    }
+  }
+
+  Future<void> _persistVista(Vista v) async {
+    try {
+      final p = _prefs ?? await SharedPreferences.getInstance();
+      _prefs ??= p;
+      await p.setInt(_kPrefLastVista, v.index);
+    } catch (_) {}
+  }
+
+  Future<void> _persistSortMode(VinylSortMode m) async {
+    try {
+      final p = _prefs ?? await SharedPreferences.getInstance();
+      _prefs ??= p;
+      await p.setInt(_kPrefSortMode, m.index);
+    } catch (_) {}
   }
 
   Future<void> _refreshHomeCounts() async {
@@ -316,6 +366,7 @@ Future<void> _loadViewMode() async {
       _localQuery = '';
     });
     FocusScope.of(context).unfocus();
+    _persistVista(v);
   }
 
   void _toggleLocalSearch() {
@@ -365,6 +416,15 @@ Future<void> _loadViewMode() async {
     return out;
   }
 
+  String _vinylCode(Map<String, dynamic> v) {
+    final a = _asInt(v['artistNo']);
+    final b = _asInt(v['albumNo']);
+    if (a > 0 && b > 0) return '$a.$b';
+
+    final n = (v['numero'] ?? '').toString().trim();
+    return n.isEmpty ? '—' : n;
+  }
+
   bool _matchesLocal(Map<String, dynamic> v, String qNorm) {
     if (qNorm.isEmpty) return true;
 
@@ -373,7 +433,7 @@ Future<void> _loadViewMode() async {
     final genre = _norm((v['genre'] ?? '').toString());
     final country = _norm((v['country'] ?? '').toString());
     final year = _norm((v['year'] ?? '').toString());
-    final numero = _norm((v['numero'] ?? '').toString());
+    final numero = _norm(_vinylCode(v));
 
     if (artista.contains(qNorm)) return true;
     if (album.contains(qNorm)) return true;
@@ -791,7 +851,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                     Positioned(
                       left: 6,
                       bottom: 6,
-                      child: _numeroBadge(context, v['numero'], compact: true),
+                      child: _numeroBadge(context, _vinylCode(v), compact: true),
                     ),
                   ],
                 ),
@@ -974,7 +1034,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               const Spacer(),
               Row(
                 children: [
-                  _numeroBadge(context, v['numero'], compact: true),
+                  _numeroBadge(context, _vinylCode(v), compact: true),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1042,7 +1102,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             Positioned(
               right: 6,
               top: 6,
-              child: _numeroBadge(context, v['numero'], compact: true),
+              child: _numeroBadge(context, _vinylCode(v), compact: true),
             ),
 
             // ⭐ Favoritos abajo derecha (lista grid + favoritos grid)
@@ -1676,7 +1736,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                           Positioned(
                             left: 10,
                             bottom: 10,
-                            child: _numeroBadge(context, v['numero'], compact: true),
+                            child: _numeroBadge(context, _vinylCode(v), compact: true),
                           ),
                         ],
                       ),
@@ -1744,30 +1804,8 @@ Container(
     children: [
 	      Row(
 	        children: [
-	          // Marca pequeña en una esquina
-	          Row(
-	            mainAxisSize: MainAxisSize.min,
-	            children: [
-	              SizedBox(
-	                width: 16,
-	                height: 16,
-	                child: CustomPaint(
-	                  painter: _DiamondLogoPainter(
-	                    cs.onSurface.withOpacity(isDark ? 0.92 : 0.85),
-	                  ),
-	                ),
-	              ),
-	              const SizedBox(width: 6),
-	              Text(
-	                'GaBoLP',
-	                style: t.textTheme.labelLarge?.copyWith(
-	                  fontWeight: FontWeight.w900,
-	                  letterSpacing: -0.2,
-	                  color: cs.onSurface.withOpacity(isDark ? 0.92 : 0.85),
-	                ),
-	              ),
-	            ],
-	          ),
+	          // ✅ Logo real de la app (arriba-izquierda)
+	          const AppLogo(size: 20),
 	          const Spacer(),
 	          IconButton(
 	            tooltip: 'Actualizar',
@@ -1869,6 +1907,16 @@ Container(
         runSpacing: 8,
         children: [
           quickAction(icon: Icons.search, label: 'Buscar', onTap: openBuscar),
+          quickAction(
+            icon: Icons.qr_code_scanner,
+            label: 'Escanear',
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())).then((_) {
+                if (!mounted) return;
+                _reloadAllData();
+              });
+            },
+          ),
           quickAction(
             icon: Icons.library_music,
             label: 'Discografías',
@@ -2136,7 +2184,7 @@ Widget vistaBorrar() {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            '${v['numero']} — ${v['artista']} — ${v['album']}$yTxt',
+                            '${_vinylCode(v)} — ${v['artista']} — ${v['album']}$yTxt',
                             style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface),
                           ),
                         ),
@@ -2306,6 +2354,23 @@ Widget vistaBorrar() {
           final ix = (x['id'] as int?) ?? 0;
           final iy = (y['id'] as int?) ?? 0;
           return iy.compareTo(ix);
+        });
+        break;
+      case VinylSortMode.code:
+        list.sort((x, y) {
+          final ax = _asInt(x['artistNo']);
+          final ay = _asInt(y['artistNo']);
+          final c1 = ax.compareTo(ay);
+          if (c1 != 0) return c1;
+
+          final bx = _asInt(x['albumNo']);
+          final by = _asInt(y['albumNo']);
+          final c2 = bx.compareTo(by);
+          if (c2 != 0) return c2;
+
+          final ix = _asInt(x['id']);
+          final iy = _asInt(y['id']);
+          return ix.compareTo(iy);
         });
         break;
     }
@@ -2513,8 +2578,12 @@ Widget vistaBorrar() {
           PopupMenuButton<VinylSortMode>(
             tooltip: 'Ordenar',
             initialValue: _sortMode,
-            onSelected: (m) => setState(() => _sortMode = m),
+            onSelected: (m) {
+                setState(() => _sortMode = m);
+                _persistSortMode(m);
+              },
             itemBuilder: (_) => [
+              PopupMenuItem(value: VinylSortMode.code, child: Text('Código')),
               PopupMenuItem(value: VinylSortMode.recent, child: Text('Recientes')),
               PopupMenuItem(value: VinylSortMode.az, child: Text('A–Z')),
               PopupMenuItem(value: VinylSortMode.yearDesc, child: Text('Año')),
@@ -2694,9 +2763,9 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
 
     return AppBar(
       title: titleWidget,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () {
+      leading: appLogoLeading(
+        tooltip: (localSearchAllowed && _localSearchActive) ? 'Cerrar búsqueda' : 'Inicio',
+        onTap: () {
           if (localSearchAllowed && _localSearchActive) {
             _toggleLocalSearch();
             return;
@@ -2704,6 +2773,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
           _setVista(Vista.inicio);
         },
       ),
+      titleSpacing: 0,
       actions: [
         if (localSearchAllowed)
           IconButton(

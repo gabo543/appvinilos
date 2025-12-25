@@ -1,9 +1,15 @@
 workflows:
   android-apk:
-    name: Android APK - GaBoLP
+    name: Android Release (APK + AAB) - GaBoLP
     max_build_duration: 60
     environment:
       flutter: stable
+
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
 
     scripts:
       - name: Preparar proyecto (crear android si falta)
@@ -29,7 +35,7 @@ workflows:
             fi
           fi
 
-      - name: Forzar permiso INTERNET en AndroidManifest MAIN
+      - name: Forzar permisos INTERNET + CAMERA en AndroidManifest MAIN
         script: |
           set -e
           MANIFEST="android/app/src/main/AndroidManifest.xml"
@@ -41,20 +47,43 @@ workflows:
             exit 1
           fi
 
-          if grep -q "android.permission.INTERNET" "$MANIFEST"; then
-            echo "INTERNET ya estaba en el MAIN manifest."
-          else
-            echo "Insertando INTERNET en el MAIN manifest..."
-            perl -0777 -i -pe 's/(<manifest[^>]*>)/$1\n    <uses-permission android:name="android.permission.INTERNET"\/>/s' "$MANIFEST"
-          fi
+          insert_perm () {
+            local PERM="$1"
+            if grep -q "$PERM" "$MANIFEST"; then
+              echo "$PERM ya estaba en el MAIN manifest."
+            else
+              echo "Insertando $PERM en el MAIN manifest..."
+              perl -0777 -i -pe "s/(<manifest[^>]*>)/\$1\n    <uses-permission android:name=\"$PERM\"\/>/s" "$MANIFEST"
+            fi
+          }
+
+          insert_feature () {
+            local FEATURE="$1"
+            if grep -q "$FEATURE" "$MANIFEST"; then
+              echo "$FEATURE ya estaba en el MAIN manifest."
+            else
+              echo "Insertando uses-feature $FEATURE..."
+              perl -0777 -i -pe "s/(<manifest[^>]*>)/\$1\n    <uses-feature android:name=\"$FEATURE\" android:required=\"false\"\/>/s" "$MANIFEST"
+            fi
+          }
+
+          insert_perm "android.permission.INTERNET"
+          insert_perm "android.permission.CAMERA"
+          insert_feature "android.hardware.camera"
 
           echo "Chequeo MAIN manifest:"
           grep -n "android.permission.INTERNET" "$MANIFEST" || true
+          grep -n "android.permission.CAMERA" "$MANIFEST" || true
           head -n 30 "$MANIFEST"
 
       - name: Instalar dependencias
         script: |
           flutter pub get
+
+      - name: Generar ícono de la app
+        script: |
+          set -e
+          dart run flutter_launcher_icons
 
       - name: Generar Splash
         script: |
@@ -62,7 +91,8 @@ workflows:
 
       - name: Compilar APK Release
         script: |
-          flutter build apk --release
+          flutter build apk --release --build-number=${BUILD_NUMBER:-1}
+          flutter build appbundle --release --build-number=${BUILD_NUMBER:-1}
 
 
       - name: Verificar INTERNET en merged manifest final (build/app)
@@ -89,4 +119,5 @@ workflows:
 
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/bundle/release/app-release.aab
           

@@ -98,7 +98,13 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     final sub = dark ? const Color(0xFFBDBDBD) : Colors.black54;
     final artista = (widget.vinyl['artista'] as String?) ?? '';
     final album = (widget.vinyl['album'] as String?) ?? '';
-    final numero = widget.vinyl['numero'];
+    final aNo = int.tryParse((widget.vinyl['artistNo'] ?? '').toString()) ?? 0;
+    final alNo = int.tryParse((widget.vinyl['albumNo'] ?? '').toString()) ?? 0;
+    final code = (aNo > 0 && alNo > 0)
+        ? '$aNo.$alNo'
+        : ((widget.vinyl['numero'] ?? '').toString().trim().isEmpty
+            ? '—'
+            : (widget.vinyl['numero'] ?? '').toString());
     final year = (widget.vinyl['year'] as String?)?.trim() ?? '';
     final genre = (widget.vinyl['genre'] as String?)?.trim() ?? '';
     final country = (widget.vinyl['country'] as String?)?.trim() ?? '';
@@ -135,7 +141,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               spacing: 10,
               runSpacing: 8,
               children: [
-                _pill(context, 'N°', (numero == null || numero.toString().trim().isEmpty) ? '—' : numero.toString()),
+                _pill(context, 'Orden', code),
                 _pill(context, 'Año', year.isEmpty ? '—' : year),
                 _pill(context, 'Género', genre.isEmpty ? '—' : genre),
                 _pill(context, 'País', country.isEmpty ? '—' : country),

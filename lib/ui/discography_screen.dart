@@ -7,6 +7,7 @@ import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import '../services/vinyl_add_service.dart';
 import 'album_tracks_screen.dart';
+import 'app_logo.dart';
 
 class DiscographyScreen extends StatefulWidget {
   const DiscographyScreen({super.key});
@@ -32,7 +33,32 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   }
 
   final TextEditingController artistCtrl = TextEditingController();
+  final FocusNode _artistFocus = FocusNode();
   Timer? _debounce;
+
+  void _clearArtistSearch({bool keepFocus = true}) {
+    _debounce?.cancel();
+    artistCtrl.clear();
+
+    setState(() {
+      searchingArtists = false;
+      artistResults = [];
+      pickedArtist = null;
+      albums = [];
+      loadingAlbums = false;
+    });
+    _lastAutoPickedQuery = '';
+    _exists.clear();
+    _vinylId.clear();
+    _fav.clear();
+    _wish.clear();
+    _busy.clear();
+
+    if (keepFocus) {
+      // Mantener el foco en el TextField para seguir escribiendo.
+      FocusScope.of(context).requestFocus(_artistFocus);
+    }
+  }
 
   bool searchingArtists = false;
   List<ArtistHit> artistResults = [];
@@ -94,6 +120,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   void dispose() {
     _debounce?.cancel();
     artistCtrl.dispose();
+    _artistFocus.dispose();
     super.dispose();
   }
 
@@ -512,17 +539,36 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final artistName = pickedArtist?.name ?? artistCtrl.text.trim();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Discografías')),
+      appBar: AppBar(
+        leading: appLogoLeading(
+          tooltip: 'Volver',
+          onTap: () => Navigator.pop(context),
+        ),
+        title: const Text('Discografías'),
+        titleSpacing: 0,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
             TextField(
               controller: artistCtrl,
-              onChanged: _onArtistTextChanged,
-              decoration: const InputDecoration(
+              focusNode: _artistFocus,
+              onChanged: (v) {
+                // Asegura que el botón X aparezca/desaparezca al tipear.
+                setState(() {});
+                _onArtistTextChanged(v);
+              },
+              decoration: InputDecoration(
                 labelText: 'Artista',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: artistCtrl.text.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Limpiar',
+                        icon: const Icon(Icons.close),
+                        onPressed: () => _clearArtistSearch(),
+                      ),
               ),
             ),
             const SizedBox(height: 10),

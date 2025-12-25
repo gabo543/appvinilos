@@ -6,6 +6,7 @@ import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import 'album_tracks_screen.dart';
 import 'vinyl_detail_sheet.dart';
+import 'app_logo.dart';
 
 class WishlistScreen extends StatefulWidget {
   const WishlistScreen({super.key});
@@ -513,7 +514,12 @@ Widget _placeholder() {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lista de deseos'),
+        leading: appLogoLeading(
+          tooltip: 'Volver',
+          onTap: () => Navigator.pop(context),
+        ),
+        title: const Text('Deseos'),
+        titleSpacing: 0,
         actions: [
           IconButton(
             tooltip: _grid ? 'Vista lista' : 'Vista grid',
