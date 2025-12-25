@@ -561,8 +561,6 @@ Widget _placeholder() {
                   itemBuilder: (context, i) => _wishListCard(items[i]),
                 );
         },
-      );
-        },
       ),
     );
   }
