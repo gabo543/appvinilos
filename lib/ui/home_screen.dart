@@ -996,6 +996,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 
 
   Widget _gridVinylCard(Map<String, dynamic> v, {required bool conBorrar}) {
+    final cs = Theme.of(context).colorScheme;
     final year = (v['year'] as String?)?.trim() ?? '';
     final artista = (v['artista'] as String?)?.trim() ?? '';
     final album = (v['album'] as String?)?.trim() ?? '';
@@ -1506,7 +1507,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant.withOpacity(0.85)),
+                  Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant.withOpacity(0.85)),
                 ],
               ),
             ),
@@ -1541,7 +1542,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant.withOpacity(0.75)),
+                  Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant.withOpacity(0.75)),
                 ],
               ),
             ),
@@ -2014,7 +2015,7 @@ Widget vistaBorrar() {
         child: ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: visibleItems.length,
+          itemCount: items.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, i) => tile(items[i]),
         ),
