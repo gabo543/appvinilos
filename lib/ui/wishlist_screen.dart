@@ -244,13 +244,13 @@ Widget _placeholder() {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 98,
-                height: 98,
+                width: 92,
+                height: 92,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
                     color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
-                    child: _leadingCover(w, size: 98),
+                    child: _leadingCover(w, size: 92),
                   ),
                 ),
               ),
@@ -272,15 +272,15 @@ Widget _placeholder() {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        album.isEmpty ? '—' : album,
+                        artista.isEmpty ? '—' : artista,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        artista.isEmpty ? '—' : artista,
-                        maxLines: 1,
+                        album.isEmpty ? '—' : album,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                       ),
@@ -288,40 +288,10 @@ Widget _placeholder() {
                   ),
                 ),
               ),
+              const SizedBox(width: 6),
               Column(
                 mainAxisSize: MainAxisSize.min,
- return _grid
-              ? GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.72,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) => _wishGridCard(items[i]),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) => _wishListCard(items[i]),
-                );1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                artista.isEmpty ? '—' : artista,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              Row(
                 children: [
-                  _metaPill(context, year),
-                  const Spacer(),
                   IconButton(
                     tooltip: 'Agregar a vinilos',
                     icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
@@ -329,19 +299,24 @@ Widget _placeholder() {
                     onPressed: () async {
                       final opts = await _askConditionAndFormat();
                       if (!mounted || opts == null) return;
-                      final artista = (w['artista'] ?? '').toString().trim();
-                      final album = (w['album'] ?? '').toString().trim();
-                      if (artista.isEmpty || album.isEmpty) return;
+
+                      final a = (w['artista'] ?? '').toString().trim();
+                      final al = (w['album'] ?? '').toString().trim();
+                      if (a.isEmpty || al.isEmpty) return;
+
                       try {
                         await VinylDb.instance.insertVinyl(
-                          artista: artista,
-                          album: album,
+                          artista: a,
+                          album: al,
                           condition: opts['condition'],
                           format: opts['format'],
                           year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
                           coverPath: (w['cover250'] ?? '').toString(),
                         );
-                        await VinylDb.instance.removeWishlistById(w['id']);
+                        final id = w['id'];
+                        if (id is int) {
+                          await VinylDb.instance.removeWishlistById(id);
+                        }
                         await BackupService.autoSaveIfEnabled();
                         _snack('Agregado a tu lista de vinilos');
                         _reload();
@@ -365,6 +340,118 @@ Widget _placeholder() {
     );
   }
 
+  Widget _wishGridCard(Map<String, dynamic> w) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final artista = (w['artista'] ?? '').toString().trim();
+    final album = (w['album'] ?? '').toString().trim();
+    final year = (w['year'] ?? '').toString().trim();
+    final status = (w['status'] ?? '').toString().trim();
+
+    return Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _openDetail(w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                      child: _leadingCover(w, size: 220),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    artista.isEmpty ? '—' : artista,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    album.isEmpty ? '—' : album,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _metaPill(context, year),
+                      const SizedBox(width: 8),
+                      if (status.isNotEmpty)
+                        Expanded(child: Align(alignment: Alignment.centerLeft, child: _statusChip(context, status))),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Agregar a vinilos',
+                        icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 20),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () async {
+                          final opts = await _askConditionAndFormat();
+                          if (!mounted || opts == null) return;
+
+                          final a = (w['artista'] ?? '').toString().trim();
+                          final al = (w['album'] ?? '').toString().trim();
+                          if (a.isEmpty || al.isEmpty) return;
+
+                          try {
+                            await VinylDb.instance.insertVinyl(
+                              artista: a,
+                              album: al,
+                              condition: opts['condition'],
+                              format: opts['format'],
+                              year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
+                              coverPath: (w['cover250'] ?? '').toString(),
+                            );
+                            final id = w['id'];
+                            if (id is int) {
+                              await VinylDb.instance.removeWishlistById(id);
+                            }
+                            await BackupService.autoSaveIfEnabled();
+                            _snack('Agregado a tu lista de vinilos');
+                            _reload();
+                          } catch (_) {
+                            _snack('No se pudo agregar');
+                          }
+                        },
+                      ),
+                      IconButton(
+                        tooltip: 'Eliminar',
+                        icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 20),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _removeItem(w),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _openDetail(Map<String, dynamic> w) async {
     final artistName = (w['artista'] ?? '').toString().trim();
@@ -456,87 +543,25 @@ Widget _placeholder() {
             return const Center(child: Text('Tu lista de deseos está vacía'));
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(12),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final w = items[i];
-              final artista = (w['artista'] ?? '').toString().trim();
-              final album = (w['album'] ?? '').toString().trim();
-              final year = (w['year'] ?? '').toString().trim();
-              final status = (w['status'] ?? '').toString().trim();
-
-              return ListTile(
-                onTap: () => _openDetail(w),
-                leading: _leadingCover(w),
-                title: Text(
-                  album.isEmpty ? '—' : album,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      [
-                        if (artista.isNotEmpty) artista,
-                        if (year.isNotEmpty) year,
-                      ].join(' • '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (status.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: _statusChip(context, status),
-                        ),
-                      ),
-                  ],
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'Agregar a tu lista de vinilos',
-                      icon: const Icon(Icons.format_list_bulleted),
-                      onPressed: () async {
-                        final opts = await _askConditionAndFormat();
-                        if (!mounted || opts == null) return;
-                        final artista = (w['artista'] ?? '').toString().trim();
-                        final album = (w['album'] ?? '').toString().trim();
-                        if (artista.isEmpty || album.isEmpty) return;
-                        try {
-                          await VinylDb.instance.insertVinyl(
-                            artista: artista,
-                            album: album,
-                            condition: opts['condition'],
-                            format: opts['format'],
-                            year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
-                            coverPath: (w['cover250'] ?? '').toString(),
-                          );
-                          await VinylDb.instance.removeWishlistById(w['id']);
-                          await BackupService.autoSaveIfEnabled();
-                          _snack('Agregado a tu lista de vinilos');
-                          _reload();
-                        } catch (_) {
-                          _snack('No se pudo agregar');
-                        }
-                      },
-                    ),
-                    IconButton(
-                      tooltip: 'Eliminar de la lista de deseos',
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _removeItem(w),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
+          return _grid
+              ? GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.72,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) => _wishGridCard(items[i]),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) => _wishListCard(items[i]),
+                );
+        },
+      );
         },
       ),
     );
