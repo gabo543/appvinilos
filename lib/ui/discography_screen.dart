@@ -50,6 +50,46 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   String _k(String artist, String album) => '${artist.trim()}||${album.trim()}';
 
+  // 🔎 Auto-selección (modo A): si el mejor resultado es claramente superior,
+  // entramos directo a la discografía. Si hay duda, mostramos la lista.
+  String _lastAutoPickedQuery = '';
+
+  String _normQ(String s) {
+    var out = s.toLowerCase().trim();
+    const rep = {
+      'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a',
+      'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+      'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+      'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o',
+      'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+      'ñ': 'n',
+    };
+    rep.forEach((k, v) => out = out.replaceAll(k, v));
+    out = out.replaceAll(RegExp(r'[^a-z0-9 ]'), ' ');
+    out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
+    // tolera "the "
+    if (out.startsWith('the ')) out = out.substring(4);
+    return out;
+  }
+
+  bool _shouldAutoPick(String qNorm, List<ArtistHit> hits) {
+    if (qNorm.length < 4) return false;
+    if (hits.isEmpty) return false;
+
+    final best = hits.first;
+    final bestScore = best.score ?? 0;
+    final secondScore = hits.length > 1 ? (hits[1].score ?? 0) : 0;
+
+    final nameNorm = _normQ(best.name);
+    final exact = nameNorm == qNorm;
+    final prefix = nameNorm.startsWith(qNorm);
+
+    final clearLead = (hits.length == 1) || (bestScore - secondScore >= 12);
+    final strong = bestScore >= 95;
+
+    return clearLead && (exact || (strong && prefix));
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -65,6 +105,19 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   void _onArtistTextChanged(String _) {
     _debounce?.cancel();
     final q = artistCtrl.text.trim();
+    // Si el usuario cambia el texto, invalidamos la selección anterior.
+    if (pickedArtist != null && _normQ(q) != _normQ(pickedArtist!.name)) {
+      setState(() {
+        pickedArtist = null;
+        albums = [];
+        loadingAlbums = false;
+      });
+      _exists.clear();
+      _vinylId.clear();
+      _fav.clear();
+      _wish.clear();
+      _busy.clear();
+    }
     if (q.isEmpty) {
       setState(() {
         searchingArtists = false;
@@ -73,14 +126,33 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         albums = [];
         loadingAlbums = false;
       });
+      _lastAutoPickedQuery = '';
       return;
     }
 
-    _debounce = Timer(const Duration(milliseconds: 250), () async {
+    _debounce = Timer(const Duration(milliseconds: 260), () async {
+      if (!mounted) return;
       setState(() => searchingArtists = true);
       try {
         final hits = await DiscographyService.searchArtists(q);
         if (!mounted) return;
+
+        final qNorm = _normQ(q);
+
+        // ✅ Modo A: si el 1° es claramente el correcto, entramos directo.
+        if (hits.isNotEmpty && _shouldAutoPick(qNorm, hits)) {
+          final best = hits.first;
+          if (_lastAutoPickedQuery != qNorm && pickedArtist?.id != best.id) {
+            _lastAutoPickedQuery = qNorm;
+            setState(() {
+              searchingArtists = false;
+              artistResults = [];
+            });
+            await _pickArtist(best);
+            return;
+          }
+        }
+
         setState(() {
           artistResults = hits;
           searchingArtists = false;
@@ -320,7 +392,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
   }
 
-  Future<void> _toggleFavorite(String artistName, AlbumItem al) async {
+    Future<void> _toggleFavorite(String artistName, AlbumItem al) async {
     final key = _k(artistName, al.title);
     if (_busy[key] == true) return;
 
@@ -331,38 +403,54 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
 
     await _hydrateIfNeeded(artistName, al, force: true);
-
     if (!mounted) return;
 
-    final id = _vinylId[key] ?? 0;
+    final currentFav = _fav[key] == true;
+    final next = !currentFav;
+
+    // Resolver ID (si por algún motivo quedó vacío)
+    int id = _vinylId[key] ?? 0;
+    if (id <= 0) {
+      final row = await VinylDb.instance.findByExact(artista: artistName, album: al.title);
+      id = _asInt(row?['id']);
+      _vinylId[key] = id;
+    }
     if (id <= 0) return;
 
-    final currentFav = _fav[key] == true;
     setState(() {
       _busy[key] = true;
-      _fav[key] = !currentFav; // instantáneo
+      _fav[key] = next; // UI instantánea
     });
 
     try {
-      await VinylDb.instance.setFavoriteSafe(
-        id: id,
-        artista: artistName,
-        album: al.title,
-        favorite: !currentFav,
-      );
+      // ✅ Ruta estricta por ID (evita que quede “pegado”)
+      try {
+        await VinylDb.instance.setFavoriteStrictById(id: id, favorite: next);
+      } catch (_) {
+        // Fallback robusto si el strict falla por algún motivo
+        await VinylDb.instance.setFavoriteSafe(
+          favorite: next,
+          id: id,
+          artista: artistName,
+          album: al.title,
+        );
+      }
 
-      // ✅ Confirmar en DB (evita estado UI marcado pero no persistido)
+      // ✅ Confirmar en DB (evita UI desincronizada)
       final row = await VinylDb.instance.findByExact(artista: artistName, album: al.title);
       final dbFav = _asFav(row?['favorite']);
       _vinylId[key] = _asInt(row?['id']);
       _exists[key] = row != null;
       _fav[key] = dbFav;
 
-      if (dbFav != (!currentFav)) {
+      if (dbFav != next) {
         throw Exception('Favorito no persistió');
       }
 
-      await BackupService.autoSaveIfEnabled();
+      // Backup NO debe romper favorito
+      try {
+        await BackupService.autoSaveIfEnabled();
+      } catch (_) {}
     } catch (_) {
       if (!mounted) return;
       setState(() => _fav[key] = currentFav);
@@ -372,6 +460,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       setState(() => _busy[key] = false);
     }
   }
+
 
   Future<void> _addWishlist(String artistName, AlbumItem al, String status) async {
     final key = _k(artistName, al.title);
@@ -537,14 +626,14 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                   format: opts['format'] ?? 'LP',
                                                 );
                                               },
-                                        icon: Icon(addIcon, color: addDisabled ? Colors.grey : null),
+                                        icon: Icon(addIcon, color: addDisabled ? Theme.of(context).colorScheme.onSurfaceVariant : null),
                                       ),
                                       IconButton(
                                         tooltip: favDisabled
                                             ? (exists ? 'Cargando...' : 'Primero agrega a tu lista')
                                             : (fav ? 'Quitar favorito' : 'Marcar favorito'),
                                         onPressed: favDisabled ? null : () => _toggleFavorite(artistName, al),
-                                        icon: Icon(favIcon, color: favDisabled ? Colors.grey : null),
+                                        icon: Icon(favIcon, color: favDisabled ? Theme.of(context).colorScheme.onSurfaceVariant : null),
                                       ),
                                       IconButton(
                                         tooltip: wishDisabled ? 'No disponible' : 'Wishlist',
@@ -555,7 +644,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                 if (!mounted || st == null) return;
                                                 await _addWishlist(artistName, al, st);
                                               },
-                                        icon: Icon(wishIcon, color: wishDisabled ? Colors.grey : null),
+                                        icon: Icon(wishIcon, color: wishDisabled ? Theme.of(context).colorScheme.onSurfaceVariant : null),
                                       ),
                                     ],
                                   ),

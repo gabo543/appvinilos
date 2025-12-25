@@ -180,10 +180,10 @@ Widget _placeholder() {
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        color: Colors.black12,
+        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.35),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: const Icon(Icons.library_music, color: Colors.black45),
+      child: Icon(Icons.library_music, color: Theme.of(context).colorScheme.onSurfaceVariant),
     );
   }
 

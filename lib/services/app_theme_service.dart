@@ -5,12 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Persiste y notifica el "diseño" (tema) y la intensidad de texto elegida.
 ///
 /// Tema:
-/// 1 = Diseño 1 (Pro oscuro)
-/// 2 = Diseño 2 (Claro premium)
-/// 3 = Diseño 3 (Minimal oscuro)
-/// 4 = Diseño 4 (Pastel Citrus)
-/// 5 = Diseño 5 (Pastel Sky)
-/// 6 = Diseño 6 (Rasta Vibes)
+/// 1 = Obsidiana (Oscuro premium)
+/// 2 = Marfil (Claro premium)
+/// 3 = Grafito (Oscuro mate)
+/// 4 = Bronce Vintage
+/// 5 = Lila Soft
+/// 6 = Verde Sala (Hi‑Fi)
 ///
 /// Intensidad de texto (contraste global):
 /// 1..10 (más niveles = más contraste)

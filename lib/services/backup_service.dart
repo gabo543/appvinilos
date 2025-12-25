@@ -149,8 +149,8 @@ class BackupService {
       throw Exception('El archivo no parece ser un JSON válido: $e');
     }
 
-    if (decoded is! Map || decoded['vinyls'] is! List) {
-      throw Exception('El archivo no tiene el formato esperado (debe incluir "vinyls": [...]).');
+    if (decoded is! List && !(decoded is Map && decoded['vinyls'] is List)) {
+      throw Exception('El archivo no tiene el formato esperado. Debe ser una lista JSON de vinilos o un objeto con "vinyls": [...].');
     }
 
     // Copia el archivo a la ubicación interna usada por la app y luego carga a DB.
@@ -193,7 +193,12 @@ class BackupService {
         .toList();
 
     final f = await _backupFile();
-    await f.writeAsString(jsonEncode(payload));
+    final envelope = <String, dynamic>{
+      'version': 1,
+      'createdAt': DateTime.now().toIso8601String(),
+      'vinyls': payload,
+    };
+    await f.writeAsString(jsonEncode(envelope));
   }
 
   /// Carga la lista desde JSON. Si el backup no trae `favorite`, lo asume 0.
@@ -205,9 +210,16 @@ class BackupService {
 
     final raw = await f.readAsString();
     final data = jsonDecode(raw);
-    if (data is! List) throw Exception('Respaldo inválido.');
+    final List<dynamic> list;
+    if (data is List) {
+      list = data;
+    } else if (data is Map && data['vinyls'] is List) {
+      list = (data['vinyls'] as List);
+    } else {
+      throw Exception('Respaldo inválido.');
+    }
 
-    final vinyls = data.map<Map<String, dynamic>>((e) {
+    final vinyls = list.map<Map<String, dynamic>>((e) {
       final m = (e as Map).cast<String, dynamic>();
       // Compat: si el backup no trae favorite/condition/format, quedan null/0.
       m['favorite'] = (m['favorite'] == 1 || m['favorite'] == true || m['favorite'] == '1') ? 1 : 0;

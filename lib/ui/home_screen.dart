@@ -149,6 +149,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // ✅ Focus dedicado para poder abrir el buscador desde Home con un tap.
   final FocusNode _artistFocus = FocusNode();
 
+  // 🔎 Búsqueda local (solo en tu colección) para Vinilos/Favoritos
+  bool _localSearchActive = false;
+  final TextEditingController _localSearchCtrl = TextEditingController();
+  final FocusNode _localSearchFocus = FocusNode();
+  Timer? _debounceLocalSearch;
+  String _localQuery = '';
+
   Timer? _debounceArtist;
   bool buscandoArtistas = false;
   List<ArtistHit> sugerenciasArtistas = [];
@@ -297,15 +304,99 @@ Future<void> _loadViewMode() async {
     ViewModeService.gridNotifier.value = g;
   }
 
+  // ----------------- NAVEGACIÓN / BUSCADOR LOCAL -----------------
+  void _setVista(Vista v) {
+    if (!mounted) return;
+    setState(() {
+      vista = v;
+
+      // Al cambiar de vista, cerramos búsqueda local para evitar estados “pegados”.
+      _localSearchActive = false;
+      _localSearchCtrl.clear();
+      _localQuery = '';
+    });
+    FocusScope.of(context).unfocus();
+  }
+
+  void _toggleLocalSearch() {
+    if (!mounted) return;
+    setState(() {
+      _localSearchActive = !_localSearchActive;
+      if (!_localSearchActive) {
+        _localSearchCtrl.clear();
+        _localQuery = '';
+      }
+    });
+
+    if (_localSearchActive) {
+      Future.microtask(() {
+        if (!mounted) return;
+        FocusScope.of(context).requestFocus(_localSearchFocus);
+      });
+    } else {
+      FocusScope.of(context).unfocus();
+    }
+  }
+
+  void _onLocalSearchChanged(String _) {
+    // Rebuild inmediato (para el botón de limpiar en el AppBar),
+    // pero filtramos con debounce para no recalcular toda la lista a cada tecla.
+    if (mounted) setState(() {});
+    _debounceLocalSearch?.cancel();
+    _debounceLocalSearch = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      setState(() => _localQuery = _localSearchCtrl.text);
+    });
+  }
+
+  String _norm(String s) {
+    var out = s.toLowerCase().trim();
+    const rep = {
+      'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a',
+      'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+      'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+      'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o',
+      'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+      'ñ': 'n',
+    };
+    rep.forEach((k, v) => out = out.replaceAll(k, v));
+    out = out.replaceAll(RegExp(r'[^a-z0-9# ]'), ' ');
+    out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return out;
+  }
+
+  bool _matchesLocal(Map<String, dynamic> v, String qNorm) {
+    if (qNorm.isEmpty) return true;
+
+    final artista = _norm((v['artista'] ?? '').toString());
+    final album = _norm((v['album'] ?? '').toString());
+    final genre = _norm((v['genre'] ?? '').toString());
+    final country = _norm((v['country'] ?? '').toString());
+    final year = _norm((v['year'] ?? '').toString());
+    final numero = _norm((v['numero'] ?? '').toString());
+
+    if (artista.contains(qNorm)) return true;
+    if (album.contains(qNorm)) return true;
+    if (numero.contains(qNorm)) return true;
+    if (year.contains(qNorm)) return true;
+    if (genre.contains(qNorm)) return true;
+    if (country.contains(qNorm)) return true;
+
+    return false;
+  }
+
   @override
   void dispose() {
     _debounceArtist?.cancel();
     _debounceAlbum?.cancel();
+    _debounceLocalSearch?.cancel();
     ViewModeService.gridNotifier.removeListener(_gridListener);
     artistaCtrl.dispose();
     albumCtrl.dispose();
     yearCtrl.dispose();
     _artistFocus.dispose();
+    _localSearchCtrl.dispose();
+    _localSearchFocus.dispose();
     super.dispose();
   }
 
@@ -329,128 +420,105 @@ Future<void> _loadViewMode() async {
 
 
 
-  Future<void> _toggleFavorite(Map<String, dynamic> v) async {
-    final id = _asInt(v['id']);
-
-    // Caso extremo: mapas sin ID válido (fallback por artista+álbum/mbid/número)
-    if (id <= 0) {
-      final current = _isFav(v);
-      final next = !current;
-
-      // ✅ UI instantáneo
-      setState(() {
-        v['favorite'] = next ? 1 : 0;
-      });
-
-      try {
-        await VinylDb.instance.setFavoriteSafe(
-          id: null,
-          artista: (v['artista'] ?? '').toString(),
-          album: (v['album'] ?? '').toString(),
-          numero: _asInt(v['numero']),
-          mbid: (v['mbid'] ?? '').toString(),
-          favorite: next,
-        );
-        await BackupService.autoSaveIfEnabled();
-        await _refreshHomeCounts();
-
-        if (!mounted) return;
-        // Refresca la fuente de Favoritos para que aparezca/desaparezca al entrar a esa vista.
-        setState(() {
-          if (vista != Vista.favoritos) {
-            _futureFav = VinylDb.instance.getFavorites();
-          }
-        });
-      } catch (_) {
-        if (!mounted) return;
-        setState(() {
-          v['favorite'] = current ? 1 : 0;
-        });
-        snack('Error actualizando favorito.');
-      }
-      return;
-    }
+    Future<void> _toggleFavorite(Map<String, dynamic> v) async {
+    // 💡 Meta: que SIEMPRE funcione (marcar y desmarcar) sin depender de que el mapa sea mutable
+    // y sin que falle por backups/permisos.
+    final id0 = _asInt(v['id']);
+    final artista = (v['artista'] ?? '').toString();
+    final album = (v['album'] ?? '').toString();
+    final numero = _asInt(v['numero']);
+    final mbid = (v['mbid'] ?? '').toString();
 
     final current = _isFav(v);
     final next = !current;
 
-    // ✅ UI instantáneo (optimista)
-    // Guardamos el estado en _favCache para que el cambio se vea *al instante*
-    // tanto en lista como en grid y (en Favoritos) desaparezca inmediatamente.
+    // ✅ UI instantánea
     setState(() {
-      _favCache[id] = next;
-      v['favorite'] = next ? 1 : 0;
+      if (id0 > 0) _favCache[id0] = next;
+      // No tocamos v['favorite'] para evitar errores si el Map viene de sqflite como solo-lectura.
     });
 
-    try {
-      // ✅ Si estamos en la vista Favoritos, actualizamos ESTRICTO por ID.
-      // Esto evita el bug: “se desmarca ⭐ pero no se sale de Favoritos”.
-      if (vista == Vista.favoritos) {
-        await VinylDb.instance.setFavoriteStrictById(id: id, favorite: next);
-      } else {
-        // ✅ 1) Intento estricto por ID.
-        try {
-          await VinylDb.instance.setFavoriteStrictById(id: id, favorite: next);
-        } catch (_) {
-          // ✅ 2) Fallback robusto si el ID no calza por algún motivo.
-          await VinylDb.instance.setFavoriteSafe(
-            id: id,
-            artista: (v['artista'] ?? '').toString(),
-            album: (v['album'] ?? '').toString(),
-            numero: _asInt(v['numero']),
-            mbid: (v['mbid'] ?? '').toString(),
-            favorite: next,
-          );
-        }
-      }
+    int resolvedId = id0;
 
-      // ✅ Verificación extra: asegurar que ESTE vinilo (por artista+álbum) quedó persistido.
-      if (vista != Vista.favoritos) {
-        final a = (v['artista'] ?? '').toString();
-        final al = (v['album'] ?? '').toString();
-        if (a.trim().isNotEmpty && al.trim().isNotEmpty) {
-          final exact = await VinylDb.instance.findByExact(artista: a, album: al);
-          if (exact != null) {
-            final rawFav = exact['favorite'];
-            final savedFav = (rawFav == 1 || rawFav == true || rawFav == '1' || rawFav == 'true' || rawFav == 'TRUE');
-            if (savedFav != next) {
-              // Corrige por match exacto.
-              await VinylDb.instance.setFavoriteSafe(
-                id: _asInt(exact['id']),
-                artista: a,
-                album: al,
-                numero: _asInt(exact['numero']),
-                mbid: (exact['mbid'] ?? '').toString(),
-                favorite: next,
-              );
-            }
+    try {
+      // 1) Intento estricto por ID cuando está disponible.
+      if (resolvedId > 0) {
+        try {
+          await VinylDb.instance.setFavoriteStrictById(id: resolvedId, favorite: next);
+        } catch (_) {
+          // Si por algún motivo el ID no actualiza, hacemos fallback seguro.
+          await VinylDb.instance.setFavoriteSafe(
+            favorite: next,
+            id: resolvedId,
+            artista: artista,
+            album: album,
+            numero: numero,
+            mbid: mbid,
+          );
+
+          // Re-resolver ID por exact/mbid para dejar el cache consistente.
+          final exact = (artista.trim().isNotEmpty && album.trim().isNotEmpty)
+              ? await VinylDb.instance.findByExact(artista: artista, album: album)
+              : null;
+          resolvedId = _asInt(exact?['id']);
+          if (resolvedId <= 0 && mbid.trim().isNotEmpty) {
+            final byMbid = await VinylDb.instance.findByMbid(mbid: mbid);
+            resolvedId = _asInt(byMbid?['id']);
           }
         }
+      } else {
+        // 2) Sin ID: fallback robusto (artista+álbum / mbid / número)
+        await VinylDb.instance.setFavoriteSafe(
+          favorite: next,
+          id: null,
+          artista: artista,
+          album: album,
+          numero: numero,
+          mbid: mbid,
+        );
+
+        final exact = (artista.trim().isNotEmpty && album.trim().isNotEmpty)
+            ? await VinylDb.instance.findByExact(artista: artista, album: album)
+            : null;
+        resolvedId = _asInt(exact?['id']);
+        if (resolvedId <= 0 && mbid.trim().isNotEmpty) {
+          final byMbid = await VinylDb.instance.findByMbid(mbid: mbid);
+          resolvedId = _asInt(byMbid?['id']);
+        }
       }
 
-      await BackupService.autoSaveIfEnabled();
+      // ✅ Mantener cache consistente con el ID real (si cambió)
+      if (resolvedId > 0 && resolvedId != id0) {
+        setState(() {
+          _favCache.remove(id0);
+          _favCache[resolvedId] = next;
+        });
+      }
+
+      // ✅ Refrescar favoritos (para que al entrar se vea correcto)
+      setState(() {
+        _futureFav = VinylDb.instance.getFavorites();
+      });
+
       await _refreshHomeCounts();
 
-      if (!mounted) return;
-
-      // ✅ Importante: NO recargamos la lista actual (evita parpadeo / spinner).
-      // Solo refrescamos el Future de Favoritos (si NO estamos en esa vista),
-      // para que al entrar aparezca inmediatamente.
-      setState(() {
-        if (vista != Vista.favoritos) {
-          _futureFav = VinylDb.instance.getFavorites();
-        }
-      });
+      // 3) Backup: NO debe romper favoritos si falla
+      try {
+        await BackupService.autoSaveIfEnabled();
+      } catch (_) {
+        // no revertimos favorito
+      }
     } catch (_) {
-      // revertir si falla
+      // revertir si falla el update real en DB
       if (!mounted) return;
       setState(() {
-        _favCache[id] = current;
-        v['favorite'] = current ? 1 : 0;
+        if (resolvedId > 0) _favCache[resolvedId] = current;
+        if (id0 > 0) _favCache[id0] = current;
       });
       snack('Error actualizando favorito.');
     }
   }
+
 
   void _openDetail(Map<String, dynamic> v) {
     showModalBottomSheet(
@@ -462,7 +530,7 @@ Future<void> _loadViewMode() async {
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
           child: Container(
-            color: const Color(0xFF0B0B0B),
+            color: Theme.of(context).colorScheme.surface,
             child: VinylDetailSheet(vinyl: v),
           ),
         ),
@@ -986,7 +1054,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 	                  // Borde blanco (no marcado) + relleno gris (marcado)
 	                  icon: Icon(
 	                    fav ? Icons.star : Icons.star_border,
-	                    color: fav ? Colors.grey : Colors.white,
+	                    color: fav ? cs.primary : cs.onSurfaceVariant,
 	                  ),
 	                  onPressed: () => _toggleFavorite(v),
 	                ),
@@ -1288,7 +1356,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 
     void openBuscar() {
       // ✅ UX premium: al abrir el buscador desde Home, enfocamos Artista.
-      setState(() => vista = Vista.buscar);
+      _setVista(Vista.buscar);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         FocusScope.of(context).requestFocus(_artistFocus);
@@ -1296,7 +1364,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     }
 
 	Widget _statPill({required String label, required int value}) {
-  final pillBg = isDark ? const Color(0xFF0F0F0F) : cs.surface;
+  final pillBg = cs.surface;
   final pillBorder = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
   final labelColor = cs.onSurface.withOpacity(isDark ? 0.78 : 0.72);
 
@@ -1333,7 +1401,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 }
 
 	Widget _topNavPill({required String label, required VoidCallback onTap}) {
-	  final bg = isDark ? const Color(0xFF0F0F0F) : cs.surface;
+	  final bg = cs.surface;
 	  final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
 	  final fg = cs.onSurface;
 	  return InkWell(
@@ -1382,7 +1450,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
     }
 
     Widget quickAction({required IconData icon, required String label, required VoidCallback onTap}) {
-      final bg = isDark ? const Color(0xFF111111) : cs.surface;
+      final bg = cs.surfaceVariant;
       final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
       final fg = cs.onSurface;
 
@@ -1415,11 +1483,11 @@ Widget sectionTitle(String title, {String? subtitle}) {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F1F1),
+                      color: cs.surfaceVariant,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFEAEAEA)),
+                      border: Border.all(color: cs.outlineVariant),
                     ),
-                    child: Icon(icon, size: 24, color: const Color(0xFF0F0F0F)),
+                    child: Icon(icon, size: 24, color: cs.onSurface),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -1430,7 +1498,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                         const SizedBox(height: 3),
                         Text(
                           subtitle,
-                          style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFF6A6A6A), fontWeight: FontWeight.w700),
+                          style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant.withOpacity(0.85), fontWeight: FontWeight.w700),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1438,7 +1506,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(Icons.chevron_right, size: 20, color: Color(0xFF6A6A6A)),
+                  const Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant.withOpacity(0.85)),
                 ],
               ),
             ),
@@ -1466,14 +1534,14 @@ Widget sectionTitle(String title, {String? subtitle}) {
                         const SizedBox(height: 2),
                         Text(
                           subtitle,
-                          style: t.textTheme.bodySmall?.copyWith(color: const Color(0xFF9A9A9A), fontWeight: FontWeight.w600),
+                          style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant.withOpacity(0.75), fontWeight: FontWeight.w600),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9A9A9A)),
+                  const Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant.withOpacity(0.75)),
                 ],
               ),
             ),
@@ -1494,7 +1562,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF0F0F0F) : cs.surface,
+                    color: cs.surface,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: cs.outline.withOpacity(isDark ? 0.90 : 1.00)),
                   ),
@@ -1595,7 +1663,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     AspectRatio(
-                      aspectRatio: 1,
+                      aspectRatio: 1.10,
                       child: Stack(
                         children: [
                           Positioned.fill(
@@ -1667,9 +1735,7 @@ Container(
     gradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: isDark
-          ? const [Color(0xFF1A1A1A), Color(0xFF0F0F0F)]
-          : const [Color(0xFFFFFFFF), Color(0xFFF1F1F1)],
+      colors: isDark ? [cs.surfaceVariant, cs.surface] : [cs.surface, cs.surfaceVariant],
     ),
   ),
   child: Column(
@@ -1720,7 +1786,7 @@ Container(
 	              onTap: () {
 	                _reloadAllData();
 	                if (!mounted) return;
-	                setState(() => vista = Vista.lista);
+	                _setVista(Vista.lista);
 	              },
 	            ),
 	          ),
@@ -1731,7 +1797,7 @@ Container(
 	              onTap: () {
 	                _reloadAllData();
 	                if (!mounted) return;
-	                setState(() => vista = Vista.favoritos);
+	                _setVista(Vista.favoritos);
 	              },
 	            ),
 	          ),
@@ -1831,7 +1897,7 @@ sectionTitle('Colección'
           subtitle: 'Todos tus LPs guardados',          onTap: () {
             _reloadAllData();
             if (!mounted) return;
-            setState(() => vista = Vista.lista);
+            _setVista(Vista.lista);
           },
         ),
         menuRow(
@@ -1840,7 +1906,7 @@ sectionTitle('Colección'
           subtitle: 'Tu selección destacada',          onTap: () {
             _reloadAllData();
             if (!mounted) return;
-            setState(() => vista = Vista.favoritos);
+            _setVista(Vista.favoritos);
           },
         ),
         menuRow(
@@ -1861,7 +1927,7 @@ sectionTitle('Colección'
             _borrarPapelera = false;
             _reloadAllData();
             if (!mounted) return;
-            setState(() => vista = Vista.borrar);
+            _setVista(Vista.borrar);
           },
         ),
 
@@ -1948,7 +2014,7 @@ Widget vistaBorrar() {
         child: ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: items.length,
+          itemCount: visibleItems.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, i) => tile(items[i]),
         ),
@@ -2496,23 +2562,44 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
       // el item desaparezca al instante, incluso si el FutureBuilder aún muestra datos antiguos.
       final items = onlyFavorites ? rawItems.where(_isFav).toList() : rawItems;
 
-      
-if (items.isEmpty) {
-  if (conBorrar && _borrarPapelera) {
-    return _emptyState(
-      icon: Icons.delete_sweep_outlined,
-      title: 'Papelera vacía',
-      subtitle: 'Aquí aparecerán los vinilos que borres para que puedas recuperarlos.',
-    );
-  }
-  return _emptyState(
-    icon: onlyFavorites ? Icons.star_outline : Icons.library_music_outlined,
-    title: onlyFavorites ? 'No hay favoritos' : 'No hay vinilos',
-    subtitle: onlyFavorites
-        ? 'Marca un vinilo como favorito y aparecerá aquí.'
-        : 'Agrega tu primer vinilo desde Discografía o Buscar.',
-  );
-}
+      final qNorm = _norm(_localQuery);
+      final visibleItems = qNorm.isEmpty
+          ? items
+          : items.where((v) => _matchesLocal(v, qNorm)).toList();
+
+      if (visibleItems.isEmpty) {
+        // Caso: hay vinilos, pero el filtro/búsqueda no encontró nada.
+        if (qNorm.isNotEmpty && items.isNotEmpty) {
+          return _emptyState(
+            icon: Icons.search_off,
+            title: 'Sin resultados',
+            subtitle: 'No encontré coincidencias en tu lista.',
+            actionText: 'Limpiar búsqueda',
+            onAction: () {
+              setState(() {
+                _localSearchCtrl.clear();
+                _localQuery = '';
+              });
+              FocusScope.of(context).requestFocus(_localSearchFocus);
+            },
+          );
+        }
+
+        if (conBorrar && _borrarPapelera) {
+          return _emptyState(
+            icon: Icons.delete_sweep_outlined,
+            title: 'Papelera vacía',
+            subtitle: 'Aquí aparecerán los vinilos que borres para que puedas recuperarlos.',
+          );
+        }
+        return _emptyState(
+          icon: onlyFavorites ? Icons.star_outline : Icons.library_music_outlined,
+          title: onlyFavorites ? 'No hay favoritos' : 'No hay vinilos',
+          subtitle: onlyFavorites
+              ? 'Marca un vinilo como favorito y aparecerá aquí.'
+              : 'Agrega tu primer vinilo desde Discografía o Buscar.',
+        );
+      }
 
 
       if (_gridView) {
@@ -2530,9 +2617,9 @@ if (items.isEmpty) {
             // Un poco más vertical para dar protagonismo a la carátula
             childAspectRatio: 0.68,
           ),
-          itemCount: items.length,
+          itemCount: visibleItems.length,
           itemBuilder: (context, i) {
-            final v = items[i];
+            final v = visibleItems[i];
             return _gridTile(v, conBorrar: conBorrar);
           },
         );
@@ -2545,9 +2632,9 @@ if (items.isEmpty) {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: items.length,
+        itemCount: visibleItems.length,
         itemBuilder: (context, i) {
-          final v = items[i];
+          final v = visibleItems[i];
           return _vinylListCard(v, conBorrar: conBorrar);
         },
       );
@@ -2555,13 +2642,10 @@ if (items.isEmpty) {
   );
 }
 
-
-
-
-
   PreferredSizeWidget? _buildAppBar() {
-    // Usamos vista explícito para evitar problemas de resolución de nombres
     if (vista == Vista.inicio) return null;
+
+    final localSearchAllowed = (vista == Vista.lista || vista == Vista.favoritos);
 
     String title;
     switch (vista) {
@@ -2581,12 +2665,52 @@ if (items.isEmpty) {
         title = 'GaBoLP';
     }
 
+    final titleWidget = (localSearchAllowed && _localSearchActive)
+        ? TextField(
+            controller: _localSearchCtrl,
+            focusNode: _localSearchFocus,
+            onChanged: _onLocalSearchChanged,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Buscar en tu colección…',
+              border: InputBorder.none,
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: (_localSearchCtrl.text.trim().isNotEmpty)
+                  ? IconButton(
+                      tooltip: 'Limpiar texto',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        _localSearchCtrl.clear();
+                        setState(() => _localQuery = '');
+                        FocusScope.of(context).requestFocus(_localSearchFocus);
+                      },
+                    )
+                  : null,
+            ),
+          )
+        : Text(title);
+
     return AppBar(
-      title: Text(title),
+      title: titleWidget,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
-        onPressed: () => setState(() => vista = Vista.inicio),
+        onPressed: () {
+          if (localSearchAllowed && _localSearchActive) {
+            _toggleLocalSearch();
+            return;
+          }
+          _setVista(Vista.inicio);
+        },
       ),
+      actions: [
+        if (localSearchAllowed)
+          IconButton(
+            tooltip: _localSearchActive ? 'Cerrar búsqueda' : 'Buscar en mi lista',
+            icon: Icon(_localSearchActive ? Icons.close : Icons.search),
+            onPressed: _toggleLocalSearch,
+          ),
+      ],
     );
   }
 
@@ -2594,7 +2718,7 @@ if (items.isEmpty) {
     if (vista == Vista.lista || vista == Vista.favoritos || vista == Vista.borrar) {
       // Solo icono (sin texto "Inicio")
       return FloatingActionButton(
-        onPressed: () => setState(() => vista = Vista.inicio),
+        onPressed: () => _setVista(Vista.inicio),
         tooltip: 'Inicio',
         child: const Icon(Icons.home),
       );

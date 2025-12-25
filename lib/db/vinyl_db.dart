@@ -310,7 +310,21 @@ if (oldV < 9) {
     await setFavoriteSafe(favorite: favorite, id: id);
   }
 
-  Future<Map<String, dynamic>?> findByExact({
+  
+  Future<Map<String, dynamic>?> findByMbid({required String mbid}) async {
+    final d = await db;
+    final key = mbid.trim();
+    if (key.isEmpty) return null;
+    final rows = await d.query(
+      'vinyls',
+      where: 'TRIM(mbid) = TRIM(?)',
+      whereArgs: [key],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+Future<Map<String, dynamic>?> findByExact({
     required String artista,
     required String album,
   }) async {

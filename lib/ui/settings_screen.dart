@@ -15,12 +15,12 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   static const Map<int, String> _themeLabels = {
-    1: 'Vinyl Pro',
-    2: 'Claro Premium',
-    3: 'Minimal Dark',
-    4: 'Pastel Citrus',
-    5: 'Pastel Sky',
-    6: 'Rasta Vibes',
+    1: 'Obsidiana',
+    2: 'Marfil',
+    3: 'Grafito',
+    4: 'Bronce',
+    5: 'Lila',
+    6: 'Verde Sala',
   };
 
   static String _labelIntensity(int v) {
@@ -141,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final themeName = _themeLabels[_theme] ?? 'Vinyl Pro';
+    final themeName = _themeLabels[_theme] ?? 'Obsidiana';
     final intensityName = _labelIntensity(_textIntensity);
     final borderName = _borderName(_borderStyle);
     final borderBase = AppThemeService.borderBaseColor(_borderStyle);
