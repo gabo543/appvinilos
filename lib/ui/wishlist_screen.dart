@@ -16,6 +16,7 @@ class WishlistScreen extends StatefulWidget {
 
 class _WishlistScreenState extends State<WishlistScreen> {
   late Future<List<Map<String, dynamic>>> _future;
+  bool _grid = false;
 
   @override
   void initState() {
@@ -152,7 +153,29 @@ void _snack(String t) {
     _reload();
   }
 
-  Widget _placeholder() {
+  
+  Widget _metaPill(BuildContext context, String text) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = text.trim().isEmpty ? '—' : text.trim();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceVariant.withOpacity(isDark ? 0.35 : 0.65),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+      ),
+      child: Text(
+        t,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+
+Widget _placeholder() {
     return Container(
       width: 56,
       height: 56,
@@ -164,29 +187,29 @@ void _snack(String t) {
     );
   }
 
-  Widget _leadingCover(Map<String, dynamic> w) {
-    final cover250 = (w['cover250'] as String?)?.trim() ?? '';
+  Widget _leadingCover(Map<String, dynamic> w, {double size = 56}) {
+    final cover = ((size >= 120 ? (w['cover500'] as String?) : null) ?? (w['cover250'] as String?))?.trim() ?? '';
 
-    if (cover250.startsWith('http://') || cover250.startsWith('https://')) {
+    if (cover.startsWith('http://') || cover.startsWith('https://')) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Image.network(
-          cover250,
-          width: 56,
-          height: 56,
+          cover,
+          width: size,
+          height: size,
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => _placeholder(),
         ),
       );
     }
 
-    if (cover250.isNotEmpty && File(cover250).existsSync()) {
+    if (cover.isNotEmpty && File(cover).existsSync()) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Image.file(
-          File(cover250),
-          width: 56,
-          height: 56,
+          File(cover),
+          width: size,
+          height: size,
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => _placeholder(),
         ),
@@ -195,6 +218,153 @@ void _snack(String t) {
 
     return _placeholder();
   }
+
+  Widget _wishListCard(Map<String, dynamic> w) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final artista = (w['artista'] ?? '').toString().trim();
+    final album = (w['album'] ?? '').toString().trim();
+    final year = (w['year'] ?? '').toString().trim();
+    final status = (w['status'] ?? '').toString().trim();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _openDetail(w),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 98,
+                height: 98,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                    child: _leadingCover(w, size: 98),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _metaPill(context, year),
+                          if (status.isNotEmpty) _statusChip(context, status),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        album.isEmpty ? '—' : album,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        artista.isEmpty ? '—' : artista,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+ return _grid
+              ? GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.72,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) => _wishGridCard(items[i]),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) => _wishListCard(items[i]),
+                );1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                artista.isEmpty ? '—' : artista,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  _metaPill(context, year),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Agregar a vinilos',
+                    icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () async {
+                      final opts = await _askConditionAndFormat();
+                      if (!mounted || opts == null) return;
+                      final artista = (w['artista'] ?? '').toString().trim();
+                      final album = (w['album'] ?? '').toString().trim();
+                      if (artista.isEmpty || album.isEmpty) return;
+                      try {
+                        await VinylDb.instance.insertVinyl(
+                          artista: artista,
+                          album: album,
+                          condition: opts['condition'],
+                          format: opts['format'],
+                          year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
+                          coverPath: (w['cover250'] ?? '').toString(),
+                        );
+                        await VinylDb.instance.removeWishlistById(w['id']);
+                        await BackupService.autoSaveIfEnabled();
+                        _snack('Agregado a tu lista de vinilos');
+                        _reload();
+                      } catch (_) {
+                        _snack('No se pudo agregar');
+                      }
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'Eliminar',
+                    icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _removeItem(w),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Future<void> _openDetail(Map<String, dynamic> w) async {
     final artistName = (w['artista'] ?? '').toString().trim();
@@ -257,6 +427,13 @@ void _snack(String t) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lista de deseos'),
+        actions: [
+          IconButton(
+            tooltip: _grid ? 'Vista lista' : 'Vista grid',
+            icon: Icon(_grid ? Icons.view_list : Icons.grid_view),
+            onPressed: () => setState(() => _grid = !_grid),
+          ),
+        ],
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,

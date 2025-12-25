@@ -9,7 +9,6 @@ import '../services/vinyl_add_service.dart';
 import '../services/backup_service.dart';
 import '../services/view_mode_service.dart';
 import '../services/app_theme_service.dart';
-import '../services/recent_added_text_service.dart';
 import 'discography_screen.dart';
 import 'settings_screen.dart';
 import 'vinyl_detail_sheet.dart';
@@ -609,6 +608,173 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       child: const Icon(Icons.album, size: 48),
     );
   }
+  Widget _metaPill(BuildContext context, String text) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = text.trim().isEmpty ? '—' : text.trim();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceVariant.withOpacity(isDark ? 0.35 : 0.65),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+      ),
+      child: Text(
+        t,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+
+  Widget _vinylListCard(Map<String, dynamic> v, {required bool conBorrar}) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final year = ((v['year'] ?? '').toString().trim());
+    final genre = ((v['genre'] ?? '').toString().trim());
+    final artista = ((v['artista'] ?? '').toString().trim());
+    final album = ((v['album'] ?? '').toString().trim());
+    final fav = _isFav(v);
+
+    final actions = <Widget>[
+      if (!conBorrar)
+        IconButton(
+          tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
+          icon: Icon(
+            fav ? Icons.star : Icons.star_border,
+            color: fav ? Colors.amber : cs.onSurfaceVariant,
+          ),
+          onPressed: () => _toggleFavorite(v),
+        ),
+      if (conBorrar && !_borrarPapelera)
+        IconButton(
+          tooltip: 'Enviar a papelera',
+          icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
+          onPressed: () async {
+            final id = _asInt(v['id']);
+            if (id == 0) return;
+            await VinylDb.instance.moveToTrash(id);
+            await BackupService.autoSaveIfEnabled();
+            if (!mounted) return;
+            _reloadAllData();
+            snack('Enviado a papelera');
+          },
+        ),
+      if (conBorrar && _borrarPapelera) ...[
+        IconButton(
+          tooltip: 'Restaurar',
+          icon: Icon(Icons.restore_from_trash, color: cs.onSurfaceVariant),
+          onPressed: () async {
+            final trashId = _asInt(v['id']);
+            if (trashId == 0) return;
+            final ok = await VinylDb.instance.restoreFromTrash(trashId);
+            await BackupService.autoSaveIfEnabled();
+            if (!mounted) return;
+            _reloadAllData();
+            snack(ok ? 'Restaurado' : 'No se pudo restaurar');
+          },
+        ),
+        IconButton(
+          tooltip: 'Eliminar definitivo',
+          icon: Icon(Icons.delete_forever, color: cs.onSurfaceVariant),
+          onPressed: () async {
+            final trashId = _asInt(v['id']);
+            if (trashId == 0) return;
+            await VinylDb.instance.deleteTrashById(trashId);
+            await BackupService.autoSaveIfEnabled();
+            if (!mounted) return;
+            _reloadAllData();
+            snack('Eliminado');
+          },
+        ),
+      ],
+    ];
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _openDetail(v),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 98,
+                height: 98,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                        child: _leadingCover(v, size: 98, fit: BoxFit.contain),
+                      ),
+                    ),
+                    Positioned(
+                      left: 6,
+                      bottom: 6,
+                      child: _numeroBadge(context, v['numero'], compact: true),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _metaPill(context, year),
+                          _metaPill(context, genre),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        artista.isEmpty ? '—' : artista,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        album.isEmpty ? '—' : album,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (actions.isNotEmpty)
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: actions
+                      .map((w) => Padding(padding: const EdgeInsets.only(bottom: 2), child: w))
+                      .toList(growable: false),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Widget _gridActionIcon({
     required IconData icon,
@@ -626,140 +792,140 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     );
   }
 
+  
   Widget _gridTile(Map<String, dynamic> v, {required bool conBorrar}) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final artista = ((v['artista'] ?? '').toString().trim());
     final album = ((v['album'] ?? '').toString().trim());
     final year = ((v['year'] ?? '').toString().trim());
     final fav = _isFav(v);
 
+    Widget actions() {
+      if (!conBorrar) {
+        return IconButton(
+          tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
+          onPressed: () => _toggleFavorite(v),
+          icon: Icon(
+            fav ? Icons.star : Icons.star_border,
+            color: fav ? Colors.amber : cs.onSurfaceVariant,
+            size: 22,
+          ),
+          visualDensity: VisualDensity.compact,
+        );
+      }
+      if (!_borrarPapelera) {
+        return IconButton(
+          tooltip: 'Enviar a papelera',
+          onPressed: () async {
+            final id = _asInt(v['id']);
+            if (id == 0) return;
+            await VinylDb.instance.moveToTrash(id);
+            await BackupService.autoSaveIfEnabled();
+            if (!mounted) return;
+            _reloadAllData();
+            snack('Enviado a papelera');
+          },
+          icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
+          visualDensity: VisualDensity.compact,
+        );
+      }
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Restaurar',
+            onPressed: () async {
+              final trashId = _asInt(v['id']);
+              if (trashId == 0) return;
+              final ok = await VinylDb.instance.restoreFromTrash(trashId);
+              await BackupService.autoSaveIfEnabled();
+              if (!mounted) return;
+              _reloadAllData();
+              snack(ok ? 'Restaurado' : 'No se pudo restaurar');
+            },
+            icon: Icon(Icons.restore_from_trash, color: cs.onSurfaceVariant, size: 20),
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            tooltip: 'Eliminar definitivo',
+            onPressed: () async {
+              final trashId = _asInt(v['id']);
+              if (trashId == 0) return;
+              await VinylDb.instance.deleteTrashById(trashId);
+              await BackupService.autoSaveIfEnabled();
+              if (!mounted) return;
+              _reloadAllData();
+              snack('Eliminado');
+            },
+            icon: Icon(Icons.delete_forever, color: cs.onSurfaceVariant, size: 20),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      );
+    }
+
     return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _openDetail(v),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ✅ Carátula grande, completa y fija.
-            AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _gridCover(v, fit: BoxFit.contain),
-                  Positioned(
-                    right: 6,
-                    top: 6,
-                    child: _numeroBadge(context, v['numero'], compact: true),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AspectRatio(
+                aspectRatio: 1,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                    child: _gridCover(v, fit: BoxFit.contain),
                   ),
-                ],
-              ),
-            ),
-
-            // Texto + acciones abajo (alineados al fondo)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      artista.isEmpty ? '—' : artista,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      album.isEmpty ? '—' : album,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            year.isEmpty ? '—' : year,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        if (!conBorrar)
-                          _gridActionIcon(
-                            tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
-                            icon: fav ? Icons.star : Icons.star_border,
-                            color: fav ? Colors.amber : Colors.grey,
-                            onPressed: () => _toggleFavorite(v),
-                          ),
-
-                        // 🗑️ Mover a papelera (desde colección)
-                        if (conBorrar && !_borrarPapelera)
-                          _gridActionIcon(
-                            tooltip: 'Enviar a papelera',
-                            icon: Icons.delete_outline,
-                            onPressed: () async {
-                              final id = _asInt(v['id']);
-                              if (id == 0) return;
-                              await VinylDb.instance.moveToTrash(id);
-                              await BackupService.autoSaveIfEnabled();
-                              await _refreshHomeCounts();
-                              if (!mounted) return;
-                              _reloadAllData();
-                              snack('Enviado a papelera');
-                            },
-                          ),
-
-                        // ♻️ Papelera: recuperar / eliminar definitivo
-                        if (conBorrar && _borrarPapelera) ...[
-                          _gridActionIcon(
-                            tooltip: 'Recuperar a Vinilos',
-                            icon: Icons.restore,
-                            onPressed: () async {
-                              final trashId = _asInt(v['id']);
-                              if (trashId == 0) return;
-                              final ok = await VinylDb.instance.restoreFromTrash(trashId);
-                              await BackupService.autoSaveIfEnabled();
-                              await _refreshHomeCounts();
-                              if (!mounted) return;
-                              _reloadAllData();
-                              snack(ok ? 'Devuelto a Vinilos' : 'No se pudo devolver (duplicado)');
-                            },
-                          ),
-                          _gridActionIcon(
-                            tooltip: 'Eliminar definitivo',
-                            icon: Icons.delete_forever,
-                            onPressed: () async {
-                              final trashId = _asInt(v['id']);
-                              if (trashId == 0) return;
-                              await VinylDb.instance.deleteTrashById(trashId);
-                              await BackupService.autoSaveIfEnabled();
-                              if (!mounted) return;
-                              _reloadAllData();
-                              snack('Eliminado');
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              Text(
+                artista.isEmpty ? '—' : artista,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                album.isEmpty ? '—' : album,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  _numeroBadge(context, v['numero'], compact: true),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      year.isEmpty ? '—' : year,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  actions(),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
 
   Widget _gridVinylCard(Map<String, dynamic> v, {required bool conBorrar}) {
     final year = (v['year'] as String?)?.trim() ?? '';
@@ -1359,134 +1525,132 @@ Widget sectionTitle(String title, {String? subtitle}) {
       );
     }
 
-Widget recentGrid() {
-  return ValueListenableBuilder<bool>(
-    valueListenable: RecentAddedTextService.notifier,
-    builder: (context, showText, _) {
-      return FutureBuilder<List<Map<String, dynamic>>>(
-        future: _futureAll,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return _emptyState(
-              icon: Icons.wifi_off,
-              title: 'Sin conexión',
-              subtitle: 'No pude cargar tus vinilos ahora. Intenta de nuevo.',
-              actionText: 'Reintentar',
-              onAction: _reloadAllData,
-            );
-          }
 
-          final items = (snap.data ?? const <Map<String, dynamic>>[]).toList();
-          if (items.isEmpty) {
-            return const Text(
-              'Aún no has agregado vinilos. Usa “Buscar” o “Discografías”.',
-              style: TextStyle(color: Color(0xFFA7A7A7), fontWeight: FontWeight.w600),
-            );
-          }
+  Widget recentGrid() {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-          // Mostramos 4 “últimos” de forma visual (sin cambiar lógica de guardado).
-          items.sort((a, b) {
-            final ia = (a['id'] is int) ? a['id'] as int : 0;
-            final ib = (b['id'] is int) ? b['id'] as int : 0;
-            return ib.compareTo(ia);
-          });
-          final top = items.take(4).toList();
-
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: top.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              // ✅ Con texto: un poco más vertical. Sin texto: más cuadrado (carátula gigante).
-              childAspectRatio: showText ? 0.90 : 1.0,
-            ),
-            itemBuilder: (_, i) {
-              final v = top[i];
-              final artista = (v['artista'] as String?)?.trim() ?? '';
-              final album = (v['album'] as String?)?.trim() ?? '';
-              final year = (v['year'] as String?)?.trim() ?? '';
-
-              return InkWell(
-                onTap: () => _openDetail(v),
-                borderRadius: BorderRadius.circular(18),
-                child: Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: showText
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Stack(
-                                children: [
-                                  Positioned.fill(child: _gridCover(v)),
-                                  Positioned(
-                                    right: 6,
-                                    top: 6,
-                                    child: _numeroBadge(context, v['numero'], compact: true),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    artista.isEmpty ? '—' : artista,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: (Theme.of(context).textTheme.labelSmall ?? const TextStyle(fontSize: 11))
-                                        .copyWith(fontWeight: FontWeight.w900),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    album.isEmpty ? '—' : album,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: (Theme.of(context).textTheme.labelSmall ?? const TextStyle(fontSize: 11))
-                                        .copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                  if (year.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      year,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: (Theme.of(context).textTheme.labelSmall ?? const TextStyle(fontSize: 10))
-                                          .copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        )
-                      : Stack(
-                          children: [
-                            Positioned.fill(child: _gridCover(v)),
-                            Positioned(
-                              right: 6,
-                              top: 6,
-                              child: _numeroBadge(context, v['numero'], compact: true),
-                            ),
-                          ],
-                        ),
-                ),
-              );
-            },
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _futureAll,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return _emptyState(
+            icon: Icons.wifi_off,
+            title: 'Sin conexión',
+            subtitle: 'No pude cargar tus vinilos ahora. Intenta de nuevo.',
+            actionText: 'Reintentar',
+            onAction: _reloadAllData,
           );
-        },
-      );
-    },
-  );
-}
+        }
+
+        final items = (snap.data ?? const <Map<String, dynamic>>[]).toList();
+        if (items.isEmpty) {
+          return Text(
+            'Aún no has agregado vinilos. Usa “Buscar” o “Discografías”.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurface.withOpacity(0.70),
+                  fontWeight: FontWeight.w600,
+                ),
+          );
+        }
+
+        // 4 últimos por id descendente (visual)
+        items.sort((a, b) {
+          final ia = (a['id'] is int) ? a['id'] as int : 0;
+          final ib = (b['id'] is int) ? b['id'] as int : 0;
+          return ib.compareTo(ia);
+        });
+        final top = items.take(4).toList();
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: top.length,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 0.72,
+          ),
+          itemBuilder: (_, i) {
+            final v = top[i];
+            final artista = ((v['artista'] ?? '').toString().trim());
+            final album = ((v['album'] ?? '').toString().trim());
+            final year = ((v['year'] ?? '').toString().trim());
+
+            return Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _openDetail(v),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Container(
+                              color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                              child: _gridCover(v, fit: BoxFit.contain),
+                            ),
+                          ),
+                          Positioned(
+                            left: 10,
+                            bottom: 10,
+                            child: _numeroBadge(context, v['numero'], compact: true),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            artista.isEmpty ? '—' : artista,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            album.isEmpty ? '—' : album,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            year.isEmpty ? '—' : year,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: cs.onSurface.withOpacity(0.70),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
 
 
     return Column(
@@ -2384,126 +2548,7 @@ if (items.isEmpty) {
         itemCount: items.length,
         itemBuilder: (context, i) {
           final v = items[i];
-          final fav = _isFav(v);
-
-          final year = (v['year'] as String?)?.trim();
-          final genre = (v['genre'] as String?)?.trim();
-          final country = (v['country'] as String?)?.trim();
-	          final artista = (v['artista'] ?? '').toString();
-	          final album = (v['album'] ?? '').toString();
-
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: ListTile(
-              onTap: () => _openDetail(v),
-              // ✅ Carátula más grande y completa (sin recorte)
-              leading: _leadingCover(
-                v,
-                size: 110,
-                fit: BoxFit.contain,
-              ),
-	              // ✅ Texto alineado a la derecha (en orden) con el Álbum destacado
-	              title: Row(
-	                children: [
-	                  _numeroBadge(context, v['numero'], compact: true),
-	                  const SizedBox(width: 8),
-	                  Expanded(
-	                    child: Column(
-	                      crossAxisAlignment: CrossAxisAlignment.start,
-	                      children: [
-	                        Text(
-	                          artista,
-	                          maxLines: 1,
-	                          overflow: TextOverflow.ellipsis,
-	                          style: Theme.of(context)
-	                              .textTheme
-	                              .labelLarge
-	                              ?.copyWith(fontWeight: FontWeight.w900),
-	                        ),
-	                        const SizedBox(height: 4),
-	                        Text(
-	                          album,
-	                          maxLines: 2,
-	                          overflow: TextOverflow.ellipsis,
-	                          style: Theme.of(context)
-	                              .textTheme
-	                              .titleMedium
-	                              ?.copyWith(fontWeight: FontWeight.w900),
-	                        ),
-	                      ],
-	                    ),
-	                  ),
-	                ],
-	              ),
-              subtitle: Text(
-                'Año: ${(year == null || year.isEmpty) ? '—' : year}  •  '
-                'Género: ${(genre == null || genre.isEmpty) ? '—' : genre}',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!conBorrar)
-                    IconButton(
-                      tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
-                      icon: Icon(
-                        fav ? Icons.star : Icons.star_border,
-                        color: fav ? Colors.amber : Colors.grey,
-                      ),
-                      onPressed: () => _toggleFavorite(v),
-                    ),
-
-                  // 🗑️ Mover a papelera (desde colección)
-                  if (conBorrar && !_borrarPapelera)
-                    IconButton(
-                      tooltip: 'Enviar a papelera',
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () async {
-                        final id = _asInt(v['id']);
-                        if (id == 0) return;
-                        await VinylDb.instance.moveToTrash(id);
-                        await BackupService.autoSaveIfEnabled();
-                        await _refreshHomeCounts();
-                        if (!mounted) return;
-                        _reloadAllData();
-                        snack('Enviado a papelera');
-                      },
-                    ),
-
-                  // ♻️ Papelera: recuperar / eliminar definitivo
-                  if (conBorrar && _borrarPapelera) ...[
-                    IconButton(
-                      tooltip: 'Volver a Vinilos',
-                      icon: const Icon(Icons.add),
-                      onPressed: () async {
-                        final trashId = _asInt(v['id']);
-                        if (trashId == 0) return;
-                        final ok = await VinylDb.instance.restoreFromTrash(trashId);
-                        await BackupService.autoSaveIfEnabled();
-                        await _refreshHomeCounts();
-                        if (!mounted) return;
-                        _reloadAllData();
-                        snack(ok ? 'Devuelto a Vinilos' : 'No se pudo devolver (duplicado)');
-                      },
-                    ),
-                    IconButton(
-                      tooltip: 'Eliminar definitivo',
-                      icon: const Icon(Icons.delete_forever),
-                      onPressed: () async {
-                        final trashId = _asInt(v['id']);
-                        if (trashId == 0) return;
-                        await VinylDb.instance.deleteTrashById(trashId);
-                        await BackupService.autoSaveIfEnabled();
-                        if (!mounted) return;
-                        _reloadAllData();
-                        snack('Eliminado');
-                      },
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
+          return _vinylListCard(v, conBorrar: conBorrar);
         },
       );
     },

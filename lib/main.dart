@@ -18,6 +18,49 @@ void main() async {
 class GaBoLpApp extends StatelessWidget {
   const GaBoLpApp({super.key});
 
+  ThemeData _applyCardBorderStyle(ThemeData base, int style1to10) {
+    // El usuario elige un color (1..10) para el contorno/borde.
+    final c = AppThemeService.borderBaseColor(style1to10);
+    final isDark = base.scaffoldBackgroundColor.computeLuminance() < 0.42;
+
+    // Usamos el mismo color como "outline" y "outlineVariant" para que
+    // todos los contornos que ya usan el ColorScheme se actualicen sin
+    // tener que tocar cada widget.
+    final cs = base.colorScheme;
+    final newCs = cs.copyWith(
+      outline: c,
+      outlineVariant: c,
+    );
+
+    // CardTheme: mantenemos radio/ancho, solo cambiamos el color.
+    final card = base.cardTheme;
+    final shape = card.shape;
+
+    RoundedRectangleBorder rrb;
+    if (shape is RoundedRectangleBorder) {
+      rrb = shape;
+    } else {
+      rrb = RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(width: 1),
+      );
+    }
+
+    final side = rrb.side;
+    final resolved = c.withOpacity(isDark ? 0.90 : 0.70);
+    final newShape = RoundedRectangleBorder(
+      borderRadius: rrb.borderRadius,
+      side: side.copyWith(color: resolved),
+    );
+
+    return base.copyWith(
+      colorScheme: newCs,
+      cardTheme: card.copyWith(shape: newShape),
+      // Dividers suelen sentirse como "borde"; los alineamos con el contorno.
+      dividerColor: resolved.withOpacity(isDark ? 0.65 : 0.50),
+    );
+  }
+
   ThemeData _theme1() {
     // ✅ Solo UI: tema oscuro "premium" (negro/gris) sin tocar lógica.
     const seed = Color(0xFF8E8E8E);
@@ -823,27 +866,33 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
                 return ValueListenableBuilder<int>(
                   valueListenable: AppThemeService.cardLevelNotifier,
                   builder: (_, cardLevel, __) {
-                    ThemeData base = switch (themeId) {
-                      2 => _theme2(),
-                      3 => _theme3(),
-                      4 => _theme4(),
-                      5 => _theme5(),
-                      6 => _theme6(),
-                      _ => _theme1(),
-                    };
+                    return ValueListenableBuilder<int>(
+                      valueListenable: AppThemeService.cardBorderStyleNotifier,
+                      builder: (_, borderStyle, __) {
+                        ThemeData base = switch (themeId) {
+                          2 => _theme2(),
+                          3 => _theme3(),
+                          4 => _theme4(),
+                          5 => _theme5(),
+                          6 => _theme6(),
+                          _ => _theme1(),
+                        };
 
-                    base = _applyProSystem(base);
+                        base = _applyProSystem(base);
 
-                    // ✅ Orden: primero paleta de fondo/superficies, luego contraste de texto.
-                    ThemeData theme = _applyBackgroundLevel(base, bgLevel);
-                    theme = _applyTextIntensity(theme, intensity);
-                    theme = _applyCardLevel(theme, cardLevel);
+                        // ✅ Orden: primero paleta de fondo/superficies, luego contraste de texto.
+                        ThemeData theme = _applyBackgroundLevel(base, bgLevel);
+                        theme = _applyTextIntensity(theme, intensity);
+                        theme = _applyCardLevel(theme, cardLevel);
+                        theme = _applyCardBorderStyle(theme, borderStyle);
 
-                    return MaterialApp(
-                      debugShowCheckedModeBanner: false,
-                      title: 'Colección vinilos',
-                      theme: theme,
-                      home: const HomeScreen(),
+                        return MaterialApp(
+                          debugShowCheckedModeBanner: false,
+                          title: 'Colección vinilos',
+                          theme: theme,
+                          home: const HomeScreen(),
+                        );
+                      },
                     );
                   },
                 );

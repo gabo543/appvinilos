@@ -5,7 +5,6 @@ import 'package:share_plus/share_plus.dart';
 import '../services/backup_service.dart';
 import '../services/app_theme_service.dart';
 import '../services/view_mode_service.dart';
-import '../services/recent_added_text_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -31,13 +30,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return 'Máx';
   }
 
+  static const List<String> _borderNames = <String>[
+    'Blanco suave',
+    'Gris frío',
+    'Gris cálido',
+    'Verde menta',
+    'Verde salvia',
+    'Rojo rosado',
+    'Durazno',
+    'Bronce',
+    'Lila',
+    'Azul hielo',
+  ];
+
+  static String _borderName(int v) {
+    final i = v.clamp(1, 10) - 1;
+    return _borderNames[i];
+  }
+
   bool _auto = false;
   bool _grid = false;
-  bool _recentText = false;
   int _theme = 1;
   int _textIntensity = 6;
   int _bgLevel = 5;
   int _cardLevel = 5;
+  int _borderStyle = 1;
   bool _loading = true;
 
   @override
@@ -49,20 +66,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     final v = await BackupService.isAutoEnabled();
     final g = await ViewModeService.isGridEnabled();
-    final r = await RecentAddedTextService.isEnabled();
     final t = await AppThemeService.getTheme();
     final ti = await AppThemeService.getTextIntensity();
     final bg = await AppThemeService.getBgLevel();
     final cl = await AppThemeService.getCardLevel();
+    final bs = await AppThemeService.getCardBorderStyle();
     if (!mounted) return;
     setState(() {
       _auto = v;
       _grid = g;
-      _recentText = r;
       _theme = t;
       _textIntensity = ti;
       _bgLevel = bg;
       _cardLevel = cl;
+      _borderStyle = bs;
       _loading = false;
     });
   }
@@ -126,6 +143,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final themeName = _themeLabels[_theme] ?? 'Vinyl Pro';
     final intensityName = _labelIntensity(_textIntensity);
+    final borderName = _borderName(_borderStyle);
+    final borderBase = AppThemeService.borderBaseColor(_borderStyle);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final previewBorder = borderBase.withOpacity(isDark ? 0.90 : 0.70);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
@@ -322,6 +343,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // 🧩 Contorno de cards
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Borde de tarjetas', style: TextStyle(fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Text('Color:', style: TextStyle(fontWeight: FontWeight.w800)),
+                            const SizedBox(width: 8),
+                            Text('$_borderStyle · $borderName', style: const TextStyle(fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Slider(
+                          value: _borderStyle.toDouble(),
+                          min: 1,
+                          max: 10,
+                          divisions: 9,
+                          label: '$_borderStyle',
+                          onChanged: (v) {
+                            final iv = v.round();
+                            setState(() => _borderStyle = iv);
+                            AppThemeService.setCardBorderStyle(iv);
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 56,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: previewBorder, width: 1.2),
+                            color: Theme.of(context).colorScheme.surface,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Vista previa',
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Ajusta el color del contorno de los cuadros (cards) en toda la app.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 Card(
                   child: SwitchListTile(
                     value: _auto,
@@ -364,25 +439,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 16),
-
-                Card(
-                  child: SwitchListTile(
-                    value: _recentText,
-                    onChanged: (v) async {
-                      setState(() => _recentText = v);
-                      await RecentAddedTextService.setEnabled(v);
-                      _snack(v ? 'Últimos agregados: con texto ✅' : 'Últimos agregados: solo carátula ✅');
-                    },
-                    secondary: Icon(
-                      _recentText ? Icons.subtitles_outlined : Icons.crop_original_outlined,
-                    ),
-                    title: const Text('Mostrar texto en “Últimos agregados”'),
-                    subtitle: const Text(
-                      'Muestra un texto pequeño debajo de la carátula (artista / álbum).',
-                    ),
-                  ),
-                ),
               ],
             ),
     );
