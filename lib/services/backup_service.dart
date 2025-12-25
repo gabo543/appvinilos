@@ -277,7 +277,7 @@ class BackupService {
 
     if (chosen == 0) {
       final r = await ex.rawQuery('SELECT MAX(artistNo) as m FROM artist_orders');
-      final m = _asInt(r.first['m']);
+      final m = _asInt(r.first['m'], fallback: 0) ?? 0;
       chosen = m + 1;
     }
 
@@ -296,7 +296,7 @@ class BackupService {
       'SELECT MAX(albumNo) as m FROM vinyls WHERE artistNo = ?',
       [artistNo],
     );
-    final m = _asInt(r.first['m']);
+    final m = _asInt(r.first['m'], fallback: 0) ?? 0;
     return m + 1;
   }
 
@@ -984,11 +984,6 @@ class BackupService {
           );
           result.updatedWishlist++;
         } else {
-          final aKeyIn = _trim(t['artistKey']);
-          final aKey = aKeyIn.isNotEmpty ? aKeyIn : _makeArtistKey(artista);
-          final aNo = await _getOrCreateArtistNo(txn, aKey);
-          int alNo = _asInt(t['albumNo'], fallback: 0) ?? 0;
-          if (alNo <= 0) alNo = await _nextAlbumNo(txn, aNo);
           await txn.insert(
             'wishlist',
             {
@@ -1061,6 +1056,15 @@ class BackupService {
           );
           result.updatedTrash++;
         } else {
+          // Calcula/respeta orden ArtistNo.AlbumNo para la tabla trash.
+          final aKeyIn = _trim(t['artistKey']);
+          final aKey = aKeyIn.isNotEmpty ? aKeyIn : _makeArtistKey(artista);
+          final prefArtistNo = _asInt(t['artistNo'], fallback: 0) ?? 0;
+          final aNo = await _getOrCreateArtistNo(txn, aKey, preferredNo: prefArtistNo);
+
+          int alNo = _asInt(t['albumNo'], fallback: 0) ?? 0;
+          if (alNo <= 0) alNo = await _nextAlbumNo(txn, aNo);
+
           await txn.insert(
             'trash',
             {

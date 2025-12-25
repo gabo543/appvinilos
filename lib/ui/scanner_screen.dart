@@ -204,7 +204,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         children: [
           MobileScanner(
             controller: _controller,
-            errorBuilder: (context, error, _) {
+            errorBuilder: (context, error) {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
