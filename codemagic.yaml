@@ -76,45 +76,55 @@ workflows:
           grep -n "android.permission.CAMERA" "$MANIFEST" || true
           head -n 30 "$MANIFEST"
 
-      - name: Fix ML Kit OCR (R8) - agregar módulos de reconocimiento de texto
+      - name: Fix ML Kit OCR (R8) - evitar Missing classes
         script: |
           set -e
 
-          # google_mlkit_text_recognition referencia clases de opciones para otros alfabetos.
-          # En builds release con R8/minify, si esos artefactos no están, falla con
-          # "Missing class ...TextRecognizerOptions".
+          # google_mlkit_text_recognition referencia clases opcionales para otros alfabetos
+          # (chino/japonés/koreano/devanagari). Nosotros usamos SOLO LATIN.
+          # En algunos builds release, R8 puede fallar con "Missing class ...Options".
+          # Solución: (1) forzar minify/shrink OFF en release y (2) agregar -dontwarn en Proguard.
 
-          # Patch para build.gradle (Groovy)
+          # 1) Forzar minify/shrink OFF (reduce problemas de R8 en CI)
           GRADLE_FILE="android/app/build.gradle"
           if [ -f "$GRADLE_FILE" ]; then
-            if ! grep -q "text-recognition-korean" "$GRADLE_FILE"; then
-              echo "Parchando $GRADLE_FILE con dependencias ML Kit adicionales..."
-              perl -0777 -i -pe 's/(dependencies\s*\{)/$1\n    implementation "com.google.mlkit:text-recognition-chinese:16.0.0"\n    implementation "com.google.mlkit:text-recognition-japanese:16.0.0"\n    implementation "com.google.mlkit:text-recognition-korean:16.0.0"\n    implementation "com.google.mlkit:text-recognition-devanagari:16.0.0"\n/s' "$GRADLE_FILE"
-            else
-              echo "Dependencias ML Kit ya estaban presentes en $GRADLE_FILE"
+            echo "Parchando $GRADLE_FILE: minifyEnabled/shrinkResources -> false"
+            # Si existen en true, cambiarlos a false
+            sed -i.bak 's/minifyEnabled true/minifyEnabled false/g' "$GRADLE_FILE" || true
+            sed -i.bak 's/shrinkResources true/shrinkResources false/g' "$GRADLE_FILE" || true
+            # Si NO existen, insertarlos dentro del buildTypes.release
+            if ! grep -q "minifyEnabled" "$GRADLE_FILE"; then
+              perl -0777 -i -pe 's/(release\s*\{)/$1\n            minifyEnabled false\n            shrinkResources false/sg' "$GRADLE_FILE"
             fi
           fi
 
-          # Patch para build.gradle.kts (por si cambia el template)
           GRADLE_KTS_FILE="android/app/build.gradle.kts"
           if [ -f "$GRADLE_KTS_FILE" ]; then
-            if ! grep -q "text-recognition-korean" "$GRADLE_KTS_FILE"; then
-              echo "Parchando $GRADLE_KTS_FILE con dependencias ML Kit adicionales..."
-              perl -0777 -i -pe 's/(dependencies\s*\{)/$1\n    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")\n    implementation("com.google.mlkit:text-recognition-japanese:16.0.0")\n    implementation("com.google.mlkit:text-recognition-korean:16.0.0")\n    implementation("com.google.mlkit:text-recognition-devanagari:16.0.0")\n/s' "$GRADLE_KTS_FILE"
-            else
-              echo "Dependencias ML Kit ya estaban presentes en $GRADLE_KTS_FILE"
+            echo "Parchando $GRADLE_KTS_FILE: isMinifyEnabled/shrinkResources -> false"
+            sed -i.bak 's/isMinifyEnabled = true/isMinifyEnabled = false/g' "$GRADLE_KTS_FILE" || true
+            sed -i.bak 's/shrinkResources = true/shrinkResources = false/g' "$GRADLE_KTS_FILE" || true
+            if ! grep -q "isMinifyEnabled" "$GRADLE_KTS_FILE"; then
+              perl -0777 -i -pe 's/(release\s*\{)/$1\n            isMinifyEnabled = false\n            shrinkResources = false/sg' "$GRADLE_KTS_FILE"
             fi
           fi
 
-          # Proguard keep rules (si minify está activado)
+          # 2) Agregar reglas Proguard para suprimir warnings de clases opcionales
           PROGUARD_FILE="android/app/proguard-rules.pro"
-          if [ -f "$PROGUARD_FILE" ]; then
-            if ! grep -q "ML Kit text recognition" "$PROGUARD_FILE"; then
-              echo "Agregando reglas Proguard para ML Kit en $PROGUARD_FILE"
-              printf "\n# ML Kit text recognition (google_mlkit_text_recognition)\n-keep class com.google.mlkit.vision.text.** { *; }\n-dontwarn com.google.mlkit.vision.text.**\n" >> "$PROGUARD_FILE"
-            fi
-          fi
+          mkdir -p "$(dirname "$PROGUARD_FILE")"
+          touch "$PROGUARD_FILE"
 
+          if ! grep -q "MLKIT_TEXT_RECOGNITION_R8" "$PROGUARD_FILE"; then
+            echo "Agregando reglas Proguard ML Kit en $PROGUARD_FILE"
+            printf '%s\n' \
+              '# MLKIT_TEXT_RECOGNITION_R8' \
+              '-dontwarn com.google.mlkit.vision.text.chinese.**' \
+              '-dontwarn com.google.mlkit.vision.text.japanese.**' \
+              '-dontwarn com.google.mlkit.vision.text.korean.**' \
+              '-dontwarn com.google.mlkit.vision.text.devanagari.**' \
+              >> "$PROGUARD_FILE"
+          else
+            echo "Reglas ML Kit ya estaban presentes."
+          fi
       - name: Instalar dependencias
         script: |
           flutter pub get
