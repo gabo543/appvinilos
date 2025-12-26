@@ -135,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final mode = await showDialog<BackupImportMode>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Importar backup'),
+          title: Text('Importar backup'),
           content: Text(
             '${preview.pretty()}\n\nArchivo:\n${f.path}\n\n'
             'Elige cómo importarlo:',
@@ -200,10 +200,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: appLogoLeading(
-          tooltip: 'Volver',
-          onTap: () => Navigator.pop(context),
-        ),
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
+        leading: appBarLeadingLogoBack(context, logoSize: 34),
         title: const Text('Ajustes'),
         titleSpacing: 0,
       ),
@@ -217,38 +215,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       ListTile(
                         leading: const Icon(Icons.save_alt),
-                        title: const Text('Guardar backup'),
-                        subtitle: const Text('Crea/actualiza un backup completo (vinilos + wishlist + ajustes).'),
+                        title: Text('Guardar backup'),
+                        subtitle: Text('Crea/actualiza un backup completo (vinilos + wishlist + ajustes).'),
                         onTap: _guardar,
                       ),
                       const Divider(height: 1),
                       ListTile(
                         leading: const Icon(Icons.download_for_offline_outlined),
-                        title: const Text('Exportar a Descargas'),
-                        subtitle: const Text('Abre “Guardar como…” para elegir Descargas (no requiere permisos especiales).'),
+                        title: Text('Exportar a Descargas'),
+                        subtitle: Text('Abre “Guardar como…” para elegir Descargas (no requiere permisos especiales).'),
                         onTap: _exportarDescargas,
                       ),
                       const Divider(height: 1),
 
                       ListTile(
                         leading: const Icon(Icons.file_download_outlined),
-                        title: const Text('Importar desde Descargas'),
-                        subtitle: const Text('Elige el archivo backup (vinyl_backup.json / GaBoLP_backup_*.json) desde Descargas/Archivos. Permite fusionar, solo faltantes o reemplazar.'),
+                        title: Text('Importar desde Descargas'),
+                        subtitle: Text('Elige el archivo backup (vinyl_backup.json / GaBoLP_backup_*.json) desde Descargas/Archivos. Permite fusionar, solo faltantes o reemplazar.'),
                         onTap: _importarDescargas,
                       ),
                       const Divider(height: 1),
 
                       ListTile(
                         leading: const Icon(Icons.share_outlined),
-                        title: const Text('Compartir backup'),
-                        subtitle: const Text('Enviar a Google Drive / WhatsApp / correo.'),
+                        title: Text('Compartir backup'),
+                        subtitle: Text('Enviar a Google Drive / WhatsApp / correo.'),
                         onTap: _compartirBackup,
                       ),
                       const Divider(height: 1),
                       ListTile(
                         leading: const Icon(Icons.upload_file),
-                        title: const Text('Cargar backup local'),
-                        subtitle: const Text('Reemplaza TODO (vinilos + wishlist + papelera + ajustes) por el último backup local.'),
+                        title: Text('Cargar backup local'),
+                        subtitle: Text('Reemplaza TODO (vinilos + wishlist + papelera + ajustes) por el último backup local.'),
                         onTap: _cargar,
                       ),
                     ],
@@ -468,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       }
                     },
                     secondary: Icon(_auto ? Icons.cloud_done : Icons.cloud_off),
-                    title: const Text('Guardado automático'),
+                    title: Text('Guardado automático'),
                     subtitle: Text(
                       _auto
                           ? 'Se respalda solo cuando agregas o borras vinilos.'
@@ -487,7 +485,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _snack(v ? 'Vista: CUADRÍCULA ✅' : 'Vista: LISTA ✅');
                     },
                     secondary: Icon(_grid ? Icons.grid_view : Icons.view_list),
-                    title: const Text('Vista de la lista'),
+                    title: Text('Vista de la lista'),
                     subtitle: Text(
                       _grid
                           ? 'Muestra tus vinilos en cuadrícula (tarjetas).'

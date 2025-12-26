@@ -18,8 +18,6 @@ import 'view_mode_service.dart';
 /// - replace: borra y reemplaza todo (vinyls + wishlist + trash)
 enum BackupImportMode { merge, onlyMissing, replace }
 
-
-
 class BackupPreview {
   final int schemaVersion;
   final String? createdAtIso;
@@ -236,6 +234,36 @@ class BackupService {
 
   static String _trim(dynamic v) => (v ?? '').toString().trim();
 
+  /// Normaliza la carátula al importar/restaurar.
+  ///
+  /// - Si es URL (http/https): se respeta.
+  /// - Si es path local y existe: se respeta.
+  /// - Si NO existe (típico tras reinstalar/cambiar de teléfono):
+  ///   usa Cover Art Archive por `mbid` (release-group).
+  static String? _normalizeCoverPathForImport(dynamic rawCoverPath, dynamic rawMbid) {
+    final cp = _trim(rawCoverPath);
+    final mbid = _trim(rawMbid);
+    if (cp.isEmpty) {
+      if (mbid.isNotEmpty) {
+        return 'https://coverartarchive.org/release-group/$mbid/front-250';
+      }
+      return null;
+    }
+
+    if (cp.startsWith('http://') || cp.startsWith('https://')) return cp;
+
+    try {
+      if (File(cp).existsSync()) return cp;
+    } catch (_) {
+      // ignorar
+    }
+
+    if (mbid.isNotEmpty) {
+      return 'https://coverartarchive.org/release-group/$mbid/front-250';
+    }
+    return null;
+  }
+
   // ---------------- ORDEN Artista.Album (v11) ----------------
   static String _makeArtistKey(String artista) {
     var out = artista.toLowerCase().trim();
@@ -268,7 +296,7 @@ class BackupService {
       whereArgs: [key],
       limit: 1,
     );
-    if (rows.isNotEmpty) return _asInt(rows.first['artistNo'], fallback: 0) ?? 0;
+    if (rows.isNotEmpty) return BackupService._asInt(rows.first['artistNo'], fallback: 0) ?? 0;
 
     int chosen = 0;
 
@@ -285,7 +313,7 @@ class BackupService {
 
     if (chosen == 0) {
       final r = await ex.rawQuery('SELECT MAX(artistNo) as m FROM artist_orders');
-      final m = _asInt(r.first['m'], fallback: 0) ?? 0;
+      final m = BackupService._asInt(r.first['m'], fallback: 0) ?? 0;
       chosen = m + 1;
     }
 
@@ -770,8 +798,8 @@ class BackupService {
               'genre': v['genre']?.toString().trim(),
               'country': v['country']?.toString().trim(),
               'artistBio': v['artistBio']?.toString().trim(),
-              'coverPath': v['coverPath']?.toString().trim(),
               'mbid': v['mbid']?.toString().trim(),
+              'coverPath': _normalizeCoverPathForImport(v['coverPath'], v['mbid']),
               'condition': v['condition']?.toString().trim(),
               'format': v['format']?.toString().trim(),
               'favorite': _fav01(v['favorite']),
@@ -809,6 +837,7 @@ class BackupService {
               : await _getOrCreateArtistNo(txn, aKey);
           int alNo = _asInt(t['albumNo'], fallback: 0) ?? 0;
           if (alNo <= 0) alNo = await _nextAlbumNo(txn, aNo);
+          final mbid = t['mbid']?.toString().trim();
           await txn.insert(
             'trash',
             {
@@ -823,8 +852,8 @@ class BackupService {
               'genre': t['genre']?.toString().trim(),
               'country': t['country']?.toString().trim(),
               'artistBio': t['artistBio']?.toString().trim(),
-              'coverPath': t['coverPath']?.toString().trim(),
-              'mbid': t['mbid']?.toString().trim(),
+              'mbid': mbid,
+              'coverPath': _normalizeCoverPathForImport(t['coverPath'], mbid),
               'condition': t['condition']?.toString().trim(),
               'format': t['format']?.toString().trim(),
               'favorite': _fav01(t['favorite']),
@@ -903,12 +932,18 @@ class BackupService {
             'genre': chooseStr(v['genre']?.toString(), existing['genre']),
             'country': chooseStr(v['country']?.toString(), existing['country']),
             'artistBio': chooseStr(v['artistBio']?.toString(), existing['artistBio']),
-            'coverPath': chooseStr(v['coverPath']?.toString(), existing['coverPath']),
+            // mbid primero, para poder normalizar coverPath usando ese valor.
             'mbid': chooseStr(v['mbid']?.toString(), existing['mbid']),
             'condition': chooseStr(v['condition']?.toString(), existing['condition']),
             'format': chooseStr(v['format']?.toString(), existing['format']),
             'favorite': fav,
           }..removeWhere((k, val) => val == null);
+
+          // Normaliza carátula (si el path local no existe, usa Cover Art Archive por MBID).
+          update['coverPath'] = _normalizeCoverPathForImport(
+            chooseStr(v['coverPath']?.toString(), existing['coverPath']),
+            update['mbid'],
+          );
 
           await txn.update(
             'vinyls',
@@ -923,6 +958,7 @@ class BackupService {
           final aKey = aKeyIn.isNotEmpty ? aKeyIn : _makeArtistKey(artista);
           final aNo = await _getOrCreateArtistNo(txn, aKey);
           final alNo = await _nextAlbumNo(txn, aNo);
+          final mbid = v['mbid']?.toString().trim();
           await txn.insert(
             'vinyls',
             {
@@ -936,8 +972,8 @@ class BackupService {
               'genre': v['genre']?.toString().trim(),
               'country': v['country']?.toString().trim(),
               'artistBio': v['artistBio']?.toString().trim(),
-              'coverPath': v['coverPath']?.toString().trim(),
-              'mbid': v['mbid']?.toString().trim(),
+              'mbid': mbid,
+              'coverPath': _normalizeCoverPathForImport(v['coverPath'], mbid),
               'condition': v['condition']?.toString().trim(),
               'format': v['format']?.toString().trim(),
               'favorite': _fav01(v['favorite']),
@@ -1048,13 +1084,19 @@ class BackupService {
             'genre': chooseStr(t['genre']?.toString(), existing['genre']),
             'country': chooseStr(t['country']?.toString(), existing['country']),
             'artistBio': chooseStr(t['artistBio']?.toString(), existing['artistBio']),
-            'coverPath': chooseStr(t['coverPath']?.toString(), existing['coverPath']),
+            // mbid primero, para poder normalizar coverPath usando ese valor.
             'mbid': chooseStr(t['mbid']?.toString(), existing['mbid']),
             'condition': chooseStr(t['condition']?.toString(), existing['condition']),
             'format': chooseStr(t['format']?.toString(), existing['format']),
             'favorite': fav,
             'deletedAt': _asInt(t['deletedAt'], fallback: _asInt(existing['deletedAt'], fallback: DateTime.now().millisecondsSinceEpoch)),
           }..removeWhere((k, val) => val == null);
+
+          // Normaliza carátula (si el path local no existe, usa Cover Art Archive por MBID).
+          update['coverPath'] = _normalizeCoverPathForImport(
+            chooseStr(t['coverPath']?.toString(), existing['coverPath']),
+            update['mbid'],
+          );
 
           await txn.update(
             'trash',
@@ -1087,8 +1129,8 @@ class BackupService {
               'genre': t['genre']?.toString().trim(),
               'country': t['country']?.toString().trim(),
               'artistBio': t['artistBio']?.toString().trim(),
-              'coverPath': t['coverPath']?.toString().trim(),
               'mbid': t['mbid']?.toString().trim(),
+              'coverPath': _normalizeCoverPathForImport(t['coverPath'], t['mbid']),
               'condition': t['condition']?.toString().trim(),
               'format': t['format']?.toString().trim(),
               'favorite': _fav01(t['favorite']),

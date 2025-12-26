@@ -645,9 +645,11 @@ Future<void> _loadViewMode() async {
     BoxFit fit = BoxFit.cover,
   }) {
     final cp = (v['coverPath'] as String?)?.trim() ?? '';
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final cachePx = (size * dpr).round().clamp(64, 1024);
 
 if (cp.startsWith('http://') || cp.startsWith('https://')) {
-	  final cache = (size * 2).round().clamp(64, 512);
+      final cache = cachePx;
 	  return ClipRRect(
 	    borderRadius: BorderRadius.circular(8),
 	    child: Container(
@@ -671,7 +673,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 }
     if (cp.isNotEmpty && _fileExistsCached(cp)) {
       final f = File(cp);
-      final cache = (size * 2).round().clamp(64, 512);
+      final cache = cachePx;
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Container(
@@ -697,43 +699,51 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
   /// Por eso el `fit` por defecto es [BoxFit.contain].
   Widget _gridCover(Map<String, dynamic> v, {BoxFit fit = BoxFit.contain}) {
     final cp = (v['coverPath'] as String?)?.trim() ?? '';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dpr = MediaQuery.of(context).devicePixelRatio;
+        final side = constraints.biggest.shortestSide;
+        final target = (side.isFinite && side > 0) ? side : 220.0;
+        final cache = (target * dpr).round().clamp(128, 1024);
 
-    if (cp.startsWith('http://') || cp.startsWith('https://')) {
-      return Container(
-        color: Colors.black12,
-        alignment: Alignment.center,
-        child: Image.network(
-          cp,
-          fit: fit,
-          cacheWidth: 700,
-          cacheHeight: 700,
-          errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 48),
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-          },
-        ),
-      );
-    }
+        if (cp.startsWith('http://') || cp.startsWith('https://')) {
+          return Container(
+            color: Colors.black12,
+            alignment: Alignment.center,
+            child: Image.network(
+              cp,
+              fit: fit,
+              cacheWidth: cache,
+              cacheHeight: cache,
+              errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 48),
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+              },
+            ),
+          );
+        }
 
-    if (cp.isNotEmpty && _fileExistsCached(cp)) {
-      final f = File(cp);
-      return Container(
-        color: Colors.black12,
-        alignment: Alignment.center,
-        child: Image.file(
-          f,
-          fit: fit,
-          cacheWidth: 700,
-          cacheHeight: 700,
-        ),
-      );
-    }
+        if (cp.isNotEmpty && _fileExistsCached(cp)) {
+          final f = File(cp);
+          return Container(
+            color: Colors.black12,
+            alignment: Alignment.center,
+            child: Image.file(
+              f,
+              fit: fit,
+              cacheWidth: cache,
+              cacheHeight: cache,
+            ),
+          );
+        }
 
-    return Container(
-      color: Colors.black12,
-      alignment: Alignment.center,
-      child: const Icon(Icons.album, size: 48),
+        return Container(
+          color: Colors.black12,
+          alignment: Alignment.center,
+          child: const Icon(Icons.album, size: 48),
+        );
+      },
     );
   }
   Widget _metaPill(BuildContext context, String text) {
@@ -1989,7 +1999,7 @@ sectionTitle('Colección'
 
 
 
-Widget vistaBorrar() {
+Widget vistaBorrar({bool embedInScroll = true}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
@@ -2033,8 +2043,10 @@ Widget vistaBorrar() {
           ),
         ],
       ),
-      const SizedBox(height: 12),
-      listaCompleta(conBorrar: true, onlyFavorites: false),
+      if (embedInScroll) ...[
+        const SizedBox(height: 12),
+        listaCompleta(conBorrar: true, onlyFavorites: false, embedInScroll: true),
+      ],
     ],
   );
 }
@@ -2604,7 +2616,7 @@ Widget vistaBorrar() {
     );
   }
 
-Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
+Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool embedInScroll = true}) {
   final Future<List<Map<String, dynamic>>> future;
   if (conBorrar) {
     future = _borrarPapelera ? _futureTrash : _futureAll;
@@ -2677,8 +2689,8 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
           // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
           // Sin shrinkWrap/physics el Grid puede quedar sin altura
           // (o lanzar "unbounded height") y verse como "lista vacía".
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: embedInScroll,
+          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(12),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
@@ -2699,8 +2711,8 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
         // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
         // Sin shrinkWrap/physics el ListView puede quedar sin altura
         // y verse como "lista vacía".
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
+        shrinkWrap: embedInScroll,
+        physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: visibleItems.length,
         itemBuilder: (context, i) {
@@ -2762,10 +2774,11 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
         : Text(title);
 
     return AppBar(
-      title: titleWidget,
-      leading: appLogoLeading(
-        tooltip: (localSearchAllowed && _localSearchActive) ? 'Cerrar búsqueda' : 'Inicio',
-        onTap: () {
+      leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
+      leading: appBarLeadingLogoBack(
+        context,
+        logoSize: 34,
+        onBack: () {
           if (localSearchAllowed && _localSearchActive) {
             _toggleLocalSearch();
             return;
@@ -2773,6 +2786,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
           _setVista(Vista.inicio);
         },
       ),
+      title: titleWidget,
       titleSpacing: 0,
       actions: [
         if (localSearchAllowed)
@@ -2823,23 +2837,52 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites}) {
             child: Padding(
               key: ValueKey(vista),
               padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (vista == Vista.inicio) ...[
-                      encabezadoInicio(),
-                      const SizedBox(height: 14),
-                      botonesInicio(),
-                    ],
-                    if (vista == Vista.buscar) vistaBuscar(),
-                    if (vista == Vista.lista) listaCompleta(conBorrar: false, onlyFavorites: false),
-                    if (vista == Vista.favoritos) listaCompleta(conBorrar: false, onlyFavorites: true),
-                    if (vista == Vista.borrar) vistaBorrar(),
-                  ],
-                ),
-              ),
-            ),
+              child: (vista == Vista.lista || vista == Vista.favoritos || vista == Vista.borrar)
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (vista == Vista.borrar) ...[
+                          vistaBorrar(embedInScroll: false),
+                          const SizedBox(height: 12),
+                          Expanded(
+                            child: listaCompleta(
+                              conBorrar: true,
+                              onlyFavorites: false,
+                              embedInScroll: false,
+                            ),
+                          ),
+                        ],
+                        if (vista == Vista.lista)
+                          Expanded(
+                            child: listaCompleta(
+                              conBorrar: false,
+                              onlyFavorites: false,
+                              embedInScroll: false,
+                            ),
+                          ),
+                        if (vista == Vista.favoritos)
+                          Expanded(
+                            child: listaCompleta(
+                              conBorrar: false,
+                              onlyFavorites: true,
+                              embedInScroll: false,
+                            ),
+                          ),
+                      ],
+                    )
+                  : SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (vista == Vista.inicio) ...[
+                            encabezadoInicio(),
+                            const SizedBox(height: 14),
+                            botonesInicio(),
+                          ],
+                          if (vista == Vista.buscar) vistaBuscar(),
+                        ],
+                      ),
+                    ),
           ),
         ),
       ),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -18,7 +20,7 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 11, // ✅ v11: orden Artista.Album (artistNo.albumNo)
+      version: 12, // ✅ v12: reparar carátulas faltantes tras restore (fallback a Cover Art Archive)
       onOpen: (d) async {
         // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
         try {
@@ -329,6 +331,47 @@ if (oldV < 9) {
               whereArgs: [id],
             );
           }
+        }
+
+        if (oldV < 12) {
+          // v12: si la carátula era un path local que ya no existe (por reinstalación/restore),
+          // caemos a un URL de Cover Art Archive usando el mbid (release-group).
+          Future<void> repairTable(String table) async {
+            final rows = await d.query(table, columns: ['id', 'coverPath', 'mbid']);
+            for (final r in rows) {
+              final id = (r['id'] as int?) ?? 0;
+              if (id <= 0) continue;
+
+              final cp = (r['coverPath'] ?? '').toString().trim();
+              final mbid = (r['mbid'] ?? '').toString().trim();
+
+              // Si ya es URL, lo dejamos.
+              if (cp.startsWith('http://') || cp.startsWith('https://')) continue;
+
+              String? next;
+              if (cp.isNotEmpty) {
+                final exists = await File(cp).exists();
+                if (exists) continue; // path válido
+              }
+
+              // Si no hay archivo local, intentamos URL por MBID.
+              if (mbid.isNotEmpty) {
+                next = 'https://coverartarchive.org/release-group/$mbid/front-250';
+              }
+
+              await d.update(
+                table,
+                {'coverPath': next},
+                where: 'id = ?',
+                whereArgs: [id],
+              );
+            }
+          }
+
+          await repairTable('vinyls');
+          try {
+            await repairTable('trash');
+          } catch (_) {}
         }
 
 

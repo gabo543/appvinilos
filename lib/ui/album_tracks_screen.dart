@@ -78,11 +78,9 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: appLogoLeading(
-          tooltip: 'Volver',
-          onTap: () => Navigator.pop(context),
-        ),
-        title: Text(widget.album.title),
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
+        leading: appBarLeadingLogoBack(context, logoSize: 34),
+        title: Text(widget.album.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         titleSpacing: 0,
         actions: [
           IconButton(

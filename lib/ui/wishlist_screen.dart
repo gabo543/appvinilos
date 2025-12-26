@@ -514,10 +514,8 @@ Widget _placeholder() {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: appLogoLeading(
-          tooltip: 'Volver',
-          onTap: () => Navigator.pop(context),
-        ),
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
+        leading: appBarLeadingLogoBack(context, logoSize: 34),
         title: const Text('Deseos'),
         titleSpacing: 0,
         actions: [
