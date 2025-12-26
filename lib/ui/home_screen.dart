@@ -2906,6 +2906,6 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
           ),
         ),
       ),
-    );
+    ));
   }
 }
