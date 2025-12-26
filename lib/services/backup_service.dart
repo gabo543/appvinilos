@@ -18,6 +18,8 @@ import 'view_mode_service.dart';
 /// - replace: borra y reemplaza todo (vinyls + wishlist + trash)
 enum BackupImportMode { merge, onlyMissing, replace }
 
+
+
 class BackupPreview {
   final int schemaVersion;
   final String? createdAtIso;
@@ -70,9 +72,9 @@ class BackupPreview {
       final m = Map<String, dynamic>.from(decoded as Map);
       // schemaVersion puede venir en raíz o dentro de `meta` en backups antiguos.
       final metaSchema = (m['meta'] is Map)
-          ? (_asInt((m['meta'] as Map)['schemaVersion'], fallback: 1) ?? 1)
+          ? (BackupService._asInt((m['meta'] as Map)['schemaVersion'], fallback: 1) ?? 1)
           : 1;
-      final schema = _asInt(m['schemaVersion'], fallback: metaSchema) ?? metaSchema;
+      final schema = BackupService._asInt(m['schemaVersion'], fallback: metaSchema) ?? metaSchema;
 
       String? createdAt;
       final ca = m['createdAt'] ?? (m['meta'] is Map ? (m['meta'] as Map)['createdAt'] : null);
@@ -85,7 +87,7 @@ class BackupPreview {
       int? dbUserVersion;
       final db = m['db'];
       if (db is Map && db['userVersion'] != null) {
-        dbUserVersion = _asInt(db['userVersion'], fallback: null);
+        dbUserVersion = BackupService._asInt(db['userVersion'], fallback: null);
       }
 
       final vinyls = (m['vinyls'] is List) ? (m['vinyls'] as List).length : (m['payload'] is Map && (m['payload'] as Map)['vinyls'] is List) ? ((m['payload'] as Map)['vinyls'] as List).length : 0;
