@@ -68,7 +68,11 @@ class BackupPreview {
     }
     if (decoded is Map) {
       final m = Map<String, dynamic>.from(decoded as Map);
-      final schema = asInt(m['schemaVersion'], fallback: (m['meta'] is Map) ? asInt((m['meta'] as Map)['schemaVersion'], fallback: 1) : 1);
+      // schemaVersion puede venir en raíz o dentro de `meta` en backups antiguos.
+      final metaSchema = (m['meta'] is Map)
+          ? (_asInt((m['meta'] as Map)['schemaVersion'], fallback: 1) ?? 1)
+          : 1;
+      final schema = _asInt(m['schemaVersion'], fallback: metaSchema) ?? metaSchema;
 
       String? createdAt;
       final ca = m['createdAt'] ?? (m['meta'] is Map ? (m['meta'] as Map)['createdAt'] : null);
@@ -80,7 +84,9 @@ class BackupPreview {
 
       int? dbUserVersion;
       final db = m['db'];
-      if (db is Map && db['userVersion'] != null) dbUserVersion = asInt(db['userVersion'], fallback: null);
+      if (db is Map && db['userVersion'] != null) {
+        dbUserVersion = _asInt(db['userVersion'], fallback: null);
+      }
 
       final vinyls = (m['vinyls'] is List) ? (m['vinyls'] as List).length : (m['payload'] is Map && (m['payload'] as Map)['vinyls'] is List) ? ((m['payload'] as Map)['vinyls'] as List).length : 0;
       final wishlist = (m['wishlist'] is List) ? (m['wishlist'] as List).length : (m['payload'] is Map && (m['payload'] as Map)['wishlist'] is List) ? ((m['payload'] as Map)['wishlist'] as List).length : 0;
@@ -260,7 +266,7 @@ class BackupService {
       whereArgs: [key],
       limit: 1,
     );
-    if (rows.isNotEmpty) return _asInt(rows.first['artistNo']);
+    if (rows.isNotEmpty) return _asInt(rows.first['artistNo'], fallback: 0) ?? 0;
 
     int chosen = 0;
 
