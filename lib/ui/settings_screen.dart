@@ -121,7 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
                 Text(t),
                 const SizedBox(height: 6),
-                const Text('Esto deja tus carátulas guardadas para ver offline.', style: TextStyle(fontSize: 12)),
+                const Text('Esto deja tus carátulas guardadas para ver offline.', style: TextStyle(fontSize: 14)),
               ],
             ),
           );
@@ -426,7 +426,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 8),
                         const Text(
                           'Cambia el estilo visual sin afectar la lógica ni tus datos.',
-                          style: TextStyle(fontSize: 12),
+                          style: TextStyle(fontSize: 14),
                         ),
                       ],
                     ),
@@ -466,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 8),
                         const Text(
                           'Ajusta el contraste del texto en toda la app.',
-                          style: TextStyle(fontSize: 12),
+                          style: TextStyle(fontSize: 14),
                         ),
                       ],
                     ),
@@ -525,7 +525,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 4),
                         const Text(
                           'Ajusta el fondo y el estilo de los cuadros (cards) sin cambiar la lógica.',
-                          style: TextStyle(fontSize: 12),
+                          style: TextStyle(fontSize: 14),
                         ),
                       ],
                     ),
@@ -579,7 +579,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(height: 6),
                         const Text(
                           'Ajusta el color del contorno de los cuadros (cards) en toda la app.',
-                          style: TextStyle(fontSize: 12),
+                          style: TextStyle(fontSize: 14),
                         ),
                       ],
                     ),

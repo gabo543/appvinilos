@@ -285,7 +285,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               children: [
                 const Text('Buscando en MusicBrainz…', style: TextStyle(fontWeight: FontWeight.w800)),
                 const SizedBox(height: 2),
-                Text('Código: $code', style: const TextStyle(fontSize: 12)),
+                Text('Código: $code', style: const TextStyle(fontSize: 14)),
               ],
             ),
           ),
@@ -305,7 +305,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
           const SizedBox(height: 6),
           Row(
             children: [
-              Expanded(child: Text('Código: $code', style: const TextStyle(fontSize: 12))),
+              Expanded(child: Text('Código: $code', style: const TextStyle(fontSize: 14))),
               TextButton.icon(
                 onPressed: _reset,
                 icon: const Icon(Icons.qr_code_scanner),

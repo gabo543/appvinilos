@@ -333,58 +333,58 @@ ThemeData _theme5() {
         height: 1.05,
       ),
       headlineMedium: _t(tt.headlineMedium).copyWith(
-        fontSize: 26,
+        fontSize: 28,
         fontWeight: FontWeight.w900,
         letterSpacing: -0.6,
         height: 1.10,
       ),
       headlineSmall: _t(tt.headlineSmall).copyWith(
-        fontSize: 22,
+        fontSize: 24,
         fontWeight: FontWeight.w900,
         letterSpacing: -0.4,
         height: 1.12,
       ),
       titleLarge: _t(tt.titleLarge).copyWith(
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: FontWeight.w800,
         letterSpacing: -0.2,
         height: 1.15,
       ),
       titleMedium: _t(tt.titleMedium).copyWith(
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: FontWeight.w800,
         height: 1.18,
       ),
       titleSmall: _t(tt.titleSmall).copyWith(
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: FontWeight.w700,
         height: 1.18,
       ),
       bodyLarge: _t(tt.bodyLarge).copyWith(
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: FontWeight.w600,
         height: 1.28,
       ),
       bodyMedium: _t(tt.bodyMedium).copyWith(
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: FontWeight.w500,
         height: 1.30,
       ),
       bodySmall: _t(tt.bodySmall).copyWith(
-        fontSize: 12,
+        fontSize: 14,
         fontWeight: FontWeight.w500,
         height: 1.30,
       ),
       labelLarge: _t(tt.labelLarge).copyWith(
-        fontSize: 13,
+        fontSize: 15,
         fontWeight: FontWeight.w800,
       ),
       labelMedium: _t(tt.labelMedium).copyWith(
-        fontSize: 12,
+        fontSize: 14,
         fontWeight: FontWeight.w700,
       ),
       labelSmall: _t(tt.labelSmall).copyWith(
-        fontSize: 11,
+        fontSize: 13,
         fontWeight: FontWeight.w700,
       ),
     );
@@ -476,7 +476,7 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
     // Fondo oscuro: desde gris a blanco
     // Fondo claro: desde gris oscuro a negro
     final Color c = isDark
-        ? Color.lerp(const Color(0xFF8E8E8E), Colors.white, t)!
+        ? Color.lerp(const Color(0xFFB8B8B8), Colors.white, t)!
         : Color.lerp(const Color(0xFF2E2E2E), Colors.black, t)!;
 
     final textTheme = base.textTheme.apply(bodyColor: c, displayColor: c);

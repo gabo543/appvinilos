@@ -1404,7 +1404,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         child: Text(
           'GaBoLP',
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 14,
             color: Colors.white70,
             fontWeight: FontWeight.w700,
           ),
