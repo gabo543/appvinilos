@@ -111,12 +111,7 @@ workflows:
           if [ -f "$PROGUARD_FILE" ]; then
             if ! grep -q "ML Kit text recognition" "$PROGUARD_FILE"; then
               echo "Agregando reglas Proguard para ML Kit en $PROGUARD_FILE"
-              cat >> "$PROGUARD_FILE" <<'EOF'
-
-# ML Kit text recognition (google_mlkit_text_recognition)
--keep class com.google.mlkit.vision.text.** { *; }
--dontwarn com.google.mlkit.vision.text.**
-EOF
+              printf "\n# ML Kit text recognition (google_mlkit_text_recognition)\n-keep class com.google.mlkit.vision.text.** { *; }\n-dontwarn com.google.mlkit.vision.text.**\n" >> "$PROGUARD_FILE"
             fi
           fi
 
