@@ -1485,7 +1485,12 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               title: 'Aún no hay vinilos',
               subtitle: 'Agrega tu primer vinilo para empezar tu colección.',
               actionText: 'Ir a Discografías',
-              onAction: () => _setVista(Vista.discografia),
+              onAction: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
+                  if (!mounted) return;
+                  _reloadAllData();
+                });
+              },
             );
           }
 
