@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../utils/normalize.dart';
+
 class VinylDb {
   VinylDb._();
   static final instance = VinylDb._();
@@ -604,19 +606,7 @@ Future<Map<String, dynamic>?> findByExact({
   // - El “código” que muestra la UI es: artistNo.albumNo (ej: 1.3)
 
   String _makeArtistKey(String artista) {
-    var out = artista.toLowerCase().trim();
-    const rep = {
-      'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a',
-      'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
-      'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
-      'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o',
-      'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
-      'ñ': 'n',
-    };
-    rep.forEach((k, v) => out = out.replaceAll(k, v));
-    out = out.replaceAll(RegExp(r'[^a-z0-9# ]'), ' ');
-    out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return out;
+    return normalizeKey(artista);
   }
 
   Future<int> _getOrCreateArtistNo(
@@ -727,6 +717,138 @@ Future<Map<String, dynamic>?> findByExact({
       },
       conflictAlgorithm: ConflictAlgorithm.abort,
     );
+  }
+
+  /// Actualiza metadatos editables de un vinilo.
+  ///
+  /// Útil para correcciones manuales (año/condición/formato/caratula).
+  Future<void> updateVinylMeta({
+    required int id,
+    String? year,
+    String? condition,
+    String? format,
+    String? coverPath,
+  }) async {
+    final d = await db;
+    final values = <String, Object?>{};
+    if (year != null) values['year'] = year.trim();
+    if (condition != null) values['condition'] = condition.trim();
+    if (format != null) values['format'] = format.trim();
+    if (coverPath != null) values['coverPath'] = coverPath.trim();
+    if (values.isEmpty) return;
+    await d.update('vinyls', values, where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Busca duplicados “suaves” por artista+álbum (+año opcional).
+  ///
+  /// Aunque existe un índice UNIQUE (artista, album), pueden aparecer duplicados
+  /// por diferencias de espacios/mayúsculas/acentos o por imports.
+  Future<List<List<Map<String, dynamic>>>> findDuplicateGroups({bool includeYear = true}) async {
+    final d = await db;
+    final groups = await d.rawQuery(
+      '''
+      SELECT
+        LOWER(TRIM(artista)) AS a,
+        LOWER(TRIM(album)) AS al,
+        ${includeYear ? "COALESCE(TRIM(year), '')" : "''"} AS y,
+        COUNT(*) AS c
+      FROM vinyls
+      GROUP BY a, al, y
+      HAVING c > 1
+      ORDER BY c DESC
+      LIMIT 50
+      ''',
+    );
+
+    final out = <List<Map<String, dynamic>>>[];
+    for (final g in groups) {
+      final a = (g['a'] ?? '').toString();
+      final al = (g['al'] ?? '').toString();
+      final y = (g['y'] ?? '').toString();
+      final rows = await d.query(
+        'vinyls',
+        where: includeYear
+            ? "LOWER(TRIM(artista))=? AND LOWER(TRIM(album))=? AND COALESCE(TRIM(year), '')=?"
+            : "LOWER(TRIM(artista))=? AND LOWER(TRIM(album))=?",
+        whereArgs: includeYear ? [a, al, y] : [a, al],
+        orderBy: 'id ASC',
+      );
+      if (rows.length > 1) out.add(rows);
+    }
+    return out;
+  }
+
+  /// Fusiona duplicados “suaves”. Conserva un registro por grupo y elimina el resto.
+  ///
+  /// Regla de conservación:
+  /// - Si alguno es favorito -> conserva el favorito
+  /// - si no, conserva el de menor id
+  ///
+  /// Devuelve cuántas filas eliminó.
+  Future<int> mergeDuplicates({bool includeYear = true}) async {
+    final d = await db;
+    final groups = await findDuplicateGroups(includeYear: includeYear);
+    if (groups.isEmpty) return 0;
+
+    int deleted = 0;
+
+    await d.transaction((txn) async {
+      for (final rows in groups) {
+        if (rows.length <= 1) continue;
+
+        // Elegir “keep”
+        Map<String, dynamic> keep = rows.first;
+        for (final r in rows) {
+          final fav = _fav01(r['favorite']);
+          if (fav == 1) {
+            keep = r;
+            break;
+          }
+        }
+
+        final keepId = _asInt(keep['id']);
+        if (keepId <= 0) continue;
+
+        // Mezclar campos “mejor esfuerzo”
+        String bestYear = (keep['year'] ?? '').toString().trim();
+        String bestCondition = (keep['condition'] ?? '').toString().trim();
+        String bestFormat = (keep['format'] ?? '').toString().trim();
+        String bestCover = (keep['coverPath'] ?? '').toString().trim();
+        int bestFav = _fav01(keep['favorite']);
+
+        for (final r in rows) {
+          if (_asInt(r['id']) == keepId) continue;
+          if (bestYear.isEmpty) bestYear = (r['year'] ?? '').toString().trim();
+          if (bestCondition.isEmpty) bestCondition = (r['condition'] ?? '').toString().trim();
+          if (bestFormat.isEmpty) bestFormat = (r['format'] ?? '').toString().trim();
+          if (bestCover.isEmpty) bestCover = (r['coverPath'] ?? '').toString().trim();
+          if (bestFav == 0) bestFav = _fav01(r['favorite']);
+        }
+
+        await txn.update(
+          'vinyls',
+          {
+            'year': bestYear.isEmpty ? null : bestYear,
+            'condition': bestCondition.isEmpty ? null : bestCondition,
+            'format': bestFormat.isEmpty ? null : bestFormat,
+            'coverPath': bestCover.isEmpty ? null : bestCover,
+            'favorite': bestFav,
+          },
+          where: 'id = ?',
+          whereArgs: [keepId],
+        );
+
+        // Eliminar el resto
+        for (final r in rows) {
+          final id = _asInt(r['id']);
+          if (id <= 0 || id == keepId) continue;
+          final c = await txn.delete('vinyls', where: 'id = ?', whereArgs: [id]);
+          deleted += c;
+        }
+      }
+    });
+
+    return deleted;
   }
 
   Future<void> deleteById(int id) async {

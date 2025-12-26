@@ -175,8 +175,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
-        leading: appBarLeadingLogoBack(context, logoSize: 34),
+        toolbarHeight: kAppBarToolbarHeight,
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         title: const Text('Escanear'),
         titleSpacing: 0,
         actions: [
@@ -241,10 +242,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   color: panelBg,
                   border: Border(top: BorderSide(color: cs.outlineVariant)),
                 ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 160),
-                  child: _buildPanelContent(),
-                ),
+                child: _buildPanelContent(),
               ),
             ),
           ),

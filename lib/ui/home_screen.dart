@@ -16,6 +16,7 @@ import 'settings_screen.dart';
 import 'vinyl_detail_sheet.dart';
 import 'wishlist_screen.dart';
 import 'app_logo.dart';
+import 'home/home_header.dart';
 
 enum Vista { inicio, buscar, lista, favoritos, borrar }
 
@@ -1413,20 +1414,14 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
   }
 
   Widget botonesInicio() {
-    // ✅ Opción C: Home tipo “app de música” con secciones.
-    // Mantiene EXACTAMENTE la misma lógica/callbacks.
+    // ✅ Home Dashboard (diseño premium).
+    // Mantiene la misma lógica/callbacks.
 
-    final t = Theme.of(context);
-    final cs = t.colorScheme;
-    final isDark = t.brightness == Brightness.dark;
-
-    // ✅ Contadores (ya calculados en _homeCounts)
     final all = _homeCounts['all'] ?? 0;
     final fav = _homeCounts['fav'] ?? 0;
     final wish = _homeCounts['wish'] ?? 0;
 
     void openBuscar() {
-      // ✅ UX premium: al abrir el buscador desde Home, enfocamos Artista.
       _setVista(Vista.buscar);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1434,588 +1429,105 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       });
     }
 
-	Widget _statPill({required String label, required int value}) {
-  final pillBg = cs.surface;
-  final pillBorder = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
-  final labelColor = cs.onSurface.withOpacity(isDark ? 0.78 : 0.72);
-
-  final badgeBg = isDark ? Colors.black : cs.primary;
-  final badgeFg = isDark ? Colors.white : cs.onPrimary;
-
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-    decoration: BoxDecoration(
-      color: pillBg,
-      borderRadius: BorderRadius.circular(999),
-      border: Border.all(color: pillBorder),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: TextStyle(color: labelColor, fontWeight: FontWeight.w800, fontSize: 12)),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: badgeBg,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: pillBorder),
-          ),
-          child: Text(
-            '$value',
-            style: TextStyle(color: badgeFg, fontSize: 11, fontWeight: FontWeight.w900),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-	Widget _topNavPill({required String label, required VoidCallback onTap, int? count}) {
-	  final bg = cs.surface;
-	  final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
-	  final fg = cs.onSurface;
-
-	  final badgeBg = isDark ? Colors.black : cs.primary;
-	  final badgeFg = isDark ? Colors.white : cs.onPrimary;
-
-	  Widget? badge;
-	  if (count != null) {
-	    badge = Container(
-	      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-	      decoration: BoxDecoration(
-	        color: badgeBg,
-	        borderRadius: BorderRadius.circular(999),
-	      ),
-	      child: Text(
-	        '$count',
-	        style: TextStyle(color: badgeFg, fontWeight: FontWeight.w900, fontSize: 12),
-	      ),
-	    );
-	  }
-
-	  return InkWell(
-	    onTap: onTap,
-	    borderRadius: BorderRadius.circular(14),
-	    child: Container(
-	      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-	      decoration: BoxDecoration(
-	        color: bg,
-	        borderRadius: BorderRadius.circular(14),
-	        border: Border.all(color: border),
-	      ),
-	      child: Row(
-	        mainAxisAlignment: MainAxisAlignment.center,
-	        children: [
-	          Flexible(
-	            child: Text(
-	              label,
-	              maxLines: 1,
-	              overflow: TextOverflow.ellipsis,
-	              style: t.textTheme.labelLarge?.copyWith(
-	                fontWeight: FontWeight.w900,
-	                letterSpacing: -0.2,
-	                color: fg,
-	              ),
-	            ),
-	          ),
-	          if (badge != null) ...[
-	            const SizedBox(width: 8),
-	            badge,
-	          ],
-	        ],
-	      ),
-	    ),
-	  );
-	}
-
-
-Widget sectionTitle(String title, {String? subtitle}) {
+    Widget sectionHeader(String title, {String? subtitle, String? action, VoidCallback? onAction}) {
+      final t = Theme.of(context);
+      final cs = t.colorScheme;
       return Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(title, style: t.textTheme.titleLarge),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w600),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: t.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurface.withOpacity(0.72),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ]
+                ],
               ),
-            ]
+            ),
+            if (action != null && onAction != null)
+              TextButton.icon(
+                onPressed: onAction,
+                icon: const Icon(Icons.chevron_right),
+                label: Text(action, style: const TextStyle(fontWeight: FontWeight.w900)),
+              ),
           ],
         ),
       );
     }
 
-    Widget quickAction({required IconData icon, required String label, required VoidCallback onTap}) {
-      final bg = cs.surfaceContainerHighest;
-      final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
-      final fg = cs.onSurface;
-
-      return ActionChip(
-        onPressed: onTap,
-        label: Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: fg)),
-        avatar: Icon(icon, size: 18, color: fg),
-        backgroundColor: bg,
-        side: BorderSide(color: border),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-      );
-    }
-
-
-    
-    Widget menuRow({required IconData icon, required String title, required String subtitle, required VoidCallback onTap}) {
-      final themeId = AppThemeService.themeNotifier.value;
-
-      // ✅ Diseño 2 (B3): tarjetas grandes claras, ícono con fondo suave y más “premium”.
-      if (themeId == 2) {
-        return Card(
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(26),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: cs.outlineVariant),
-                    ),
-                    child: Icon(icon, size: 24, color: cs.onSurface),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: t.textTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle,
-                          style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant.withOpacity(0.85), fontWeight: FontWeight.w700),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(Icons.chevron_right, size: 20, color: cs.onSurfaceVariant.withOpacity(0.85)),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-
-      // ✅ Diseño 3 (B1): minimal oscuro, filas compactas con borde fino (casi “lista”).
-      if (themeId == 3) {
-        return Card(
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(icon, size: 22, color: t.colorScheme.onSurface),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: t.textTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant.withOpacity(0.75), fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant.withOpacity(0.75)),
-                ],
-              ),
-            ),
-          ),
-        );
-      }
-
-      // ✅ Diseño 1 (Vinyl Pro): el estilo actual (tarjeta con ícono en caja).
-      return Card(
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: cs.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: cs.outline.withOpacity(isDark ? 0.90 : 1.00)),
-                  ),
-                  child: Icon(icon, size: 22, color: t.colorScheme.onSurface),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: t.textTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(Icons.chevron_right, size: 20, color: cs.onSurface.withOpacity(0.55)),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-
-  Widget recentGrid() {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _futureAll,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return _emptyState(
-            icon: Icons.wifi_off,
-            title: 'Sin conexión',
-            subtitle: 'No pude cargar tus vinilos ahora. Intenta de nuevo.',
-            actionText: 'Reintentar',
-            onAction: _reloadAllData,
-          );
-        }
-
-        final items = (snap.data ?? const <Map<String, dynamic>>[]).toList();
-        if (items.isEmpty) {
-          return Text(
-            'Aún no has agregado vinilos. Usa “Buscar” o “Discografías”.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurface.withOpacity(0.70),
-                  fontWeight: FontWeight.w600,
-                ),
-          );
-        }
-
-        // 4 últimos por id descendente (visual)
-        items.sort((a, b) {
-          final ia = (a['id'] is int) ? a['id'] as int : 0;
-          final ib = (b['id'] is int) ? b['id'] as int : 0;
-          return ib.compareTo(ia);
-        });
-        final top = items.take(4).toList();
-
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: top.length,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 0.72,
-          ),
-          itemBuilder: (_, i) {
-            final v = top[i];
-            final artista = ((v['artista'] ?? '').toString().trim());
-            final album = ((v['album'] ?? '').toString().trim());
-            final year = ((v['year'] ?? '').toString().trim());
-
-            return Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => _openDetail(v),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AspectRatio(
-                      aspectRatio: 1.10,
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: Container(
-                              color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
-                              child: _gridCover(v, fit: BoxFit.contain),
-                            ),
-                          ),
-                          Positioned(
-                            left: 10,
-                            bottom: 10,
-                            child: _numeroBadge(context, _vinylCode(v), compact: true),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            artista.isEmpty ? '—' : artista,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            album.isEmpty ? '—' : album,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            year.isEmpty ? '—' : year,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  color: cs.onSurface.withOpacity(0.70),
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 6),
-
-        // HERO
-Container(
-  padding: const EdgeInsets.all(16),
-  decoration: BoxDecoration(
-    borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: cs.outline.withOpacity(isDark ? 0.90 : 1.00)),
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: isDark ? [cs.surfaceContainerHighest, cs.surface] : [cs.surface, cs.surfaceContainerHighest],
-    ),
-  ),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-	      Row(
-	        children: [
-	          // ✅ Logo real de la app (arriba-izquierda)
-	          const AppLogo(size: 20),
-	          const Spacer(),
-	          IconButton(
-	            tooltip: 'Actualizar',
-	            onPressed: _reloadAllData,
-	            icon: Icon(Icons.refresh, color: cs.onSurface),
-	          ),
-	        ],
-	      ),
-	      const SizedBox(height: 10),
-	
-	      // Navegación principal en una sola línea
-	      Row(
-	        children: [
-	          Expanded(
-	            child: _topNavPill(
-	              label: 'Vinilos',
-	              count: all,
-	              onTap: () {
-	                _reloadAllData();
-	                if (!mounted) return;
-	                _setVista(Vista.lista);
-	              },
-	            ),
-	          ),
-	          const SizedBox(width: 8),
-	          Expanded(
-	            child: _topNavPill(
-	              label: 'Favoritos',
-	              count: fav,
-	              onTap: () {
-	                _reloadAllData();
-	                if (!mounted) return;
-	                _setVista(Vista.favoritos);
-	              },
-	            ),
-	          ),
-	          const SizedBox(width: 8),
-	          Expanded(
-	            child: _topNavPill(
-	              label: 'Deseos',
-	              count: wish,
-	              onTap: () {
-	                Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen())).then((_) {
-	                  if (!mounted) return;
-	                  _reloadAllData();
-	                });
-	              },
-	            ),
-	          ),
-	        ],
-	      ),
-	      const SizedBox(height: 12),
-
-	      // 🔎 Barra de búsqueda “falsa” (abre la vista Buscar y enfoca Artista)
-	      InkWell(
-	        onTap: openBuscar,
-	        borderRadius: BorderRadius.circular(16),
-	        child: Container(
-	          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-	          decoration: BoxDecoration(
-	            color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.18 : 0.75),
-	            borderRadius: BorderRadius.circular(16),
-	            border: Border.all(color: cs.outline.withOpacity(isDark ? 0.75 : 1.0)),
-	          ),
-	          child: Row(
-	            children: [
-	              Icon(Icons.search, size: 20, color: cs.onSurface.withOpacity(0.85)),
-	              const SizedBox(width: 10),
-	              Expanded(
-	                child: Text(
-	                  'Buscar artista o álbum…',
-	                  style: t.textTheme.bodyMedium?.copyWith(
-	                    color: cs.onSurface.withOpacity(0.72),
-	                    fontWeight: FontWeight.w700,
-	                  ),
-	                ),
-	              ),
-	              Icon(Icons.keyboard_arrow_right, color: cs.onSurface.withOpacity(0.55)),
-	            ],
-	          ),
-	        ),
-	      ),
-
-	      const SizedBox(height: 12),
-
-      // acciones rápidas
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          quickAction(icon: Icons.search, label: 'Buscar', onTap: openBuscar),
-          quickAction(
-            icon: Icons.qr_code_scanner,
-            label: 'Escanear',
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())).then((_) {
-                if (!mounted) return;
-                _reloadAllData();
-              });
-            },
-          ),
-          quickAction(
-            icon: Icons.library_music,
-            label: 'Discografías',
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
-                if (!mounted) return;
-                _reloadAllData();
-              });
-            },
-          ),
-          quickAction(
-            icon: Icons.settings,
-            label: 'Ajustes',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
-          ),
-        ],
-      ),
-    ],
-  ),
-),
-
-sectionTitle('Colección'
-, subtitle: 'Accede rápido a tus listas.'),
-        menuRow(
-          icon: Icons.list,
-          title: 'Vinilos',
-          subtitle: 'Todos tus LPs guardados',          onTap: () {
+        HomeHeader(
+          allCount: all,
+          favoritesCount: fav,
+          wishlistCount: wish,
+          onRefresh: _reloadAllData,
+          onVinyls: () {
             _reloadAllData();
             if (!mounted) return;
             _setVista(Vista.lista);
           },
-        ),
-        menuRow(
-          icon: Icons.star,
-          title: 'Favoritos',
-          subtitle: 'Tu selección destacada',          onTap: () {
+          onFavorites: () {
             _reloadAllData();
             if (!mounted) return;
             _setVista(Vista.favoritos);
           },
-        ),
-        menuRow(
-          icon: Icons.shopping_cart,
-          title: 'Deseos',
-          subtitle: 'Pendientes por comprar',          onTap: () {
+          onWishlist: () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen())).then((_) {
               if (!mounted) return;
               _reloadAllData();
             });
           },
-        ),
-        menuRow(
-          icon: Icons.delete_outline,
-          title: 'Borrar',
-          subtitle: 'Eliminar de tu lista',
-          onTap: () {
+          onSearch: openBuscar,
+          onScanner: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())).then((_) {
+              if (!mounted) return;
+              _reloadAllData();
+            });
+          },
+          onDiscography: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
+              if (!mounted) return;
+              _reloadAllData();
+            });
+          },
+          onTrash: () {
             _borrarPapelera = false;
             _reloadAllData();
             if (!mounted) return;
             _setVista(Vista.borrar);
           },
+          onSettings: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
         ),
 
-        sectionTitle('Últimos agregados', subtitle: 'Acceso rápido a lo último que guardaste.'),
+        sectionHeader(
+          'Últimos agregados',
+          subtitle: 'Lo último que guardaste en tu colección.',
+          action: 'Ver todos',
+          onAction: () {
+            _reloadAllData();
+            if (!mounted) return;
+            _setVista(Vista.lista);
+          },
+        ),
+
         recentGrid(),
         const SizedBox(height: 10),
       ],
     );
   }
-
 
 
 Widget vistaBorrar({bool embedInScroll = true}) {
@@ -2793,10 +2305,12 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
         : Text(title);
 
     return AppBar(
-      leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
+      toolbarHeight: kAppBarToolbarHeight,
+      leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
       leading: appBarLeadingLogoBack(
         context,
-        logoSize: 34,
+        logoSize: kAppBarLogoSize,
+        gap: kAppBarGapLogoBack,
         onBack: () {
           if (localSearchAllowed && _localSearchActive) {
             _toggleLocalSearch();
@@ -2850,11 +2364,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
           ),
         ),
         child: SafeArea(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            child: Padding(
+          child: Padding(
               key: ValueKey(vista),
               padding: const EdgeInsets.all(16),
               child: (vista == Vista.lista || vista == Vista.favoritos || vista == Vista.borrar)
@@ -2904,7 +2414,6 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
                       ),
                     ),
           ),
-        ),
       ),
     ));
   }

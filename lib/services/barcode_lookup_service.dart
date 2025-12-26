@@ -11,6 +11,8 @@ class BarcodeReleaseHit {
   final String? releaseGroupId;
   final String? year;
   final String? country;
+  final bool isVinyl;
+  final String? mediaFormat;
 
   BarcodeReleaseHit({
     required this.barcode,
@@ -21,6 +23,8 @@ class BarcodeReleaseHit {
     this.releaseGroupId,
     this.year,
     this.country,
+    this.isVinyl = false,
+    this.mediaFormat,
   });
 }
 
@@ -81,9 +85,15 @@ class BarcodeLookupService {
 
     // MusicBrainz search (releases)
     final q = 'barcode:$code';
-    final url = Uri.parse('$_mbBase/release/?query=${Uri.encodeQueryComponent(q)}&fmt=json&limit=15');
+    // Intentamos pedir información de medios para priorizar Vinilos cuando esté disponible.
+    final url = Uri.parse('$_mbBase/release/?query=${Uri.encodeQueryComponent(q)}&fmt=json&limit=20&inc=media+release-groups+artist-credits');
 
-    final res = await http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
+    late http.Response res;
+    try {
+      res = await http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
+    } catch (_) {
+      return [];
+    }
     if (res.statusCode != 200) return [];
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
@@ -120,6 +130,23 @@ class BarcodeLookupService {
       final year = _yearFromDate(date);
       final country = (r['country'] as String?)?.trim();
 
+      // Detecta formato Vinyl si la respuesta incluye `media`.
+      bool isVinyl = false;
+      String? mediaFormat;
+      final media = r['media'];
+      if (media is List) {
+        for (final m in media) {
+          if (m is! Map<String, dynamic>) continue;
+          final f = (m['format'] as String?)?.trim() ?? '';
+          if (f.isNotEmpty && mediaFormat == null) mediaFormat = f;
+          if (f.toLowerCase().contains('vinyl')) {
+            isVinyl = true;
+            mediaFormat = f;
+            break;
+          }
+        }
+      }
+
       out.add(
         BarcodeReleaseHit(
           barcode: code,
@@ -130,6 +157,8 @@ class BarcodeLookupService {
           releaseGroupId: releaseGroupId,
           year: year,
           country: country,
+          isVinyl: isVinyl,
+          mediaFormat: mediaFormat,
         ),
       );
     }
@@ -144,6 +173,12 @@ class BarcodeLookupService {
       dedup.add(h);
       if (dedup.length >= 10) break;
     }
+
+    // Preferimos Vinilos primero (si tenemos info), manteniendo un orden estable por defecto.
+    dedup.sort((a, b) {
+      if (a.isVinyl == b.isVinyl) return 0;
+      return a.isVinyl ? -1 : 1;
+    });
 
     return dedup;
   }

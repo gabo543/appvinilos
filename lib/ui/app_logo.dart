@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 
+// Tamaños de branding (ajustables en un solo lugar)
+const double kLogoScale = 4.0;
+const double kAppBarLogoSize = 34 * kLogoScale; // antes 34
+const double kHomeHeaderLogoSize = 20 * kLogoScale; // antes 20
+const double kAppBarGapLogoBack = 12;
+const double kAppBarToolbarHeight = kAppBarLogoSize + 20; // colchón
+const double kBackIconSize = 30;
+
+
 /// Logo de la app (mismo asset que el ícono del teléfono) para AppBar y headers.
 class AppLogo extends StatelessWidget {
   final double size;
-  const AppLogo({super.key, this.size = 36});
+  const AppLogo({super.key, this.size = kAppBarLogoSize});
 
   @override
   Widget build(BuildContext context) {
@@ -22,8 +31,8 @@ class AppLogo extends StatelessWidget {
 
 /// Ancho recomendado para `AppBar.leadingWidth` cuando usas [appBarLeadingLogoBack].
 double appBarLeadingWidthForLogoBack({
-  double logoSize = 36,
-  double gap = 10,
+  double logoSize = kAppBarLogoSize,
+  double gap = kAppBarGapLogoBack,
 }) {
   // padding izquierda (8) + logo + gap + botón (40) + colchón (6)
   return 8 + logoSize + gap + 40 + 6;
@@ -34,8 +43,8 @@ double appBarLeadingWidthForLogoBack({
 Widget appBarLeadingLogoBack(
   BuildContext context, {
   VoidCallback? onBack,
-  double logoSize = 36,
-  double gap = 10,
+  double logoSize = kAppBarLogoSize,
+  double gap = kAppBarGapLogoBack,
 }) {
   return Padding(
     padding: const EdgeInsets.only(left: 8),
@@ -46,9 +55,9 @@ Widget appBarLeadingLogoBack(
         SizedBox(width: gap),
         IconButton(
           tooltip: 'Volver',
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, size: kBackIconSize),
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
           onPressed: () async {
             if (onBack != null) {
               onBack();
@@ -68,7 +77,7 @@ Widget appBarLeadingLogoBack(
 /// (Legacy) Título de AppBar con logo a la izquierda + contenido (texto o widget).
 Widget appBarTitleWithLogo({
   required Widget child,
-  double logoSize = 36,
+  double logoSize = kAppBarLogoSize,
 }) {
   return Row(
     children: [
@@ -84,7 +93,7 @@ Widget appBarTitleWithLogo({
 /// (Legacy) Título de AppBar con logo + texto (con ellipsis).
 Widget appBarTitleTextWithLogo(
   String title, {
-  double logoSize = 36,
+  double logoSize = kAppBarLogoSize,
 }) {
   return appBarTitleWithLogo(
     logoSize: logoSize,

@@ -540,8 +540,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
-        leading: appBarLeadingLogoBack(context, logoSize: 34),
+        toolbarHeight: kAppBarToolbarHeight,
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         title: const Text('Discografías'),
         titleSpacing: 0,
       ),

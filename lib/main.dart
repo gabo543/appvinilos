@@ -265,24 +265,22 @@ ThemeData _makeTheme({
 
 
   ThemeData _theme4() {
-  // 🎨 Bronce Vintage
+  // 🎨 Vinilo Retro (sleeve oscuro + acento cálido)
   return _makeTheme(
     brightness: Brightness.dark,
-    bg: const Color(0xFF12100D),
-    surface: const Color(0xFF181410),
-    card: const Color(0xFF1D1712),
-    accent: const Color(0xFFC79A6B),
-    onAccent: const Color(0xFF15100A),
-    outline: const Color(0xFF3A2C20),
-    variant: const Color(0xFF231B14),
-    onSurface: const Color(0xFFF2E8DD),
-    onVariant: const Color(0xFFCBB8A3),
+    bg: const Color(0xFF0F0B08),        // fondo tipo "sala"
+    surface: const Color(0xFF17110D),   // superficie cuero/papel
+    card: const Color(0xFF1E1611),      // cards
+    accent: const Color(0xFFD45A2A),    // naranja quemado (label)
+    onAccent: const Color(0xFFFFF4E8),  // crema
+    outline: const Color(0xFF3F2C22),   // borde cálido
+    variant: const Color(0xFF241A14),   // inputs/chips
+    onSurface: const Color(0xFFF6EDE3), // texto
+    onVariant: const Color(0xFFCAB9AA),
     shadow: const Color(0xFF000000),
   );
 }
-
-
-  ThemeData _theme5() {
+ThemeData _theme5() {
   // 🎨 Lila Soft
   return _makeTheme(
     brightness: Brightness.dark,

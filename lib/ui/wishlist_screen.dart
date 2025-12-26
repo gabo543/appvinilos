@@ -514,8 +514,9 @@ Widget _placeholder() {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
-        leading: appBarLeadingLogoBack(context, logoSize: 34),
+        toolbarHeight: kAppBarToolbarHeight,
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         title: const Text('Deseos'),
         titleSpacing: 0,
         actions: [

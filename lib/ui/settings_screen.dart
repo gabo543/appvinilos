@@ -5,6 +5,8 @@ import 'package:share_plus/share_plus.dart';
 import '../services/backup_service.dart';
 import '../services/app_theme_service.dart';
 import '../services/view_mode_service.dart';
+import '../services/cover_cache_service.dart';
+import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -19,7 +21,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     1: 'Obsidiana',
     2: 'Marfil',
     3: 'Grafito',
-    4: 'Bronce',
+    4: 'Vinilo Retro',
     5: 'Lila',
     6: 'Verde Sala',
   };
@@ -57,6 +59,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _cardLevel = 5;
   int _borderStyle = 1;
   bool _loading = true;
+  bool _downloadingCovers = false;
+  int _coversDone = 0;
+  int _coversTotal = 0;
 
   @override
   void initState() {
@@ -88,6 +93,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _descargarCaratulas() async {
+    if (_downloadingCovers) return;
+    setState(() {
+      _downloadingCovers = true;
+      _coversDone = 0;
+      _coversTotal = 0;
+    });
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) {
+          final t = _coversTotal <= 0 ? 'Preparando…' : '$_coversDone / $_coversTotal';
+          final p = (_coversTotal <= 0) ? null : (_coversDone / _coversTotal).clamp(0.0, 1.0);
+          return AlertDialog(
+            title: const Text('Descargando carátulas'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (p == null) const LinearProgressIndicator() else LinearProgressIndicator(value: p),
+                const SizedBox(height: 12),
+                Text(t),
+                const SizedBox(height: 6),
+                const Text('Esto deja tus carátulas guardadas para ver offline.', style: TextStyle(fontSize: 12)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    try {
+      final res = await CoverCacheService.downloadMissingCovers(
+        onProgress: (d, tot) {
+          if (!mounted) return;
+          setState(() {
+            _coversDone = d;
+            _coversTotal = tot;
+          });
+        },
+      );
+      if (mounted) Navigator.of(context).pop();
+      _snack(res.summary());
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      _snack('No se pudo descargar carátulas: $e');
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _downloadingCovers = false;
+      });
+    }
+  }
+
+  Future<void> _duplicados() async {
+    try {
+      final groups = await VinylDb.instance.findDuplicateGroups(includeYear: true);
+      if (!mounted) return;
+
+      if (groups.isEmpty) {
+        _snack('No hay duplicados ✅');
+        return;
+      }
+
+      final doMerge = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Duplicados encontrados'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: groups.length,
+                itemBuilder: (_, i) {
+                  final g = groups[i];
+                  final first = g.first;
+                  final artista = (first['artista'] ?? '').toString();
+                  final album = (first['album'] ?? '').toString();
+                  final year = (first['year'] ?? '').toString();
+                  return ListTile(
+                    dense: true,
+                    title: Text('$artista — $album'),
+                    subtitle: Text(year.isEmpty ? '${g.length} copias' : '$year · ${g.length} copias'),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cerrar')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Fusionar duplicados')),
+            ],
+          );
+        },
+      );
+
+      if (doMerge != true) return;
+      final deleted = await VinylDb.instance.mergeDuplicates(includeYear: true);
+      _snack('Listo ✅ Eliminados: $deleted');
+    } catch (e) {
+      _snack('Error en duplicados: $e');
+    }
   }
 
   Future<void> _guardar() async {
@@ -200,8 +312,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
-        leading: appBarLeadingLogoBack(context, logoSize: 34),
+        toolbarHeight: kAppBarToolbarHeight,
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         title: const Text('Ajustes'),
         titleSpacing: 0,
       ),
@@ -248,6 +361,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: Text('Cargar backup local'),
                         subtitle: Text('Reemplaza TODO (vinilos + wishlist + papelera + ajustes) por el último backup local.'),
                         onTap: _cargar,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 🧰 Mantenimiento
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.cloud_download_outlined),
+                        title: Text('Descargar carátulas faltantes'),
+                        subtitle: Text('Deja carátulas guardadas para ver offline (recomendado después de importar).'),
+                        onTap: _downloadingCovers ? null : _descargarCaratulas,
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.content_copy_outlined),
+                        title: Text('Detectar / fusionar duplicados'),
+                        subtitle: Text('Encuentra LPs repetidos por artista+álbum y fusiona conservando el mejor registro.'),
+                        onTap: _duplicados,
                       ),
                     ],
                   ),

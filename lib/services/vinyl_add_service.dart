@@ -253,5 +253,11 @@ class VinylAddService {
       return null;
     }
   }
+
+  /// Expuesto para tareas de mantenimiento (por ejemplo, descargar carátulas
+  /// faltantes después de importar un backup).
+  static Future<String?> downloadCoverToLocal(String url) async {
+    return _downloadCoverToLocal(url);
+  }
 }
 

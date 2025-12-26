@@ -78,8 +78,9 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: 34),
-        leading: appBarLeadingLogoBack(context, logoSize: 34),
+        toolbarHeight: kAppBarToolbarHeight,
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         title: Text(widget.album.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         titleSpacing: 0,
         actions: [

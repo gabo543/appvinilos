@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
+import '../db/vinyl_db.dart';
 
 class VinylDetailSheet extends StatefulWidget {
   final Map<String, dynamic> vinyl;
@@ -14,6 +15,101 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   bool loadingTracks = false;
   List<TrackItem> tracks = [];
   String? msg;
+
+  Future<void> _editMeta() async {
+    final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
+    if (id <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No puedo editar: falta ID.')));
+      return;
+    }
+
+    final year0 = (widget.vinyl['year'] as String?)?.trim() ?? '';
+    final cond0 = (widget.vinyl['condition'] as String?)?.trim() ?? '';
+    final fmt0 = (widget.vinyl['format'] as String?)?.trim() ?? '';
+
+    final yearCtrl = TextEditingController(text: year0);
+    String condition = cond0;
+    String format = fmt0;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setD) {
+            return AlertDialog(
+              title: const Text('Editar vinilo'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: yearCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Año (opcional)'),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: condition.isEmpty ? null : condition,
+                      decoration: const InputDecoration(labelText: 'Condición'),
+                      items: const [
+                        DropdownMenuItem(value: 'Mint (M)', child: Text('Mint (M)')),
+                        DropdownMenuItem(value: 'Near Mint (NM)', child: Text('Near Mint (NM)')),
+                        DropdownMenuItem(value: 'Very Good Plus (VG+)', child: Text('Very Good Plus (VG+)')),
+                        DropdownMenuItem(value: 'Very Good (VG)', child: Text('Very Good (VG)')),
+                        DropdownMenuItem(value: 'Good (G)', child: Text('Good (G)')),
+                        DropdownMenuItem(value: 'Poor (P)', child: Text('Poor (P)')),
+                      ],
+                      onChanged: (v) => setD(() => condition = v ?? ''),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: format.isEmpty ? null : format,
+                      decoration: const InputDecoration(labelText: 'Formato'),
+                      items: const [
+                        DropdownMenuItem(value: 'LP', child: Text('LP')),
+                        DropdownMenuItem(value: 'EP', child: Text('EP')),
+                        DropdownMenuItem(value: 'Single', child: Text('Single')),
+                        DropdownMenuItem(value: 'Boxset', child: Text('Boxset')),
+                      ],
+                      onChanged: (v) => setD(() => format = v ?? ''),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar')),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (saved != true) return;
+
+    try {
+      final y = yearCtrl.text.trim();
+      await VinylDb.instance.updateVinylMeta(
+        id: id,
+        year: y,
+        condition: condition,
+        format: format,
+      );
+
+      // Actualiza el mapa local para reflejar cambios sin recargar.
+      widget.vinyl['year'] = y;
+      widget.vinyl['condition'] = condition;
+      widget.vinyl['format'] = format;
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Actualizado ✅')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
+    }
+  }
 
   @override
   void initState() {
@@ -128,6 +224,11 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                     '$artista\n$album',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: fg),
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Editar',
+                  onPressed: _editMeta,
+                  icon: Icon(Icons.edit, color: fg),
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),

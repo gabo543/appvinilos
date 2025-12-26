@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 1 = Obsidiana (Oscuro premium)
 /// 2 = Marfil (Claro premium)
 /// 3 = Grafito (Oscuro mate)
-/// 4 = Bronce Vintage
+/// 4 = Vinilo Retro
 /// 5 = Lila Soft
 /// 6 = Verde Sala (Hi‑Fi)
 ///
@@ -76,7 +76,7 @@ class AppThemeService {
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    themeNotifier.value = _clampTheme(prefs.getInt(_kTheme) ?? 1);
+    themeNotifier.value = _clampTheme(prefs.getInt(_kTheme) ?? 4);
     textIntensityNotifier.value = _migrateOldIntensity(prefs.getInt(_kTextIntensity) ?? 6);
     bgLevelNotifier.value = _migrateOldLevel(prefs.getInt(_kBgLevel) ?? 5);
     cardLevelNotifier.value = _migrateOldLevel(prefs.getInt(_kCardLevel) ?? 5);
@@ -92,7 +92,7 @@ class AppThemeService {
 
   static Future<int> getTheme() async {
     final prefs = await SharedPreferences.getInstance();
-    return _clampTheme(prefs.getInt(_kTheme) ?? 1);
+    return _clampTheme(prefs.getInt(_kTheme) ?? 4);
   }
 
   static Future<void> setTextIntensity(int v) async {
