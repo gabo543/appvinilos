@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../db/vinyl_db.dart';
 import '../services/backup_service.dart';
 import '../services/discography_service.dart';
+import '../services/add_defaults_service.dart';
 import 'album_tracks_screen.dart';
 import 'vinyl_detail_sheet.dart';
 import 'app_logo.dart';
@@ -88,7 +89,12 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
   String condition = 'VG+';
   String format = 'LP';
 
-  return showDialog<Map<String, String>>(
+  try {
+    condition = await AddDefaultsService.getLastCondition(fallback: condition);
+    format = await AddDefaultsService.getLastFormat(fallback: format);
+  } catch (_) {}
+
+  final res = await showDialog<Map<String, String>>(
     context: context,
     builder: (ctx) {
       return StatefulBuilder(
@@ -104,10 +110,9 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
                   items: const [
                     DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
                     DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
-                    DropdownMenuItem(value: 'VG+', child: Text('VG+ (Very Good +)')),
-                    DropdownMenuItem(value: 'VG', child: Text('VG (Very Good)')),
-                    DropdownMenuItem(value: 'G', child: Text('G (Good)')),
-                    DropdownMenuItem(value: 'P', child: Text('P (Poor)')),
+                    DropdownMenuItem(value: 'VG+', child: Text('VG+')),
+                    DropdownMenuItem(value: 'VG', child: Text('VG')),
+                    DropdownMenuItem(value: 'G', child: Text('G')),
                   ],
                   onChanged: (v) => setSt(() => condition = v ?? condition),
                 ),
@@ -119,7 +124,8 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
                     DropdownMenuItem(value: 'LP', child: Text('LP')),
                     DropdownMenuItem(value: 'EP', child: Text('EP')),
                     DropdownMenuItem(value: 'Single', child: Text('Single')),
-                    DropdownMenuItem(value: 'Box Set', child: Text('Box Set')),
+                    DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
+                    DropdownMenuItem(value: 'Boxset', child: Text('Boxset')),
                   ],
                   onChanged: (v) => setSt(() => format = v ?? format),
                 ),
@@ -137,6 +143,11 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
       );
     },
   );
+
+  if (res != null) {
+    await AddDefaultsService.saveLast(condition: res['condition'] ?? condition, format: res['format'] ?? format);
+  }
+  return res;
 }
 void _snack(String t) {
     if (!mounted) return;

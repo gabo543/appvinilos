@@ -23,6 +23,10 @@ dependencies:
   shared_preferences: ^2.5.3
   share_plus: ^10.0.3
   mobile_scanner: ^7.1.4
+  # Modo carátula: tomar foto / galería
+  image_picker: ^1.1.2
+  # OCR local (ML Kit) para leer texto de carátulas
+  google_mlkit_text_recognition: ^0.13.0
 
 dev_dependencies:
   flutter_test:

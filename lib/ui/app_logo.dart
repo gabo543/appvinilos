@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 // Tamaños de branding (ajustables en un solo lugar)
 const double kLogoScale = 4.0;
 const double kAppBarLogoSize = 34 * kLogoScale; // antes 34
-const double kHomeHeaderLogoSize = 20 * kLogoScale; // antes 20
+const double kHomeHeaderLogoSize = 26 * kLogoScale; // antes 20
 const double kAppBarGapLogoBack = 12;
 const double kAppBarToolbarHeight = kAppBarLogoSize + 20; // colchón
 const double kBackIconSize = 30;

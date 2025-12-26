@@ -731,12 +731,98 @@ Future<Map<String, dynamic>?> findByExact({
   }) async {
     final d = await db;
     final values = <String, Object?>{};
-    if (year != null) values['year'] = year.trim();
-    if (condition != null) values['condition'] = condition.trim();
-    if (format != null) values['format'] = format.trim();
-    if (coverPath != null) values['coverPath'] = coverPath.trim();
+    if (year != null) {
+      final y = year.trim();
+      values['year'] = y.isEmpty ? null : y;
+    }
+    if (condition != null) {
+      final c = condition.trim();
+      values['condition'] = c.isEmpty ? null : c;
+    }
+    if (format != null) {
+      final f = format.trim();
+      values['format'] = f.isEmpty ? null : f;
+    }
+    if (coverPath != null) {
+      final cp = coverPath.trim();
+      values['coverPath'] = cp.isEmpty ? null : cp;
+    }
     if (values.isEmpty) return;
     await d.update('vinyls', values, where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Edita campos principales de un vinilo (artista/álbum + metadatos).
+  ///
+  /// - Mantiene artistNo/albumNo para no romper tu orden manual.
+  /// - Si cambia el artista, actualiza artistKey y mantiene el mapping
+  ///   en `artist_orders` usando el mismo artistNo.
+  /// - Si el (artista, álbum) nuevo ya existe en otro registro, lanza excepción.
+  Future<void> updateVinylDetails({
+    required int id,
+    required String artista,
+    required String album,
+    String? year,
+    String? condition,
+    String? format,
+  }) async {
+    final d = await db;
+    final a = artista.trim();
+    final al = album.trim();
+    if (a.isEmpty || al.isEmpty) {
+      throw Exception('Artista y Álbum son obligatorios.');
+    }
+
+    await d.transaction((txn) async {
+      final cur = await txn.query('vinyls', where: 'id = ?', whereArgs: [id], limit: 1);
+      if (cur.isEmpty) throw Exception('No encontré el vinilo.');
+      final old = cur.first;
+
+      final oldA = (old['artista'] ?? '').toString().trim();
+      final oldAl = (old['album'] ?? '').toString().trim();
+      final oldKey = (old['artistKey'] ?? '').toString().trim();
+      final aNo = _asInt(old['artistNo']);
+
+      // Evita colisión con otro registro
+      if (oldA.toLowerCase() != a.toLowerCase() || oldAl.toLowerCase() != al.toLowerCase()) {
+        final dup = await txn.rawQuery(
+          '''
+          SELECT id FROM vinyls
+          WHERE LOWER(TRIM(artista)) = LOWER(TRIM(?))
+            AND LOWER(TRIM(album)) = LOWER(TRIM(?))
+            AND id <> ?
+          LIMIT 1
+          ''',
+          [a, al, id],
+        );
+        if (dup.isNotEmpty) {
+          throw Exception('Ese vinilo ya existe en tu lista.');
+        }
+      }
+
+      final newKey = _makeArtistKey(a);
+      if (newKey.isNotEmpty && newKey != oldKey && aNo > 0) {
+        // Mantiene el mismo número de artista para conservar tu orden.
+        await txn.insert(
+          'artist_orders',
+          {'artistKey': newKey, 'artistNo': aNo},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
+      await txn.update(
+        'vinyls',
+        {
+          'artista': a,
+          'album': al,
+          'artistKey': newKey.isEmpty ? oldKey : newKey,
+          if (year != null) 'year': year.trim().isEmpty ? null : year.trim(),
+          if (condition != null) 'condition': condition.trim().isEmpty ? null : condition.trim(),
+          if (format != null) 'format': format.trim().isEmpty ? null : format.trim(),
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   /// Busca duplicados “suaves” por artista+álbum (+año opcional).

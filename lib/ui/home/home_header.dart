@@ -120,11 +120,6 @@ class HomeHeader extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Ahora sonando',
-                              style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.4),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
                               'Tu estantería • vinilo a vinilo',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -424,31 +419,26 @@ class _StatCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: t.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: cs.onSurface.withOpacity(0.82),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: t.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface.withOpacity(0.82),
+                  ),
+                ),
               ),
             ),
           ],
         ),
       ),
     );
-  }
-}
-
-class _AnimatedCount extends StatelessWidget {
-  final int value;
-  const _AnimatedCount({required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final style = t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.8);
-    return Text('$value', style: style);
   }
 }
 

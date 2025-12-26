@@ -7,6 +7,7 @@ import '../db/vinyl_db.dart';
 import '../services/discography_service.dart';
 import '../services/metadata_service.dart';
 import '../services/vinyl_add_service.dart';
+import '../services/add_defaults_service.dart';
 import '../services/backup_service.dart';
 import '../services/view_mode_service.dart';
 import '../services/app_theme_service.dart';
@@ -157,6 +158,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final albumCtrl = TextEditingController();
   final yearCtrl = TextEditingController();
 
+  // ✅ Defaults para Agregar (condición/formato)
+  String _addCondition = 'VG+';
+  String _addFormat = 'LP';
+  bool _addDefaultsLoaded = false;
+
   // ✅ Focus dedicado para poder abrir el buscador desde Home con un tap.
   final FocusNode _artistFocus = FocusNode();
 
@@ -258,6 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUiPrefs();
+    _loadAddDefaults();
     // ✅ Vista grid/list instantánea (notifier en memoria)
     _gridView = ViewModeService.gridNotifier.value;
     _gridListener = () {
@@ -269,6 +276,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _futureAll = VinylDb.instance.getAll();
     _futureFav = VinylDb.instance.getFavorites();
     _futureTrash = VinylDb.instance.getTrash();
+  }
+
+  Future<void> _loadAddDefaults() async {
+    try {
+      final c = await AddDefaultsService.getLastCondition(fallback: _addCondition);
+      final f = await AddDefaultsService.getLastFormat(fallback: _addFormat);
+      if (!mounted) return;
+      setState(() {
+        _addCondition = c;
+        _addFormat = f;
+        _addDefaultsLoaded = true;
+      });
+    } catch (_) {
+      _addDefaultsLoaded = true;
+    }
   }
 
   Future<void> _loadUiPrefs() async {
@@ -832,7 +854,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       ],
     ];
 
-    return Card(
+    final card = Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
@@ -911,6 +933,81 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           ),
         ),
       ),
+    );
+
+    // ✅ Swipes rápidos (modo normal):
+    // - Swipe → (izq...der) = favorito
+    // - Swipe ← (der...izq) = enviar a papelera (con confirmación)
+    if (conBorrar) return card;
+
+    final id = _asInt(v['id']);
+    if (id <= 0) return card;
+
+    return Dismissible(
+      key: ValueKey('vinyl_$id'),
+      direction: DismissDirection.horizontal,
+      background: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        alignment: Alignment.centerLeft,
+        color: cs.primary.withOpacity(0.18),
+        child: Row(
+          children: [
+            Icon(_isFav(v) ? Icons.star_outline : Icons.star, color: cs.primary),
+            const SizedBox(width: 8),
+            Text(_isFav(v) ? 'Quitar favorito' : 'Favorito', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w900)),
+          ],
+        ),
+      ),
+      secondaryBackground: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        alignment: Alignment.centerRight,
+        color: Colors.red.withOpacity(0.18),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: const [
+            Icon(Icons.delete_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Papelera', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900)),
+          ],
+        ),
+      ),
+      confirmDismiss: (dir) async {
+        if (dir == DismissDirection.startToEnd) {
+          await _toggleFavorite(v);
+          return false; // no se elimina
+        }
+
+        // endToStart
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) {
+            return AlertDialog(
+              title: const Text('¿Enviar a papelera?'),
+              content: Text('"$artista" — "$album"'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar')),
+              ],
+            );
+          },
+        );
+
+        if (ok == true) {
+          await VinylDb.instance.moveToTrash(id);
+          await BackupService.autoSaveIfEnabled();
+          if (mounted) {
+            _reloadAllData();
+            snack('Enviado a papelera');
+          }
+          return true;
+        }
+        return false;
+      },
+      onDismissed: (_) {
+        // El reload ya se pidió en confirmDismiss, pero esto asegura UI estable.
+        if (mounted) _reloadAllData();
+      },
+      child: card,
     );
   }
 
@@ -1321,10 +1418,14 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     final res = await VinylAddService.addPrepared(
       p,
       overrideYear: yearCtrl.text.trim().isEmpty ? null : yearCtrl.text.trim(),
+      condition: _addCondition,
+      format: _addFormat,
     );
 
     snack(res.message);
     if (!res.ok) return;
+
+    await AddDefaultsService.saveLast(condition: _addCondition, format: _addFormat);
 
     await BackupService.autoSaveIfEnabled();
 
@@ -1851,6 +1952,49 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  // ✅ Selector simple de carátula (cuando hay varias opciones)
+                  if (p.coverCandidates.length > 1)
+                    SizedBox(
+                      height: 54,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: p.coverCandidates.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (_, i) {
+                          final c = p.coverCandidates[i];
+                          final selected = identical(p.selectedCover, c);
+                          final url = (c.coverUrl250 ?? c.coverUrl500 ?? '').trim();
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => setState(() => p.selectedCover = c),
+                            child: Container(
+                              width: 54,
+                              height: 54,
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: selected ? cs.primary : cs.outlineVariant,
+                                  width: selected ? 2 : 1,
+                                ),
+                                color: cs.surfaceContainerHighest.withOpacity(selected ? 0.55 : 0.30),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: url.isEmpty
+                                    ? const Center(child: Icon(Icons.album, size: 20))
+                                    : Image.network(
+                                        url,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.album, size: 20)),
+                                      ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  if (p.coverCandidates.length > 1) const SizedBox(height: 10),
                   // año editable (opcional)
                   TextField(
                     controller: yearCtrl,
@@ -1861,6 +2005,39 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       fillColor: cs.surfaceContainerHighest.withOpacity(isDark ? 0.14 : 0.65),
                     ),
                     style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _addCondition,
+                          decoration: const InputDecoration(labelText: 'Condición'),
+                          items: const [
+                            DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
+                            DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
+                            DropdownMenuItem(value: 'VG+', child: Text('VG+')),
+                            DropdownMenuItem(value: 'VG', child: Text('VG')),
+                            DropdownMenuItem(value: 'G', child: Text('G')),
+                          ],
+                          onChanged: (v) => setState(() => _addCondition = v ?? _addCondition),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _addFormat,
+                          decoration: const InputDecoration(labelText: 'Formato'),
+                          items: const [
+                            DropdownMenuItem(value: 'LP', child: Text('LP')),
+                            DropdownMenuItem(value: 'EP', child: Text('EP')),
+                            DropdownMenuItem(value: 'Single', child: Text('Single')),
+                            DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
+                          ],
+                          onChanged: (v) => setState(() => _addFormat = v ?? _addFormat),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   ElevatedButton(

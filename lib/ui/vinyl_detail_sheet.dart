@@ -24,13 +24,17 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       return;
     }
 
+    final artista0 = (widget.vinyl['artista'] as String?)?.trim() ?? '';
+    final album0 = (widget.vinyl['album'] as String?)?.trim() ?? '';
     final year0 = (widget.vinyl['year'] as String?)?.trim() ?? '';
-    final cond0 = (widget.vinyl['condition'] as String?)?.trim() ?? '';
-    final fmt0 = (widget.vinyl['format'] as String?)?.trim() ?? '';
+    final cond0 = (widget.vinyl['condition'] as String?)?.trim() ?? 'VG+';
+    final fmt0 = (widget.vinyl['format'] as String?)?.trim() ?? 'LP';
 
+    final artistaCtrl = TextEditingController(text: artista0);
+    final albumCtrl = TextEditingController(text: album0);
     final yearCtrl = TextEditingController(text: year0);
-    String condition = cond0;
-    String format = fmt0;
+    String condition = cond0.isEmpty ? 'VG+' : cond0;
+    String format = fmt0.isEmpty ? 'LP' : fmt0;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -44,35 +48,46 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
+                      controller: artistaCtrl,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'Artista'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: albumCtrl,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(labelText: 'Álbum'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
                       controller: yearCtrl,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(labelText: 'Año (opcional)'),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: condition.isEmpty ? null : condition,
+                      value: condition,
                       decoration: const InputDecoration(labelText: 'Condición'),
                       items: const [
-                        DropdownMenuItem(value: 'Mint (M)', child: Text('Mint (M)')),
-                        DropdownMenuItem(value: 'Near Mint (NM)', child: Text('Near Mint (NM)')),
-                        DropdownMenuItem(value: 'Very Good Plus (VG+)', child: Text('Very Good Plus (VG+)')),
-                        DropdownMenuItem(value: 'Very Good (VG)', child: Text('Very Good (VG)')),
-                        DropdownMenuItem(value: 'Good (G)', child: Text('Good (G)')),
-                        DropdownMenuItem(value: 'Poor (P)', child: Text('Poor (P)')),
+                        DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
+                        DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
+                        DropdownMenuItem(value: 'VG+', child: Text('VG+')),
+                        DropdownMenuItem(value: 'VG', child: Text('VG')),
+                        DropdownMenuItem(value: 'G', child: Text('G')),
                       ],
-                      onChanged: (v) => setD(() => condition = v ?? ''),
+                      onChanged: (v) => setD(() => condition = v ?? condition),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: format.isEmpty ? null : format,
+                      value: format,
                       decoration: const InputDecoration(labelText: 'Formato'),
                       items: const [
                         DropdownMenuItem(value: 'LP', child: Text('LP')),
                         DropdownMenuItem(value: 'EP', child: Text('EP')),
                         DropdownMenuItem(value: 'Single', child: Text('Single')),
-                        DropdownMenuItem(value: 'Boxset', child: Text('Boxset')),
+                        DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
                       ],
-                      onChanged: (v) => setD(() => format = v ?? ''),
+                      onChanged: (v) => setD(() => format = v ?? format),
                     ),
                   ],
                 ),
@@ -87,19 +102,30 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       },
     );
 
+    // Limpia controllers
+    final newArtist = artistaCtrl.text.trim();
+    final newAlbum = albumCtrl.text.trim();
+    final newYear = yearCtrl.text.trim();
+    artistaCtrl.dispose();
+    albumCtrl.dispose();
+    yearCtrl.dispose();
+
     if (saved != true) return;
 
     try {
-      final y = yearCtrl.text.trim();
-      await VinylDb.instance.updateVinylMeta(
+      await VinylDb.instance.updateVinylDetails(
         id: id,
-        year: y,
+        artista: newArtist,
+        album: newAlbum,
+        year: newYear,
         condition: condition,
         format: format,
       );
 
       // Actualiza el mapa local para reflejar cambios sin recargar.
-      widget.vinyl['year'] = y;
+      widget.vinyl['artista'] = newArtist;
+      widget.vinyl['album'] = newAlbum;
+      widget.vinyl['year'] = newYear;
       widget.vinyl['condition'] = condition;
       widget.vinyl['format'] = format;
       if (!mounted) return;

@@ -6,6 +6,7 @@ import '../db/vinyl_db.dart';
 import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import '../services/vinyl_add_service.dart';
+import '../services/add_defaults_service.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
 
@@ -260,7 +261,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     String condition = 'VG+';
     String format = 'LP';
 
-    return showDialog<Map<String, String>>(
+    // ✅ Prefill con la última selección del usuario
+    try {
+      condition = await AddDefaultsService.getLastCondition(fallback: condition);
+      format = await AddDefaultsService.getLastFormat(fallback: format);
+    } catch (_) {
+      // si prefs falla, seguimos con defaults
+    }
+
+    final res = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
@@ -304,6 +313,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         );
       },
     );
+
+    if (res != null) {
+      await AddDefaultsService.saveLast(condition: res['condition'] ?? condition, format: res['format'] ?? format);
+    }
+    return res;
   }
 
   Future<String?> _askWishlistStatus() async {
