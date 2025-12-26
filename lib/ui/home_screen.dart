@@ -1466,6 +1466,51 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       );
     }
 
+
+    Widget recentGrid() {
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: _futureAll,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const SizedBox(
+              height: 260,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          final items = snap.data ?? const <Map<String, dynamic>>[];
+          if (items.isEmpty) {
+            return _emptyState(
+              icon: Icons.library_music,
+              title: 'Aún no hay vinilos',
+              subtitle: 'Agrega tu primer vinilo para empezar tu colección.',
+              actionText: 'Ir a Discografías',
+              onAction: () => _setVista(Vista.discografia),
+            );
+          }
+
+          final sorted = List<Map<String, dynamic>>.from(items);
+          sorted.sort((a, b) => _asInt(b['id']).compareTo(_asInt(a['id'])));
+          final recent = sorted.take(8).toList();
+
+          return SizedBox(
+            height: 280,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              itemCount: recent.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, i) {
+                return SizedBox(
+                  width: 220,
+                  child: _gridVinylCard(recent[i], conBorrar: false),
+                );
+              },
+            ),
+          );
+        },
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
