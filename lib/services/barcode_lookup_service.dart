@@ -14,6 +14,11 @@ class BarcodeReleaseHit {
   final bool isVinyl;
   final String? mediaFormat;
 
+  /// MusicBrainz puede incluir `cover-art-archive` para indicar si existe carátula.
+  ///
+  /// Esto nos sirve para priorizar resultados al escanear.
+  final bool hasFrontCover;
+
   BarcodeReleaseHit({
     required this.barcode,
     required this.artist,
@@ -25,6 +30,7 @@ class BarcodeReleaseHit {
     this.country,
     this.isVinyl = false,
     this.mediaFormat,
+    this.hasFrontCover = false,
   });
 }
 
@@ -86,7 +92,9 @@ class BarcodeLookupService {
     // MusicBrainz search (releases)
     final q = 'barcode:$code';
     // Intentamos pedir información de medios para priorizar Vinilos cuando esté disponible.
-    final url = Uri.parse('$_mbBase/release/?query=${Uri.encodeQueryComponent(q)}&fmt=json&limit=20&inc=media+release-groups+artist-credits');
+    final url = Uri.parse(
+      '$_mbBase/release/?query=${Uri.encodeQueryComponent(q)}&fmt=json&limit=20&inc=media+release-groups+artist-credits+cover-art-archive',
+    );
 
     late http.Response res;
     try {
@@ -147,6 +155,13 @@ class BarcodeLookupService {
         }
       }
 
+      // ¿Existe carátula? (si está disponible en el search payload)
+      bool hasFrontCover = false;
+      final caa = r['cover-art-archive'];
+      if (caa is Map<String, dynamic>) {
+        hasFrontCover = (caa['front'] == true);
+      }
+
       out.add(
         BarcodeReleaseHit(
           barcode: code,
@@ -159,6 +174,7 @@ class BarcodeLookupService {
           country: country,
           isVinyl: isVinyl,
           mediaFormat: mediaFormat,
+          hasFrontCover: hasFrontCover,
         ),
       );
     }
@@ -195,7 +211,9 @@ class BarcodeLookupService {
 
     await _throttle();
 
-    final url = Uri.parse('$_mbBase/release/?query=${Uri.encodeQueryComponent(q)}&fmt=json&limit=20&inc=media+release-groups+artist-credits');
+    final url = Uri.parse(
+      '$_mbBase/release/?query=${Uri.encodeQueryComponent(q)}&fmt=json&limit=20&inc=media+release-groups+artist-credits+cover-art-archive',
+    );
 
     late http.Response res;
     try {
@@ -255,6 +273,12 @@ class BarcodeLookupService {
         }
       }
 
+      bool hasFrontCover = false;
+      final caa = r['cover-art-archive'];
+      if (caa is Map<String, dynamic>) {
+        hasFrontCover = (caa['front'] == true);
+      }
+
       out.add(
         BarcodeReleaseHit(
           barcode: q,
@@ -267,6 +291,7 @@ class BarcodeLookupService {
           country: country,
           isVinyl: isVinyl,
           mediaFormat: mediaFormat,
+          hasFrontCover: hasFrontCover,
         ),
       );
     }

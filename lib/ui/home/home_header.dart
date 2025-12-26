@@ -119,13 +119,30 @@ class HomeHeader extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Evitar cortes raros (“Tu estanterí…”) en pantallas
+                            // estrechas: si falta espacio, el texto se escala
+                            // hacia abajo (en vez de truncarse a 3 letras).
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Tu estantería',
+                                maxLines: 1,
+                                style: t.textTheme.titleSmall?.copyWith(
+                                  color: cs.onSurface.withOpacity(0.90),
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
                             Text(
-                              'Tu estantería • vinilo a vinilo',
+                              'Organiza tu música',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: t.textTheme.bodySmall?.copyWith(
-                                color: cs.onSurface.withOpacity(0.72),
-                                fontWeight: FontWeight.w700,
+                                color: cs.onSurface.withOpacity(0.70),
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],

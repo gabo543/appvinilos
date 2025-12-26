@@ -1,7 +1,10 @@
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
 import '../db/vinyl_db.dart';
-import 'vinyl_add_service.dart';
 
 class CoverDownloadResult {
   final int total;
@@ -19,9 +22,48 @@ class CoverDownloadResult {
 /// - Si coverPath es URL -> intenta descargar y guardar local, actualiza coverPath a ruta local
 /// - Si coverPath es local pero NO existe, y hay mbid -> construye URL de Cover Art Archive y descarga
 class CoverCacheService {
+  static String _sanitizeBase(String s) {
+    final out = s.replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_').trim();
+    return out.isEmpty ? 'cover' : out;
+  }
+
+  static Future<Directory> _coversDir() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final d = Directory(p.join(dir.path, 'covers'));
+    if (!await d.exists()) {
+      await d.create(recursive: true);
+    }
+    return d;
+  }
+
+  static Future<String?> _downloadWithRetries(
+    String url, {
+    required String baseName,
+    required String suffix,
+    int retries = 2,
+  }) async {
+    final dir = await _coversDir();
+    for (int attempt = 0; attempt <= retries; attempt++) {
+      try {
+        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 18));
+        if (res.statusCode != 200) {
+          continue;
+        }
+        final ct = (res.headers['content-type'] ?? '').toLowerCase();
+        final ext = ct.contains('png') ? 'png' : 'jpg';
+        final file = File(p.join(dir.path, '${baseName}_$suffix.$ext'));
+        await file.writeAsBytes(res.bodyBytes, flush: true);
+        return file.path;
+      } catch (_) {
+        // retry
+      }
+    }
+    return null;
+  }
+
   static Future<CoverDownloadResult> downloadMissingCovers({
     void Function(int done, int total)? onProgress,
-    Duration delayBetween = const Duration(milliseconds: 650),
+    Duration delayBetween = const Duration(milliseconds: 450),
   }) async {
     final db = await VinylDb.instance.db;
     final rows = await db.query('vinyls', columns: ['id', 'coverPath', 'mbid']);
@@ -41,15 +83,8 @@ class CoverCacheService {
 
       if (isLocal && localExists) continue; // ya está offline
 
-      String? url;
-      if (isUrl) {
-        url = cp;
-      } else if (mbid.isNotEmpty) {
-        // Preferimos 500px, con fallback a 250px si falla.
-        url = 'https://coverartarchive.org/release-group/$mbid/front-500';
-      }
-      if (url == null || url.isEmpty) continue;
-      candidates.add({'id': id, 'url': url, 'mbid': mbid});
+      // Guardamos info suficiente para resolver URLs de 500 y 250.
+      candidates.add({'id': id, 'coverPath': cp, 'mbid': mbid});
     }
 
     final total = candidates.length;
@@ -59,18 +94,53 @@ class CoverCacheService {
 
     for (final c in candidates) {
       final id = c['id'] as int;
-      final url = (c['url'] as String).trim();
+      final cp = (c['coverPath'] as String).trim();
       final mbid = (c['mbid'] as String).trim();
 
-      String? local;
-      // 1) intentar url directa
-      local = await VinylAddService.downloadCoverToLocal(url);
-      // 2) fallback a 250 si era 500
-      if (local == null && url.contains('/front-500')) {
-        local = await VinylAddService.downloadCoverToLocal(url.replaceAll('/front-500', '/front-250'));
+      final base = _sanitizeBase(mbid.isNotEmpty ? mbid : 'id_$id');
+
+      String? url500;
+      String? url250;
+
+      final isUrl = cp.startsWith('http://') || cp.startsWith('https://');
+      if (isUrl) {
+        // Si ya viene de Cover Art Archive, intentamos ambas resoluciones.
+        if (cp.contains('/front-500')) {
+          url500 = cp;
+          url250 = cp.replaceAll('/front-500', '/front-250');
+        } else if (cp.contains('/front-250')) {
+          url250 = cp;
+          url500 = cp.replaceAll('/front-250', '/front-500');
+        } else {
+          url500 = cp;
+        }
+      } else if (mbid.isNotEmpty) {
+        url500 = 'https://coverartarchive.org/release-group/$mbid/front-500';
+        url250 = 'https://coverartarchive.org/release-group/$mbid/front-250';
       }
-      // 3) si venía de mbid y falló (quizás no hay RG), dejamos URL a 250 para que al menos se vea online
-      if (local == null && mbid.isNotEmpty) {
+
+      String? localFull;
+      String? localThumb;
+
+      // Intentar full (500) primero, con fallback a 250.
+      if (url500 != null) {
+        localFull = await _downloadWithRetries(url500, baseName: base, suffix: 'full');
+      }
+      if (localFull == null && url250 != null) {
+        // Si no hay 500 o falló, guardamos al menos la 250 como full.
+        localFull = await _downloadWithRetries(url250, baseName: base, suffix: 'full');
+      }
+
+      // Thumb (250) separado para listas rápidas (si existe URL 250).
+      if (url250 != null) {
+        localThumb = await _downloadWithRetries(url250, baseName: base, suffix: 'thumb');
+      }
+
+      if (localFull != null) {
+        await db.update('vinyls', {'coverPath': localFull}, where: 'id = ?', whereArgs: [id]);
+        ok += 1;
+      } else if (mbid.isNotEmpty) {
+        // Si no pudimos descargar, al menos dejamos un URL 250 para que online siga funcionando.
         await db.update(
           'vinyls',
           {'coverPath': 'https://coverartarchive.org/release-group/$mbid/front-250'},
@@ -78,9 +148,6 @@ class CoverCacheService {
           whereArgs: [id],
         );
         skipped += 1;
-      } else if (local != null) {
-        await db.update('vinyls', {'coverPath': local}, where: 'id = ?', whereArgs: [id]);
-        ok += 1;
       } else {
         skipped += 1;
       }

@@ -82,112 +82,49 @@ workflows:
 
           # google_mlkit_text_recognition referencia opciones para varios alfabetos.
           # En release con R8, si esos módulos no están, puede fallar con "Missing class ...TextRecognizerOptions".
-          # Solución robusta: (1) agregar los artefactos de ML Kit faltantes y (2) migrar kotlinOptions.jvmTarget
-          # a compilerOptions (Kotlin 2.x) SIN romper el build.gradle.kts.
+          # Solución robusta y simple: agregar los artefactos ML Kit faltantes.
 
           python3 - <<'PY'
           from pathlib import Path
           import re
 
-          def add_deps_kts(s: str) -> str:
-              deps = [
-                  'implementation("com.google.mlkit:text-recognition-chinese:16.0.0")',
-                  'implementation("com.google.mlkit:text-recognition-japanese:16.0.0")',
-                  'implementation("com.google.mlkit:text-recognition-korean:16.0.0")',
-                  'implementation("com.google.mlkit:text-recognition-devanagari:16.0.0")',
-              ]
+          KTS_DEPS = [
+              'implementation("com.google.mlkit:text-recognition-chinese:16.0.0")',
+              'implementation("com.google.mlkit:text-recognition-japanese:16.0.0")',
+              'implementation("com.google.mlkit:text-recognition-korean:16.0.0")',
+              'implementation("com.google.mlkit:text-recognition-devanagari:16.0.0")',
+          ]
+
+          GROOVY_DEPS = [
+              "implementation 'com.google.mlkit:text-recognition-chinese:16.0.0'",
+              "implementation 'com.google.mlkit:text-recognition-japanese:16.0.0'",
+              "implementation 'com.google.mlkit:text-recognition-korean:16.0.0'",
+              "implementation 'com.google.mlkit:text-recognition-devanagari:16.0.0'",
+          ]
+
+          def insert_after_dependencies_open(s: str, lines: list[str], indent: str) -> str:
               if 'text-recognition-korean' in s:
                   return s
-              m = re.search(r"dependencies\s*\{\s*", s)
+              pat = re.compile(r"(^\s*dependencies\s*\{\s*$)", re.M)
+              m = pat.search(s)
               if not m:
                   return s
-              insert = "\n" + "\n".join(["        " + d for d in deps]) + "\n"
+              insert = "\n" + "\n".join([indent + ln for ln in lines]) + "\n"
               return s[:m.end()] + insert + s[m.end():]
-
-          def add_deps_groovy(s: str) -> str:
-              deps = [
-                  "implementation 'com.google.mlkit:text-recognition-chinese:16.0.0'",
-                  "implementation 'com.google.mlkit:text-recognition-japanese:16.0.0'",
-                  "implementation 'com.google.mlkit:text-recognition-korean:16.0.0'",
-                  "implementation 'com.google.mlkit:text-recognition-devanagari:16.0.0'",
-              ]
-              if 'text-recognition-korean' in s:
-                  return s
-              m = re.search(r"dependencies\s*\{\s*", s)
-              if not m:
-                  return s
-              insert = "\n" + "\n".join(["    " + d for d in deps]) + "\n"
-              return s[:m.end()] + insert + s[m.end():]
-
-          def remove_named_block(s: str, name: str) -> str:
-              # remove blocks like: name { ... }
-              while True:
-                  idx = s.find(name)
-                  if idx == -1:
-                      return s
-                  brace = s.find('{', idx)
-                  if brace == -1:
-                      return s
-                  # ensure it's actually "name {" (allow whitespace)
-                  head = s[idx:brace].strip()
-                  if head != name:
-                      # false positive (e.g. comment)
-                      nxt = s.find(name, idx + len(name))
-                      if nxt == -1:
-                          return s
-                      idx = nxt
-                      continue
-                  depth = 0
-                  end = None
-                  for j in range(brace, len(s)):
-                      if s[j] == '{':
-                          depth += 1
-                      elif s[j] == '}':
-                          depth -= 1
-                          if depth == 0:
-                              end = j + 1
-                              break
-                  if end is None:
-                      return s
-                  s = s[:idx] + "\n" + s[end:]
-
-          def ensure_compiler_options_kts(s: str) -> str:
-              # Remove deprecated kotlinOptions blocks (Kotlin 2.x deprecation)
-              s2 = remove_named_block(s, 'kotlinOptions')
-              s = s2
-              # Ensure compilerOptions exists
-              if 'compilerOptions' in s and 'JvmTarget.JVM_17' in s:
-                  return s
-              # If there's already a top-level kotlin { }, insert compilerOptions before its closing brace.
-              k = s.find('kotlin {')
-              if k != -1:
-                  brace = s.find('{', k)
-                  depth = 0
-                  for j in range(brace, len(s)):
-                      if s[j] == '{':
-                          depth += 1
-                      elif s[j] == '}':
-                          depth -= 1
-                          if depth == 0:
-                              ins = "\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n"
-                              return s[:j] + ins + s[j:]
-              # Otherwise append a clean block
-              return s + "\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n"
 
           kts = Path('android/app/build.gradle.kts')
           groovy = Path('android/app/build.gradle')
 
           if kts.exists():
               s = kts.read_text(encoding='utf-8')
-              s = add_deps_kts(s)
-              s = ensure_compiler_options_kts(s)
+              s = insert_after_dependencies_open(s, KTS_DEPS, indent='        ')
               kts.write_text(s, encoding='utf-8')
-              print('OK: patched build.gradle.kts')
+              print('OK: patched build.gradle.kts (deps)')
           elif groovy.exists():
               s = groovy.read_text(encoding='utf-8')
-              s = add_deps_groovy(s)
+              s = insert_after_dependencies_open(s, GROOVY_DEPS, indent='    ')
               groovy.write_text(s, encoding='utf-8')
-              print('OK: patched build.gradle')
+              print('OK: patched build.gradle (deps)')
           else:
               print('WARN: no app gradle file found')
           PY

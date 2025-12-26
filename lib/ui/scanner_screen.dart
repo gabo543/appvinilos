@@ -60,7 +60,32 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   String? _coverError;
   String? _coverOcr;
   String? _coverQuery;
+  List<_CoverQueryOption> _coverSuggestions = const [];
+  int _coverSuggestionIndex = 0;
   List<BarcodeReleaseHit> _coverHits = [];
+
+  int _scoreHit(BarcodeReleaseHit h) {
+    int s = 0;
+    if (h.isVinyl) s += 4;
+    final mf = (h.mediaFormat ?? '').toLowerCase();
+    if (mf.contains('vinyl')) s += 1;
+    if (h.hasFrontCover) s += 3;
+    if ((h.year ?? '').trim().isNotEmpty) s += 1;
+    if ((h.country ?? '').trim().isNotEmpty) s += 1;
+    return s;
+  }
+
+  List<BarcodeReleaseHit> _rankHits(List<BarcodeReleaseHit> hits) {
+    final list = [...hits];
+    list.sort((a, b) {
+      final sa = _scoreHit(a);
+      final sb = _scoreHit(b);
+      if (sa != sb) return sb.compareTo(sa);
+      // Desempates suaves: preferimos título más corto (suele ser el álbum "principal")
+      return (a.album.length).compareTo(b.album.length);
+    });
+    return list;
+  }
 
   @override
   void initState() {
@@ -137,12 +162,28 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
     try {
       final hits = await BarcodeLookupService.searchReleasesByBarcode(code);
+      final ranked = _rankHits(hits);
       if (!mounted) return;
       setState(() {
-        _hits = hits;
+        _hits = ranked;
         _searching = false;
-        _error = hits.isEmpty ? 'No encontré coincidencias para este código.' : null;
+        _error = ranked.isEmpty ? 'No encontré coincidencias para este código.' : null;
       });
+
+      // Auto-selección si hay una coincidencia muy clara.
+      if (ranked.isNotEmpty) {
+        final best = ranked.first;
+        final bestScore = _scoreHit(best);
+        final secondScore = ranked.length >= 2 ? _scoreHit(ranked[1]) : -999;
+        final strong = ranked.length == 1 || (bestScore >= 7 && (bestScore - secondScore) >= 3);
+        if (strong) {
+          Future.microtask(() async {
+            if (!mounted) return;
+            _snack('Coincidencia fuerte encontrada. Abriendo…');
+            await _openAddFlow(best);
+          });
+        }
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -190,6 +231,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       _coverError = null;
       _coverOcr = null;
       _coverQuery = null;
+      _coverSuggestions = const [];
+      _coverSuggestionIndex = 0;
       _coverHits = [];
       _coverSearching = false;
       _coverFile = null;
@@ -222,6 +265,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         _coverError = null;
         _coverOcr = null;
         _coverQuery = null;
+        _coverSuggestions = const [];
+        _coverSuggestionIndex = 0;
         _coverHits = [];
       });
       await _runOcrAndSearch(f);
@@ -245,9 +290,15 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       final query = candidates.isEmpty ? '' : candidates.join(' ');
 
       if (!mounted) return;
+      final suggestions = _buildCoverSuggestions(candidates);
+      if (!mounted) return;
       setState(() {
         _coverOcr = raw;
-        _coverQuery = query.isEmpty ? null : query;
+        _coverSuggestions = suggestions;
+        _coverSuggestionIndex = 0;
+        _coverQuery = (suggestions.isNotEmpty ? suggestions.first.query : query).trim().isEmpty
+            ? null
+            : (suggestions.isNotEmpty ? suggestions.first.query : query);
       });
 
       if (query.isEmpty) {
@@ -259,23 +310,11 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         return;
       }
 
-      // Query precisa si tenemos 2 líneas fuertes.
-      String q1 = query;
-      String? q2;
-      if (candidates.length >= 2) {
-        final a = _escapeForMb(candidates[0]);
-        final b = _escapeForMb(candidates[1]);
-        q1 = 'artist:"$a" AND release:"$b"';
-        q2 = '${candidates[0]} ${candidates[1]}';
-      }
-
-      var hits = await BarcodeLookupService.searchReleasesByText(q1);
-      if (hits.isEmpty && q2 != null) {
-        hits = await BarcodeLookupService.searchReleasesByText(q2);
-      }
+      final selected = _coverSuggestions.isNotEmpty ? _coverSuggestions[_coverSuggestionIndex].query : query;
+      var hits = await BarcodeLookupService.searchReleasesByText(selected);
       if (!mounted) return;
       setState(() {
-        _coverHits = hits;
+        _coverHits = _rankHits(hits);
         _coverSearching = false;
         _coverError = hits.isEmpty ? 'No encontré coincidencias. Prueba otra foto o más cerca del texto.' : null;
       });
@@ -291,6 +330,28 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   }
 
   static String _escapeForMb(String s) => s.replaceAll('"', '\\"');
+
+  static List<_CoverQueryOption> _buildCoverSuggestions(List<String> candidates) {
+    if (candidates.isEmpty) return const [];
+    // 1) query exacta (si tenemos 2 líneas: artista + álbum)
+    if (candidates.length >= 2) {
+      final a = _escapeForMb(candidates[0]);
+      final b = _escapeForMb(candidates[1]);
+      final qExact = 'artist:"$a" AND release:"$b"';
+      final qSimple = '${candidates[0]} ${candidates[1]}';
+      final qAlbum = candidates[1];
+      return [
+        _CoverQueryOption(label: 'Exacto', query: qExact),
+        _CoverQueryOption(label: 'Simple', query: qSimple),
+        _CoverQueryOption(label: 'Álbum', query: qAlbum),
+      ];
+    }
+    // Solo 1 línea: damos 2 variantes
+    return [
+      _CoverQueryOption(label: 'Buscar', query: candidates[0]),
+      _CoverQueryOption(label: 'Buscar (amplio)', query: '${candidates[0]} vinyl'),
+    ];
+  }
 
   static List<String> _extractOcrCandidates(String raw) {
     if (raw.trim().isEmpty) return [];
@@ -315,7 +376,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       if (seen.contains(key)) continue;
       seen.add(key);
       cleaned.add(l);
-      if (cleaned.length >= 2) break;
+      if (cleaned.length >= 4) break;
     }
     return cleaned;
   }
@@ -371,41 +432,46 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: const Text('Escanear'),
+        title: const Text('Escáner'),
         titleSpacing: 0,
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
+          preferredSize: const Size.fromHeight(60),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: SegmentedButton<ScannerMode>(
-              segments: const [
-                ButtonSegment<ScannerMode>(value: ScannerMode.codigo, label: Text('Código'), icon: Icon(Icons.qr_code_2)),
-                ButtonSegment<ScannerMode>(value: ScannerMode.caratula, label: Text('Carátula'), icon: Icon(Icons.image_search)),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<ScannerMode>(
+                    segments: const [
+                      ButtonSegment<ScannerMode>(value: ScannerMode.codigo, label: Text('Código'), icon: Icon(Icons.qr_code_2)),
+                      ButtonSegment<ScannerMode>(value: ScannerMode.caratula, label: Text('Carátula'), icon: Icon(Icons.image_search)),
+                    ],
+                    selected: <ScannerMode>{_mode},
+                    onSelectionChanged: (s) => unawaited(_setMode(s.first)),
+                    showSelectedIcon: false,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ValueListenableBuilder<MobileScannerState>(
+                  valueListenable: _controller,
+                  builder: (context, state, _) {
+                    final torchOn = state.torchState == TorchState.on;
+                    return IconButton(
+                      tooltip: torchOn ? 'Apagar luz' : 'Encender luz',
+                      icon: Icon(torchOn ? Icons.flash_on : Icons.flash_off),
+                      onPressed: _mode == ScannerMode.codigo ? () => unawaited(_controller.toggleTorch()) : null,
+                    );
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Cambiar cámara',
+                  icon: const Icon(Icons.cameraswitch),
+                  onPressed: _mode == ScannerMode.codigo ? () => unawaited(_controller.switchCamera()) : null,
+                ),
               ],
-              selected: <ScannerMode>{_mode},
-              onSelectionChanged: (s) => unawaited(_setMode(s.first)),
-              showSelectedIcon: false,
             ),
           ),
         ),
-        actions: [
-          ValueListenableBuilder<MobileScannerState>(
-            valueListenable: _controller,
-            builder: (context, state, _) {
-              final torchOn = state.torchState == TorchState.on;
-              return IconButton(
-                tooltip: torchOn ? 'Apagar luz' : 'Encender luz',
-                icon: Icon(torchOn ? Icons.flash_on : Icons.flash_off),
-                onPressed: _mode == ScannerMode.codigo ? () => unawaited(_controller.toggleTorch()) : null,
-              );
-            },
-          ),
-          IconButton(
-            tooltip: 'Cambiar cámara',
-            icon: const Icon(Icons.cameraswitch),
-            onPressed: _mode == ScannerMode.codigo ? () => unawaited(_controller.switchCamera()) : null,
-          ),
-        ],
       ),
       body: _mode == ScannerMode.codigo
           ? _buildBarcodeBody(panelBg: panelBg, cs: cs)
@@ -534,6 +600,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                                     _coverFile = null;
                                     _coverOcr = null;
                                     _coverQuery = null;
+                                    _coverSuggestions = const [];
+                                    _coverSuggestionIndex = 0;
                                     _coverHits = [];
                                     _coverError = null;
                                   });
@@ -543,6 +611,52 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                         ),
                     ],
                   ),
+                  if (_coverSuggestions.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: List.generate(_coverSuggestions.length, (i) {
+                        final opt = _coverSuggestions[i];
+                        return ChoiceChip(
+                          label: Text(opt.label),
+                          selected: _coverSuggestionIndex == i,
+                          onSelected: _coverSearching
+                              ? null
+                              : (v) {
+                                  if (!v) return;
+                                  setState(() {
+                                    _coverSuggestionIndex = i;
+                                    _coverSearching = true;
+                                    _coverError = null;
+                                    _coverHits = [];
+                                    _coverQuery = opt.query;
+                                  });
+                                  // Re-buscar con el texto ya reconocido (sin repetir OCR)
+                                  unawaited(() async {
+                                    try {
+                                      final hits = await BarcodeLookupService.searchReleasesByText(opt.query);
+                                      if (!mounted) return;
+                                      setState(() {
+                                        _coverHits = _rankHits(hits);
+                                        _coverSearching = false;
+                                        _coverError = hits.isEmpty
+                                            ? 'No encontré coincidencias. Prueba otra sugerencia.'
+                                            : null;
+                                      });
+                                    } catch (_) {
+                                      if (!mounted) return;
+                                      setState(() {
+                                        _coverSearching = false;
+                                        _coverError = 'Error buscando. Revisa tu conexión.';
+                                      });
+                                    }
+                                  }());
+                                },
+                        );
+                      }),
+                    ),
+                  ],
                   if ((_coverQuery ?? '').trim().isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text('Búsqueda: ${_coverQuery!}', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -597,7 +711,11 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
           leading: _CoverThumb(primary: coverRG, fallback: coverRel),
           title: Text('${h.artist} — ${h.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
-            [if ((h.year ?? '').isNotEmpty) h.year, if ((h.country ?? '').isNotEmpty) h.country].join(' • '),
+            [
+              if ((h.mediaFormat ?? '').trim().isNotEmpty) h.mediaFormat,
+              if ((h.year ?? '').isNotEmpty) h.year,
+              if ((h.country ?? '').isNotEmpty) h.country,
+            ].join(' • '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -713,7 +831,11 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 leading: _CoverThumb(primary: coverRG, fallback: coverRel),
                 title: Text('${h.artist} — ${h.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(
-                  [if ((h.year ?? '').isNotEmpty) h.year, if ((h.country ?? '').isNotEmpty) h.country].join(' • '),
+                  [
+                    if ((h.mediaFormat ?? '').trim().isNotEmpty) h.mediaFormat,
+                    if ((h.year ?? '').isNotEmpty) h.year,
+                    if ((h.country ?? '').isNotEmpty) h.country,
+                  ].join(' • '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -726,6 +848,12 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       ],
     );
   }
+}
+
+class _CoverQueryOption {
+  final String label;
+  final String query;
+  const _CoverQueryOption({required this.label, required this.query});
 }
 
 class _CoverThumb extends StatelessWidget {

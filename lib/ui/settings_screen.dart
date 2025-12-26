@@ -6,6 +6,7 @@ import '../services/backup_service.dart';
 import '../services/app_theme_service.dart';
 import '../services/view_mode_service.dart';
 import '../services/cover_cache_service.dart';
+import '../services/export_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 
@@ -233,6 +234,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _exportarCsvInventario() async {
+    try {
+      final saved = await ExportService.exportCsvInventory();
+      if (saved == null || saved.isEmpty) {
+        _snack('Exportación cancelada.');
+        return;
+      }
+      _snack('CSV exportado ✅\n$saved');
+    } catch (e) {
+      _snack('No se pudo exportar CSV: $e');
+    }
+  }
+
+  Future<void> _exportarPdfInventario() async {
+    try {
+      final saved = await ExportService.exportPdfInventory();
+      if (saved == null || saved.isEmpty) {
+        _snack('Exportación cancelada.');
+        return;
+      }
+      _snack('PDF exportado ✅\n$saved');
+    } catch (e) {
+      _snack('No se pudo exportar PDF: $e');
+    }
+  }
+
   Future<void> _importarDescargas() async {
     try {
       final f = await BackupService.pickBackupFile();
@@ -338,6 +365,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: Text('Exportar a Descargas'),
                         subtitle: Text('Abre “Guardar como…” para elegir Descargas (no requiere permisos especiales).'),
                         onTap: _exportarDescargas,
+                      ),
+                      const Divider(height: 1),
+
+                      ListTile(
+                        leading: const Icon(Icons.table_chart_outlined),
+                        title: Text('Exportar inventario (CSV)'),
+                        subtitle: Text('Planilla simple (Excel/Sheets). Incluye códigos 1.1, 1.2, …'),
+                        onTap: _exportarCsvInventario,
+                      ),
+                      const Divider(height: 1),
+
+                      ListTile(
+                        leading: const Icon(Icons.picture_as_pdf_outlined),
+                        title: Text('Exportar inventario (PDF)'),
+                        subtitle: Text('Lista imprimible en PDF.'),
+                        onTap: _exportarPdfInventario,
                       ),
                       const Divider(height: 1),
 

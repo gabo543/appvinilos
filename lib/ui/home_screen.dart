@@ -172,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final FocusNode _localSearchFocus = FocusNode();
   Timer? _debounceLocalSearch;
   String _localQuery = '';
+  List<String> _artistSuggestions = const [];
 
   Timer? _debounceArtist;
   bool buscandoArtistas = false;
@@ -695,7 +696,13 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 	  );
 }
     if (cp.isNotEmpty && _fileExistsCached(cp)) {
-      final f = File(cp);
+      // Si existe un thumb descargado (cover_cache_service), úsalo en tamaños pequeños.
+      String pick = cp;
+      if (size <= 72 && cp.contains('_full.')) {
+        final thumb = cp.replaceFirst('_full.', '_thumb.');
+        if (_fileExistsCached(thumb)) pick = thumb;
+      }
+      final f = File(pick);
       final cache = cachePx;
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
@@ -2402,6 +2409,16 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
       // el item desaparezca al instante, incluso si el FutureBuilder aún muestra datos antiguos.
       final items = onlyFavorites ? rawItems.where(_isFav).toList() : rawItems;
 
+      // Cache de artistas para autocompletar en el buscador (solo local, sin web).
+      // Lo actualizamos desde el snapshot actual para que sea consistente en Vinilos/Favoritos.
+      final setA = <String>{};
+      for (final v in items) {
+        final a = (v['artista'] as String?)?.trim() ?? '';
+        if (a.isNotEmpty) setA.add(a);
+      }
+      _artistSuggestions = setA.toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
       final qNorm = _norm(_localQuery);
       final visibleItems = qNorm.isEmpty
           ? items
@@ -2505,46 +2522,125 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
         title = 'GaBoLP';
     }
 
+    // En Vinilos/Favoritos el buscador va en el AppBar. Con el logo grande,
+    // si no cuidamos el alto/padding, el input se ve “apretado” y choca con
+    // el título. Aquí lo dejamos con altura estable y buena legibilidad.
     final titleWidget = (localSearchAllowed && _localSearchActive)
-        ? TextField(
-            controller: _localSearchCtrl,
-            focusNode: _localSearchFocus,
-            onChanged: _onLocalSearchChanged,
-            autofocus: true,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: 'Buscar en tu colección…',
-              border: InputBorder.none,
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: (_localSearchCtrl.text.trim().isNotEmpty)
-                  ? IconButton(
-                      tooltip: 'Limpiar texto',
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () {
-                        _localSearchCtrl.clear();
-                        setState(() => _localQuery = '');
-                        FocusScope.of(context).requestFocus(_localSearchFocus);
-                      },
-                    )
-                  : null,
+        ? Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              height: 52,
+              child: RawAutocomplete<String>(
+                textEditingController: _localSearchCtrl,
+                focusNode: _localSearchFocus,
+                optionsBuilder: (TextEditingValue value) {
+                  final q = _norm(value.text);
+                  if (q.isEmpty) return const Iterable<String>.empty();
+                  // Sugerimos artistas (autocompletado) sin impedir que el usuario busque por álbum o código.
+                  return _artistSuggestions
+                      .where((a) => _norm(a).contains(q))
+                      .take(8);
+                },
+                displayStringForOption: (s) => s,
+                onSelected: (s) {
+                  _localSearchCtrl.text = s;
+                  _localSearchCtrl.selection = TextSelection.collapsed(offset: s.length);
+                  _onLocalSearchChanged(s);
+                  setState(() {});
+                },
+                fieldViewBuilder: (context, ctrl, focusNode, onFieldSubmitted) {
+                  return TextField(
+                    controller: ctrl,
+                    focusNode: focusNode,
+                    onChanged: (v) {
+                      _onLocalSearchChanged(v);
+                      // Actualiza íconos/sugerencias en el AppBar sin esperar el debounce.
+                      if (mounted) setState(() {});
+                    },
+                    autofocus: true,
+                    textAlignVertical: TextAlignVertical.center,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar en tu colección…',
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      // “Bajar” un poquito la lupa para que el campo se vea entero.
+                      prefixIcon: const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Icon(Icons.search),
+                      ),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                      suffixIcon: (ctrl.text.trim().isNotEmpty)
+                          ? IconButton(
+                              tooltip: 'Limpiar texto',
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () {
+                                ctrl.clear();
+                                setState(() => _localQuery = '');
+                                FocusScope.of(context).requestFocus(_localSearchFocus);
+                              },
+                            )
+                          : null,
+                    ),
+                  );
+                },
+                optionsViewBuilder: (context, onSelected, options) {
+                  final list = options.toList(growable: false);
+                  if (list.isEmpty) return const SizedBox.shrink();
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 6,
+                      borderRadius: BorderRadius.circular(12),
+                      clipBehavior: Clip.antiAlias,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+                        child: ListView.separated(
+                          padding: EdgeInsets.zero,
+                          itemCount: list.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, i) {
+                            final s = list[i];
+                            return ListTile(
+                              dense: true,
+                              title: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              onTap: () => onSelected(s),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           )
-        : Text(title);
+        : Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
 
     return AppBar(
       toolbarHeight: kAppBarToolbarHeight,
       leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-      leading: appBarLeadingLogoBack(
-        context,
-        logoSize: kAppBarLogoSize,
-        gap: kAppBarGapLogoBack,
-        onBack: () {
-          if (localSearchAllowed && _localSearchActive) {
-            _toggleLocalSearch();
-            return;
-          }
-          _setVista(Vista.inicio);
-        },
+      leading: Center(
+        child: appBarLeadingLogoBack(
+          context,
+          logoSize: kAppBarLogoSize,
+          gap: kAppBarGapLogoBack,
+          onBack: () {
+            if (localSearchAllowed && _localSearchActive) {
+              _toggleLocalSearch();
+              return;
+            }
+            _setVista(Vista.inicio);
+          },
+        ),
       ),
       title: titleWidget,
       titleSpacing: 0,

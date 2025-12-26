@@ -27,6 +27,8 @@ dependencies:
   image_picker: ^1.1.2
   # OCR local (ML Kit) para leer texto de carátulas
   google_mlkit_text_recognition: ^0.13.0
+  # Exportaciones (inventario imprimible)
+  pdf: ^3.11.3
 
 dev_dependencies:
   flutter_test:

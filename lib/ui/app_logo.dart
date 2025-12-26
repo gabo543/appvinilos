@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 // Tamaños de branding (ajustables en un solo lugar)
 const double kLogoScale = 4.0;
 const double kAppBarLogoSize = 34 * kLogoScale; // antes 34
-const double kHomeHeaderLogoSize = 26 * kLogoScale; // antes 20
+// Logo en el card principal del Home. Un poco más grande para que se luzca,
+// sin cambiar el layout del card.
+const double kHomeHeaderLogoSize = 30 * kLogoScale; // antes 26
 const double kAppBarGapLogoBack = 12;
 const double kAppBarToolbarHeight = kAppBarLogoSize + 20; // colchón
 const double kBackIconSize = 30;
