@@ -100,11 +100,27 @@ workflows:
 
           GRADLE_KTS_FILE="android/app/build.gradle.kts"
           if [ -f "$GRADLE_KTS_FILE" ]; then
-            echo "Parchando $GRADLE_KTS_FILE: isMinifyEnabled/shrinkResources -> false"
+            echo "Parchando $GRADLE_KTS_FILE (Kotlin DSL): desactivar minify/shrink y compat con Kotlin 2.x"
+
+            # 1) Android buildTypes.release flags (KTS usa isMinifyEnabled / isShrinkResources)
+            # Normalizar nombres por si alguien puso shrinkResources
+            sed -i.bak 's/\bshrinkResources\b/isShrinkResources/g' "$GRADLE_KTS_FILE" || true
             sed -i.bak 's/isMinifyEnabled = true/isMinifyEnabled = false/g' "$GRADLE_KTS_FILE" || true
-            sed -i.bak 's/shrinkResources = true/shrinkResources = false/g' "$GRADLE_KTS_FILE" || true
-            if ! grep -q "isMinifyEnabled" "$GRADLE_KTS_FILE"; then
-              perl -0777 -i -pe 's/(release\s*\{)/$1\n            isMinifyEnabled = false\n            shrinkResources = false/sg' "$GRADLE_KTS_FILE"
+            sed -i.bak 's/isShrinkResources = true/isShrinkResources = false/g' "$GRADLE_KTS_FILE" || true
+
+            # Si no estaban, insertarlos al inicio del bloque release {}
+            perl -0777 -i -pe 'if (!/release\s*\{[^}]*isMinifyEnabled/s) { s/(release\s*\{\s*)/$1            isMinifyEnabled = false\n            isShrinkResources = false\n/s }' "$GRADLE_KTS_FILE" || true
+
+            # 2) Kotlin Gradle plugin 2.x: kotlinOptions.jvmTarget está deprecated y en algunos CI se trata como error.
+            # Quitamos el bloque kotlinOptions { ... } y agregamos kotlin { compilerOptions { ... } }.
+            if grep -q "kotlinOptions" "$GRADLE_KTS_FILE"; then
+              echo "Removiendo bloque kotlinOptions (deprecated)"
+              perl -0777 -i -pe 's/\n\s*kotlinOptions\s*\{.*?\}\s*//s' "$GRADLE_KTS_FILE" || true
+            fi
+
+            if ! grep -q "compilerOptions" "$GRADLE_KTS_FILE"; then
+              echo "Agregando kotlin { compilerOptions { jvmTarget } }"
+              printf '\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n' >> "$GRADLE_KTS_FILE"
             fi
           fi
 
