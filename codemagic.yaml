@@ -76,6 +76,50 @@ workflows:
           grep -n "android.permission.CAMERA" "$MANIFEST" || true
           head -n 30 "$MANIFEST"
 
+      - name: Fix ML Kit OCR (R8) - agregar módulos de reconocimiento de texto
+        script: |
+          set -e
+
+          # google_mlkit_text_recognition referencia clases de opciones para otros alfabetos.
+          # En builds release con R8/minify, si esos artefactos no están, falla con
+          # "Missing class ...TextRecognizerOptions".
+
+          # Patch para build.gradle (Groovy)
+          GRADLE_FILE="android/app/build.gradle"
+          if [ -f "$GRADLE_FILE" ]; then
+            if ! grep -q "text-recognition-korean" "$GRADLE_FILE"; then
+              echo "Parchando $GRADLE_FILE con dependencias ML Kit adicionales..."
+              perl -0777 -i -pe 's/(dependencies\s*\{)/$1\n    implementation "com.google.mlkit:text-recognition-chinese:16.0.0"\n    implementation "com.google.mlkit:text-recognition-japanese:16.0.0"\n    implementation "com.google.mlkit:text-recognition-korean:16.0.0"\n    implementation "com.google.mlkit:text-recognition-devanagari:16.0.0"\n/s' "$GRADLE_FILE"
+            else
+              echo "Dependencias ML Kit ya estaban presentes en $GRADLE_FILE"
+            fi
+          fi
+
+          # Patch para build.gradle.kts (por si cambia el template)
+          GRADLE_KTS_FILE="android/app/build.gradle.kts"
+          if [ -f "$GRADLE_KTS_FILE" ]; then
+            if ! grep -q "text-recognition-korean" "$GRADLE_KTS_FILE"; then
+              echo "Parchando $GRADLE_KTS_FILE con dependencias ML Kit adicionales..."
+              perl -0777 -i -pe 's/(dependencies\s*\{)/$1\n    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")\n    implementation("com.google.mlkit:text-recognition-japanese:16.0.0")\n    implementation("com.google.mlkit:text-recognition-korean:16.0.0")\n    implementation("com.google.mlkit:text-recognition-devanagari:16.0.0")\n/s' "$GRADLE_KTS_FILE"
+            else
+              echo "Dependencias ML Kit ya estaban presentes en $GRADLE_KTS_FILE"
+            fi
+          fi
+
+          # Proguard keep rules (si minify está activado)
+          PROGUARD_FILE="android/app/proguard-rules.pro"
+          if [ -f "$PROGUARD_FILE" ]; then
+            if ! grep -q "ML Kit text recognition" "$PROGUARD_FILE"; then
+              echo "Agregando reglas Proguard para ML Kit en $PROGUARD_FILE"
+              cat >> "$PROGUARD_FILE" <<'EOF'
+
+# ML Kit text recognition (google_mlkit_text_recognition)
+-keep class com.google.mlkit.vision.text.** { *; }
+-dontwarn com.google.mlkit.vision.text.**
+EOF
+            fi
+          fi
+
       - name: Instalar dependencias
         script: |
           flutter pub get
