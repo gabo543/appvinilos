@@ -502,7 +502,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                 child: Container(
                   width: 92,
                   height: 92,
-                  color: cs.surfaceVariant,
+                  color: cs.surfaceContainerHighest,
                   child: ((cover ?? '').trim().isEmpty && (fallback ?? '').trim().isEmpty)
                       ? const Icon(Icons.album, size: 34)
                       : Image.network(

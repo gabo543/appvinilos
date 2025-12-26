@@ -754,7 +754,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: cs.surfaceVariant.withOpacity(isDark ? 0.35 : 0.65),
+        color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.35 : 0.65),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
       ),
@@ -854,7 +854,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
                       child: Container(
-                        color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                        color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
                         child: _leadingCover(v, size: 98, fit: BoxFit.contain),
                       ),
                     ),
@@ -1022,7 +1022,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
-                    color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                    color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
                     child: _gridCover(v, fit: BoxFit.contain),
                   ),
                 ),
@@ -1471,10 +1471,29 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
   );
 }
 
-	Widget _topNavPill({required String label, required VoidCallback onTap}) {
+	Widget _topNavPill({required String label, required VoidCallback onTap, int? count}) {
 	  final bg = cs.surface;
 	  final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
 	  final fg = cs.onSurface;
+
+	  final badgeBg = isDark ? Colors.black : cs.primary;
+	  final badgeFg = isDark ? Colors.white : cs.onPrimary;
+
+	  Widget? badge;
+	  if (count != null) {
+	    badge = Container(
+	      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+	      decoration: BoxDecoration(
+	        color: badgeBg,
+	        borderRadius: BorderRadius.circular(999),
+	      ),
+	      child: Text(
+	        '$count',
+	        style: TextStyle(color: badgeFg, fontWeight: FontWeight.w900, fontSize: 12),
+	      ),
+	    );
+	  }
+
 	  return InkWell(
 	    onTap: onTap,
 	    borderRadius: BorderRadius.circular(14),
@@ -1485,21 +1504,31 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 	        borderRadius: BorderRadius.circular(14),
 	        border: Border.all(color: border),
 	      ),
-	      child: Center(
-	        child: Text(
-	          label,
-	          maxLines: 1,
-	          overflow: TextOverflow.ellipsis,
-	          style: t.textTheme.labelLarge?.copyWith(
-	            fontWeight: FontWeight.w900,
-	            letterSpacing: -0.2,
-	            color: fg,
+	      child: Row(
+	        mainAxisAlignment: MainAxisAlignment.center,
+	        children: [
+	          Flexible(
+	            child: Text(
+	              label,
+	              maxLines: 1,
+	              overflow: TextOverflow.ellipsis,
+	              style: t.textTheme.labelLarge?.copyWith(
+	                fontWeight: FontWeight.w900,
+	                letterSpacing: -0.2,
+	                color: fg,
+	              ),
+	            ),
 	          ),
-	        ),
+	          if (badge != null) ...[
+	            const SizedBox(width: 8),
+	            badge,
+	          ],
+	        ],
 	      ),
 	    ),
 	  );
 	}
+
 
 Widget sectionTitle(String title, {String? subtitle}) {
       return Padding(
@@ -1521,7 +1550,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
     }
 
     Widget quickAction({required IconData icon, required String label, required VoidCallback onTap}) {
-      final bg = cs.surfaceVariant;
+      final bg = cs.surfaceContainerHighest;
       final border = cs.outline.withOpacity(isDark ? 0.90 : 1.00);
       final fg = cs.onSurface;
 
@@ -1554,7 +1583,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: cs.surfaceVariant,
+                      color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: cs.outlineVariant),
                     ),
@@ -1739,7 +1768,7 @@ Widget sectionTitle(String title, {String? subtitle}) {
                         children: [
                           Positioned.fill(
                             child: Container(
-                              color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                              color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
                               child: _gridCover(v, fit: BoxFit.contain),
                             ),
                           ),
@@ -1806,7 +1835,7 @@ Container(
     gradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: isDark ? [cs.surfaceVariant, cs.surface] : [cs.surface, cs.surfaceVariant],
+      colors: isDark ? [cs.surfaceContainerHighest, cs.surface] : [cs.surface, cs.surfaceContainerHighest],
     ),
   ),
   child: Column(
@@ -1831,7 +1860,8 @@ Container(
 	        children: [
 	          Expanded(
 	            child: _topNavPill(
-	              label: 'Colección',
+	              label: 'Vinilos',
+	              count: all,
 	              onTap: () {
 	                _reloadAllData();
 	                if (!mounted) return;
@@ -1843,6 +1873,7 @@ Container(
 	          Expanded(
 	            child: _topNavPill(
 	              label: 'Favoritos',
+	              count: fav,
 	              onTap: () {
 	                _reloadAllData();
 	                if (!mounted) return;
@@ -1854,6 +1885,7 @@ Container(
 	          Expanded(
 	            child: _topNavPill(
 	              label: 'Deseos',
+	              count: wish,
 	              onTap: () {
 	                Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen())).then((_) {
 	                  if (!mounted) return;
@@ -1873,7 +1905,7 @@ Container(
 	        child: Container(
 	          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
 	          decoration: BoxDecoration(
-	            color: cs.surfaceVariant.withOpacity(isDark ? 0.18 : 0.75),
+	            color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.18 : 0.75),
 	            borderRadius: BorderRadius.circular(16),
 	            border: Border.all(color: cs.outline.withOpacity(isDark ? 0.75 : 1.0)),
 	          ),
@@ -1897,19 +1929,6 @@ Container(
 	      ),
 
 	      const SizedBox(height: 12),
-
-      // mini stats
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          _statPill(label: 'Vinilos', value: all),
-          _statPill(label: 'Favoritos', value: fav),
-          _statPill(label: 'Deseos', value: wish),
-        ],
-      ),
-
-      const SizedBox(height: 12),
 
       // acciones rápidas
       Wrap(
@@ -2277,7 +2296,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                     decoration: InputDecoration(
                       labelText: 'Año (opcional: corregir)',
                       filled: true,
-                      fillColor: cs.surfaceVariant.withOpacity(isDark ? 0.14 : 0.65),
+                      fillColor: cs.surfaceContainerHighest.withOpacity(isDark ? 0.14 : 0.65),
                     ),
                     style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
                   ),
@@ -2814,6 +2833,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
     return Scaffold(
       appBar: _buildAppBar(),
       floatingActionButton: _buildFab(),
@@ -2824,8 +2844,8 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              cs.background,
-              Color.lerp(cs.background, cs.surfaceVariant, 0.10) ?? cs.background,
+              bg,
+              Color.lerp(bg, cs.surfaceContainerHighest, 0.10) ?? bg,
             ],
           ),
         ),

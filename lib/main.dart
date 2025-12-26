@@ -71,16 +71,22 @@ ThemeData _makeTheme({
   required Color onVariant,
   required Color shadow,
 }) {
+  // ⚠️ Compat Flutter 3.22+ (Material 3): `background`, `onBackground` y `surfaceVariant`
+  // fueron deprecados y pueden estar removidos en releases nuevas.
+  // Migración recomendada (Flutter breaking change docs):
+  //   background → surface
+  //   onBackground → onSurface
+  //   surfaceVariant → surfaceContainerHighest
+  // Por eso evitamos usar esos campos aquí.
   final scheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
     primary: accent,
     onPrimary: onAccent,
     secondary: accent,
     onSecondary: onAccent,
-    background: bg,
-    onBackground: onSurface,
+    // background/onBackground removidos en versiones nuevas: usamos scaffoldBackgroundColor + onSurface.
     surface: surface,
     onSurface: onSurface,
-    surfaceVariant: variant,
+    surfaceContainerHighest: variant,
     onSurfaceVariant: onVariant,
     outline: outline,
     outlineVariant: outline,
@@ -481,7 +487,6 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
     final cs = base.colorScheme;
     final newCs = cs.copyWith(
       onSurface: c,
-      onBackground: c,
       onSecondaryContainer: c,
       onPrimaryContainer: c,
     );
@@ -516,9 +521,9 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
 
   final cs = base.colorScheme;
   final newCs = cs.copyWith(
-    background: bg,
+    // background removido: el fondo real se controla con scaffoldBackgroundColor.
     surface: card,
-    surfaceVariant: variant,
+    surfaceContainerHighest: variant,
   );
 
   return base.copyWith(

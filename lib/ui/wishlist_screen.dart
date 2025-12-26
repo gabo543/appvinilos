@@ -56,7 +56,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       fg = scheme.onPrimaryContainer;
       icon = Icons.hourglass_bottom;
     } else {
-      bg = scheme.surfaceVariant;
+      bg = scheme.surfaceContainerHighest;
       fg = scheme.onSurfaceVariant;
       icon = Icons.bookmark_border;
     }
@@ -163,7 +163,7 @@ void _snack(String t) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: cs.surfaceVariant.withOpacity(isDark ? 0.35 : 0.65),
+        color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.35 : 0.65),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
       ),
@@ -250,7 +250,7 @@ Widget _placeholder() {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
-                    color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                    color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
                     child: _leadingCover(w, size: 92),
                   ),
                 ),
@@ -371,7 +371,7 @@ Widget _placeholder() {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: Container(
-                      color: cs.surfaceVariant.withOpacity(isDark ? 0.30 : 0.60),
+                      color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
                       child: _leadingCover(w, size: 220),
                     ),
                   ),
