@@ -470,7 +470,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       path: path,
       encoder: AudioEncoder.aacLc,
       bitRate: 128000,
-      sampleRate: 44100,
+      // record 4.x usa `samplingRate` (no `sampleRate`).
+      samplingRate: 44100,
     );
     } catch (_) {
       if (!mounted) return;
