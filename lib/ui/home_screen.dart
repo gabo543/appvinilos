@@ -1089,8 +1089,8 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         color: Colors.red.withOpacity(0.18),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
-          children: const [
-            Icon(Icons.delete_outline, color: Colors.red),
+          children: [
+            const Icon(Icons.delete_outline, color: Colors.red),
             SizedBox(width: 8),
             Text(context.tr('Papelera'), style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900)),
           ],
@@ -2979,7 +2979,7 @@ Widget listaCompleta({
     return SizedBox(
       width: double.infinity,
       child: SegmentedButton<VinylScope>(
-        segments: const <ButtonSegment<VinylScope>>[
+        segments: <ButtonSegment<VinylScope>>[
           ButtonSegment(
             value: VinylScope.vinilos,
             label: Text(context.tr('Vinilos')),

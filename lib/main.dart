@@ -603,21 +603,33 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
                         theme = _applyCardLevel(theme, cardLevel);
                         theme = _applyCardBorderStyle(theme, borderStyle);
 
-                        return ValueListenableBuilder<Locale>(
-  valueListenable: LocaleService.localeNotifier,
-  builder: (_, locale, __) {
-return MaterialApp(
-                          debugShowCheckedModeBanner: false,
-                          locale: locale,
-                          supportedLocales: const [Locale('es'), Locale('en')],
-                          localizationsDelegates: const [
-                            GlobalMaterialLocalizations.delegate,
-                            GlobalWidgetsLocalizations.delegate,
-                            GlobalCupertinoLocalizations.delegate,
-                          ],
-                          title: 'GaBoLP',
-                          theme: theme,
-                          home: const HomeScreen(),
+                                                                                                                                                return ValueListenableBuilder<Locale>(
+                          valueListenable: LocaleService.localeNotifier,
+                          builder: (_, locale, __) {
+                            return MaterialApp(
+                              debugShowCheckedModeBanner: false,
+                              locale: locale,
+                              supportedLocales: const [Locale('es'), Locale('en')],
+                              localizationsDelegates: const [
+                                GlobalMaterialLocalizations.delegate,
+                                GlobalWidgetsLocalizations.delegate,
+                                GlobalCupertinoLocalizations.delegate,
+                              ],
+                              title: 'Colección vinilos',
+                              theme: theme,
+                              home: HomeScreen(),
+                            );
+                          },
                         );
-  },
-);
+                      },
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
