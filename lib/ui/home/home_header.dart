@@ -112,7 +112,7 @@ class HomeHeader extends StatelessWidget {
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: border),
                         ),
-                        child: const AppLogo(size: kHomeHeaderLogoSize),
+                        child: AppLogo(size: kHomeHeaderLogoSize),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

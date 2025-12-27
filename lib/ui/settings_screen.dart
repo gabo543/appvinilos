@@ -143,7 +143,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(msg)))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.tr(msg))),
+    );
   }
 
   Future<void> _descargarCaratulas() async {
