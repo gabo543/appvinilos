@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
 import '../services/price_range_service.dart';
 import '../db/vinyl_db.dart';
+import '../l10n/app_strings.dart';
 
 class VinylDetailSheet extends StatefulWidget {
   final Map<String, dynamic> vinyl;
-  const VinylDetailSheet({super.key, required this.vinyl});
+  VinylDetailSheet({super.key, required this.vinyl});
 
   @override
   State<VinylDetailSheet> createState() => _VinylDetailSheetState();
@@ -24,7 +25,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
     if (id <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No puedo editar: falta ID.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(\'No puedo editar: falta ID.\'))));
       return;
     }
 
@@ -46,7 +47,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
         return StatefulBuilder(
           builder: (ctx, setD) {
             return AlertDialog(
-              title: const Text('Editar vinilo'),
+              title: Text(context.tr(\'Editar vinilo\')),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -54,42 +55,42 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                     TextField(
                       controller: artistaCtrl,
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Artista'),
+                      decoration: InputDecoration(labelText: context.tr(\'Artista\')),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextField(
                       controller: albumCtrl,
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Álbum'),
+                      decoration: InputDecoration(labelText: context.tr(\'Álbum\')),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     TextField(
                       controller: yearCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Año (opcional)'),
+                      decoration: InputDecoration(labelText: context.tr(\'Año (opcional)\')),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: condition,
-                      decoration: const InputDecoration(labelText: 'Condición'),
+                      decoration: InputDecoration(labelText: context.tr(\'Condición\')),
                       items: const [
-                        DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
-                        DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
-                        DropdownMenuItem(value: 'VG+', child: Text('VG+')),
-                        DropdownMenuItem(value: 'VG', child: Text('VG')),
+                        DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
+                        DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
+                        DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
+                        DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
                         DropdownMenuItem(value: 'G', child: Text('G')),
                       ],
                       onChanged: (v) => setD(() => condition = v ?? condition),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: format,
-                      decoration: const InputDecoration(labelText: 'Formato'),
+                      decoration: InputDecoration(labelText: context.tr(\'Formato\')),
                       items: const [
-                        DropdownMenuItem(value: 'LP', child: Text('LP')),
-                        DropdownMenuItem(value: 'EP', child: Text('EP')),
-                        DropdownMenuItem(value: 'Single', child: Text('Single')),
-                        DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
+                        DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
+                        DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
+                        DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
+                        DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
                       ],
                       onChanged: (v) => setD(() => format = v ?? format),
                     ),
@@ -97,8 +98,8 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar')),
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Guardar\'))),
               ],
             );
           },
@@ -134,7 +135,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       widget.vinyl['format'] = format;
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Actualizado ✅')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(\'Actualizado ✅\'))));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
@@ -223,14 +224,14 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       fit: BoxFit.cover,
       cacheWidth: 360,
       cacheHeight: 360,
-      errorBuilder: (_, __, ___) => const SizedBox(
+      errorBuilder: (_, __, ___) => SizedBox(
         width: 120,
         height: 120,
         child: Center(child: Icon(Icons.album, size: 52)),
       ),
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
-        return const SizedBox(
+        return SizedBox(
           width: 120,
           height: 120,
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
@@ -248,7 +249,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         );
       }
     }
-    return const SizedBox(
+    return SizedBox(
       width: 120,
       height: 120,
       child: Center(child: Icon(Icons.album, size: 52)),
@@ -260,7 +261,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     final t = Theme.of(context);
     final dark = t.brightness == Brightness.dark;
     final fg = dark ? Colors.white : Colors.black;
-    final sub = dark ? const Color(0xFFBDBDBD) : Colors.black54;
+    final sub = dark ? Color(0xFFBDBDBD) : Colors.black54;
     final artista = (widget.vinyl['artista'] as String?) ?? '';
     final album = (widget.vinyl['album'] as String?) ?? '';
     final aNo = int.tryParse((widget.vinyl['artistNo'] ?? '').toString()) ?? 0;
@@ -287,7 +288,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             Row(
               children: [
                 _cover(),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     '$artista\n$album',
@@ -295,7 +296,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Editar',
+                  tooltip: context.tr(\'Editar\'),
                   onPressed: _editMeta,
                   icon: Icon(Icons.edit, color: fg),
                 ),
@@ -305,7 +306,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
 
             Wrap(
               spacing: 10,
@@ -322,7 +323,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               ],
             ),
 
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
 
             if (bio.isNotEmpty)
               Container(
@@ -335,17 +336,17 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                 child: Text(bio, style: TextStyle(color: fg)),
               ),
 
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
-                  child: Text('Canciones', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: fg)),
+                  child: Text(context.tr(\'Canciones\'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: fg)),
                 ),
                 IconButton(onPressed: _loadTracks, icon: Icon(Icons.refresh, color: fg)),
               ],
             ),
 
-            if (loadingTracks) const LinearProgressIndicator(),
+            if (loadingTracks) LinearProgressIndicator(),
             if (!loadingTracks && msg != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -356,7 +357,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               Expanded(
                 child: ListView.separated(
                   itemCount: tracks.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, __) => Divider(height: 1),
                   itemBuilder: (context, i) {
                     final t = tracks[i];
                     return ListTile(

@@ -19,6 +19,7 @@ import 'wishlist_screen.dart';
 import 'app_logo.dart';
 import 'home/home_header.dart';
 import 'manual_vinyl_entry_screen.dart';
+import '../l10n/app_strings.dart';
 
 enum Vista { inicio, lista, favoritos, borrar }
 
@@ -61,7 +62,7 @@ String vinylSortLabel(VinylSortMode m) {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -487,21 +488,20 @@ Future<void> _loadViewMode() async {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Agregar vinilo',
+                Text(context.tr(\'Agregar vinilo\'),
                   style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 ListTile(
-                  leading: const Icon(Icons.qr_code_scanner),
-                  title: const Text('Escanear'),
-                  subtitle: const Text('Código, carátula o escuchar una canción.'),
+                  leading: Icon(Icons.qr_code_scanner),
+                  title: Text(context.tr(\'Escanear\')),
+                  subtitle: Text(context.tr(\'Código, carátula o escuchar una canción.\')),
                   onTap: () => Navigator.pop(ctx, _AddVinylMethod.scan),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.edit_note_outlined),
-                  title: const Text('Ingresar a mano'),
-                  subtitle: const Text('Escribe artista y álbum (opcional: año y género).'),
+                  leading: Icon(Icons.edit_note_outlined),
+                  title: Text(context.tr(\'Ingresar a mano\')),
+                  subtitle: Text(context.tr(\'Escribe artista y álbum (opcional: año y género).\')),
                   onTap: () => Navigator.pop(ctx, _AddVinylMethod.manual),
                 ),
               ],
@@ -515,10 +515,10 @@ Future<void> _loadViewMode() async {
 
     switch (pick) {
       case _AddVinylMethod.scan:
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen()));
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => ScannerScreen()));
         break;
       case _AddVinylMethod.manual:
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => const ManualVinylEntryScreen()));
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => ManualVinylEntryScreen()));
         break;
     }
 
@@ -531,7 +531,7 @@ Future<void> _loadViewMode() async {
     // pero filtramos con debounce para no recalcular toda la lista a cada tecla.
     if (mounted) setState(() {});
     _debounceLocalSearch?.cancel();
-    _debounceLocalSearch = Timer(const Duration(milliseconds: 220), () {
+    _debounceLocalSearch = Timer(Duration(milliseconds: 220), () {
       if (!mounted) return;
       setState(() => _localQuery = _localSearchCtrl.text);
     });
@@ -804,10 +804,10 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
 	        fit: fit,
 	      cacheWidth: cache,
 	      cacheHeight: cache,
-	      errorBuilder: (_, __, ___) => const Icon(Icons.album),
+	      errorBuilder: (_, __, ___) => Icon(Icons.album),
 	      loadingBuilder: (context, child, progress) {
 	        if (progress == null) return child;
-	        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+	        return Center(child: CircularProgressIndicator(strokeWidth: 2));
 	      },
 	      ),
 	    ),
@@ -838,7 +838,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         ),
       );
     }
-    return const Icon(Icons.album);
+    return Icon(Icons.album);
   }
 
   /// Carátula para cards tipo Grid.
@@ -863,10 +863,10 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               fit: fit,
               cacheWidth: cache,
               cacheHeight: cache,
-              errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 48),
+              errorBuilder: (_, __, ___) => Icon(Icons.album, size: 48),
               loadingBuilder: (context, child, progress) {
                 if (progress == null) return child;
-                return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                return Center(child: CircularProgressIndicator(strokeWidth: 2));
               },
             ),
           );
@@ -889,7 +889,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         return Container(
           color: Colors.black12,
           alignment: Alignment.center,
-          child: const Icon(Icons.album, size: 48),
+          child: Icon(Icons.album, size: 48),
         );
       },
     );
@@ -937,7 +937,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         ),
       if (conBorrar && !_borrarPapelera)
         IconButton(
-          tooltip: 'Enviar a papelera',
+          tooltip: context.tr(\'Enviar a papelera\'),
           icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
           onPressed: () async {
             final id = _asInt(v['id']);
@@ -951,7 +951,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         ),
       if (conBorrar && _borrarPapelera) ...[
         IconButton(
-          tooltip: 'Restaurar',
+          tooltip: context.tr(\'Restaurar\'),
           icon: Icon(Icons.restore_from_trash, color: cs.onSurfaceVariant),
           onPressed: () async {
             final trashId = _asInt(v['id']);
@@ -964,7 +964,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           },
         ),
         IconButton(
-          tooltip: 'Eliminar definitivo',
+          tooltip: context.tr(\'Eliminar definitivo\'),
           icon: Icon(Icons.delete_forever, color: cs.onSurfaceVariant),
           onPressed: () async {
             final trashId = _asInt(v['id']);
@@ -1014,7 +1014,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 2, right: 4),
@@ -1029,14 +1029,14 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                           _metaPill(context, genre),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       Text(
                         artista.isEmpty ? '—' : artista,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: 2),
                       Text(
                         album.isEmpty ? '—' : album,
                         maxLines: 2,
@@ -1078,7 +1078,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         child: Row(
           children: [
             Icon(_isFav(v) ? Icons.star_outline : Icons.star, color: cs.primary),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Text(_isFav(v) ? 'Quitar favorito' : 'Favorito', style: TextStyle(color: cs.primary, fontWeight: FontWeight.w900)),
           ],
         ),
@@ -1092,7 +1092,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           children: const [
             Icon(Icons.delete_outline, color: Colors.red),
             SizedBox(width: 8),
-            Text('Papelera', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900)),
+            Text(context.tr(\'Papelera\'), style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900)),
           ],
         ),
       ),
@@ -1107,11 +1107,11 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           context: context,
           builder: (ctx) {
             return AlertDialog(
-              title: const Text('¿Enviar a papelera?'),
+              title: Text(context.tr(\'¿Enviar a papelera?\')),
               content: Text('"$artista" — "$album"'),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar')),
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Enviar\'))),
               ],
             );
           },
@@ -1149,7 +1149,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       icon: Icon(icon, size: 20, color: color),
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      constraints: BoxConstraints(minWidth: 36, minHeight: 36),
     );
   }
 
@@ -1178,7 +1178,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       }
       if (!_borrarPapelera) {
         return IconButton(
-          tooltip: 'Enviar a papelera',
+          tooltip: context.tr(\'Enviar a papelera\'),
           onPressed: () async {
             final id = _asInt(v['id']);
             if (id == 0) return;
@@ -1196,7 +1196,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            tooltip: 'Restaurar',
+            tooltip: context.tr(\'Restaurar\'),
             onPressed: () async {
               final trashId = _asInt(v['id']);
               if (trashId == 0) return;
@@ -1210,7 +1210,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             visualDensity: VisualDensity.compact,
           ),
           IconButton(
-            tooltip: 'Eliminar definitivo',
+            tooltip: context.tr(\'Eliminar definitivo\'),
             onPressed: () async {
               final trashId = _asInt(v['id']);
               if (trashId == 0) return;
@@ -1250,25 +1250,25 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               Text(
                 artista.isEmpty ? '—' : artista,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
               ),
-              const SizedBox(height: 2),
+              SizedBox(height: 2),
               Text(
                 album.isEmpty ? '—' : album,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const Spacer(),
+              Spacer(),
               Row(
                 children: [
                   _numeroBadge(context, _vinylCode(v), compact: true),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       year.isEmpty ? '—' : year,
@@ -1351,12 +1351,12 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                       child: _gridCover(v),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Text(
                     artista,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   Text(
                           album,
@@ -1364,7 +1364,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                         ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(year.isEmpty ? '—' : year),
                 ],
               ),
@@ -1400,9 +1400,9 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                 bottom: 0,
                 child: IconButton(
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  constraints: BoxConstraints(),
 
-                  icon: const Icon(Icons.delete),
+                  icon: Icon(Icons.delete),
                   onPressed: () async {
                     final id = _asInt(v['id']);
                     if (id == 0) return;
@@ -1446,7 +1446,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       return;
     }
 
-    _debounceArtist = Timer(const Duration(milliseconds: 350), () async {
+    _debounceArtist = Timer(Duration(milliseconds: 350), () async {
       setState(() => buscandoArtistas = true);
       final hits = await DiscographyService.searchArtists(q);
       if (!mounted) return;
@@ -1496,7 +1496,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       return;
     }
 
-    _debounceAlbum = Timer(const Duration(milliseconds: 220), () async {
+    _debounceAlbum = Timer(Duration(milliseconds: 220), () async {
       setState(() => buscandoAlbums = true);
       // MetadataService.searchAlbumsForArtist usa parámetros POSICIONALES
       // (artistName, albumQuery)
@@ -1609,7 +1609,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       future: VinylDb.instance.getCount(),
       builder: (context, snap) {
         if (snap.hasError) {
-          return const SizedBox(width: 90, height: 70);
+          return SizedBox(width: 90, height: 70);
         }
         final total = snap.data ?? 0;
         return Container(
@@ -1622,7 +1622,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           alignment: Alignment.center,
           child: Text(
             '$total',
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontSize: 22,
               fontWeight: FontWeight.w900,
@@ -1662,12 +1662,11 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
   }
 
   Widget gabolpMarca() {
-    return const Positioned(
+    return Positioned(
       right: 10,
       bottom: 8,
       child: IgnorePointer(
-        child: Text(
-          'GaBoLP',
+        child: Text(context.tr(\'GaBoLP\'),
           style: TextStyle(
             fontSize: 14,
             color: Colors.white70,
@@ -1687,7 +1686,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     final wish = _homeCounts['wish'] ?? 0;
 
     void openDiscografias() {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => DiscographyScreen())).then((_) {
         if (!mounted) return;
         _reloadAllData();
       });
@@ -1707,7 +1706,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                 children: [
                   Text(title, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3)),
                   if (subtitle != null) ...[
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       subtitle,
                       style: t.textTheme.bodySmall?.copyWith(
@@ -1722,8 +1721,8 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             if (action != null && onAction != null)
               TextButton.icon(
                 onPressed: onAction,
-                icon: const Icon(Icons.chevron_right),
-                label: Text(action, style: const TextStyle(fontWeight: FontWeight.w900)),
+                icon: Icon(Icons.chevron_right),
+                label: Text(action, style: TextStyle(fontWeight: FontWeight.w900)),
               ),
           ],
         ),
@@ -1736,7 +1735,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         future: _futureAll,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const SizedBox(
+            return SizedBox(
               height: 260,
               child: Center(child: CircularProgressIndicator()),
             );
@@ -1750,7 +1749,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               subtitle: 'Agrega tu primer vinilo para empezar tu colección.',
               actionText: 'Ir a Discografías',
               onAction: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => DiscographyScreen())).then((_) {
                   if (!mounted) return;
                   _reloadAllData();
                 });
@@ -1768,7 +1767,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 4),
               itemCount: recent.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              separatorBuilder: (_, __) => SizedBox(width: 12),
               itemBuilder: (context, i) {
                 return SizedBox(
                   width: 220,
@@ -1799,14 +1798,14 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             _setVista(Vista.favoritos);
           },
           onWishlist: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen())).then((_) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => WishlistScreen())).then((_) {
               if (!mounted) return;
               _reloadAllData();
             });
           },
           onSearch: openDiscografias,
           onScanner: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())).then((_) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => ScannerScreen())).then((_) {
               if (!mounted) return;
               _reloadAllData();
             });
@@ -1817,7 +1816,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             if (!mounted) return;
             _setVista(Vista.borrar);
           },
-          onSettings: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          onSettings: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsScreen())),
         ),
 
         sectionHeader(
@@ -1832,7 +1831,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         ),
 
         recentGrid(),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
       ],
     );
   }
@@ -1851,22 +1850,22 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       setState(() => _borrarPapelera = false);
                       _reloadAllData();
                     },
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Para borrar'),
+                    icon: Icon(Icons.delete_outline),
+                    label: Text(context.tr(\'Para borrar\')),
                   )
                 : ElevatedButton.icon(
                     onPressed: () {},
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Para borrar'),
+                    icon: Icon(Icons.delete_outline),
+                    label: Text(context.tr(\'Para borrar\')),
                   ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Expanded(
             child: _borrarPapelera
                 ? ElevatedButton.icon(
                     onPressed: () {},
-                    icon: const Icon(Icons.restore),
-                    label: const Text('Papelera'),
+                    icon: Icon(Icons.restore),
+                    label: Text(context.tr(\'Papelera\')),
                   )
                 : OutlinedButton.icon(
                     onPressed: () async {
@@ -1876,14 +1875,14 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                         _futureTrash = VinylDb.instance.getTrash();
                       });
                     },
-                    icon: const Icon(Icons.restore),
-                    label: const Text('Papelera'),
+                    icon: Icon(Icons.restore),
+                    label: Text(context.tr(\'Papelera\')),
                   ),
           ),
         ],
       ),
       if (embedInScroll) ...[
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         listaCompleta(conBorrar: true, onlyFavorites: false, embedInScroll: true),
       ],
     ],
@@ -1913,9 +1912,9 @@ Widget vistaBorrar({bool embedInScroll = true}) {
         ),
         child: ListView.separated(
           shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          physics: NeverScrollableScrollPhysics(),
           itemCount: items.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
+          separatorBuilder: (_, __) => Divider(height: 1),
           itemBuilder: (context, i) => tile(items[i]),
         ),
       );
@@ -1930,18 +1929,18 @@ Widget vistaBorrar({bool embedInScroll = true}) {
           focusNode: _artistFocus,
           onChanged: _onArtistChanged,
           decoration: InputDecoration(
-            labelText: 'Artista',
+            labelText: context.tr(\'Artista\'),
             suffixIcon: showXArtist
                 ? IconButton(
-                    tooltip: 'Limpiar',
-                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: context.tr(\'Limpiar\'),
+                    icon: Icon(Icons.close, size: 18),
                     onPressed: _limpiarArtista,
                   )
                 : null,
           ),
         ),
         if (buscandoArtistas)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 6),
             child: LinearProgressIndicator(),
           ),
@@ -1953,30 +1952,30 @@ Widget vistaBorrar({bool embedInScroll = true}) {
               return ListTile(
                 dense: true,
                 title: Text(a.name),
-                subtitle: c.isEmpty ? null : Text('País: $c'),
+                subtitle: c.isEmpty ? null : Text(AppStrings.labeled(context, 'País', c)),
                 onTap: () => _pickArtist(a),
               );
             },
           ),
 
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
 
         TextField(
           controller: albumCtrl,
           onChanged: _onAlbumChanged,
           decoration: InputDecoration(
-            labelText: 'Álbum',
+            labelText: context.tr(\'Álbum\'),
             suffixIcon: showXAlbum
                 ? IconButton(
-                    tooltip: 'Limpiar',
-                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: context.tr(\'Limpiar\'),
+                    icon: Icon(Icons.close, size: 18),
                     onPressed: _limpiarAlbum,
                   )
                 : null,
           ),
         ),
         if (buscandoAlbums)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 6),
             child: LinearProgressIndicator(),
           ),
@@ -1988,27 +1987,27 @@ Widget vistaBorrar({bool embedInScroll = true}) {
               return ListTile(
                 dense: true,
                 title: Text(al.title),
-                subtitle: y.isEmpty ? null : Text('Año: $y'),
+                subtitle: y.isEmpty ? null : Text(AppStrings.labeled(context, 'Año', y)),
                 onTap: () => _pickAlbum(al),
               );
             },
           ),
 
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         ElevatedButton(
           onPressed: buscar,
-          child: const Text('Buscar'),
+          child: Text(context.tr(\'Buscar\')),
         ),
 
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         OutlinedButton(
           onPressed: _cancelarBusqueda,
-          child: const Text('Limpiar'),
+          child: Text(context.tr(\'Limpiar\')),
         ),
 
         // ✅ Si lo tienes en la colección
         if (resultados.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -2019,11 +2018,10 @@ Widget vistaBorrar({bool embedInScroll = true}) {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Ya lo tienes en tu colección:',
+                Text(context.tr(\'Ya lo tienes en tu colección:\'),
                   style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 ...resultados.map((v) {
                   final y = (v['year'] as String?)?.trim() ?? '';
                   final yTxt = y.isEmpty ? '' : ' ($y)';
@@ -2032,7 +2030,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                     child: Row(
                       children: [
                         _leadingCover(v),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             '${_vinylCode(v)} — ${v['artista']} — ${v['album']}$yTxt',
@@ -2050,7 +2048,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
 
         // ✅ Si NO está y se puede agregar, mostramos automático año/género/país/caratula + botón
         if (mostrarAgregar) ...[
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -2061,9 +2059,9 @@ Widget vistaBorrar({bool embedInScroll = true}) {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Agregar este vinilo', style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
-                const SizedBox(height: 8),
-                if (autocompletando) const LinearProgressIndicator(),
+                Text(context.tr(\'Agregar este vinilo\'), style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
+                SizedBox(height: 8),
+                if (autocompletando) LinearProgressIndicator(),
                 if (!autocompletando && p != null) ...[
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2076,7 +2074,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                                 height: 90,
                                 color: Colors.black12,
                                 alignment: Alignment.center,
-                                child: const Icon(Icons.album, size: 40),
+                                child: Icon(Icons.album, size: 40),
                               )
                             : Image.network(
                                 p.selectedCover500!,
@@ -2088,18 +2086,18 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                                   height: 90,
                                   color: Colors.black12,
                                   alignment: Alignment.center,
-                                  child: const Icon(Icons.broken_image),
+                                  child: Icon(Icons.broken_image),
                                 ),
                               ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Artista: ${p.artist}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
                             Text('Álbum: ${p.album}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
-                            const SizedBox(height: 6),
+                            SizedBox(height: 6),
                             Text('Año: ${p.year ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
                             Text('Género: ${p.genre ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
                             Text('País: ${p.country ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
@@ -2108,7 +2106,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   // ✅ Selector simple de carátula (cuando hay varias opciones)
                   if (p.coverCandidates.length > 1)
                     SizedBox(
@@ -2116,7 +2114,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: p.coverCandidates.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        separatorBuilder: (_, __) => SizedBox(width: 10),
                         itemBuilder: (_, i) {
                           final c = p.coverCandidates[i];
                           final selected = identical(p.selectedCover, c);
@@ -2139,11 +2137,11 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
                                 child: url.isEmpty
-                                    ? const Center(child: Icon(Icons.album, size: 20))
+                                    ? Center(child: Icon(Icons.album, size: 20))
                                     : Image.network(
                                         url,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.album, size: 20)),
+                                        errorBuilder: (_, __, ___) => Center(child: Icon(Icons.album, size: 20)),
                                       ),
                               ),
                             ),
@@ -2151,55 +2149,55 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                         },
                       ),
                     ),
-                  if (p.coverCandidates.length > 1) const SizedBox(height: 10),
+                  if (p.coverCandidates.length > 1) SizedBox(height: 10),
                   // año editable (opcional)
                   TextField(
                     controller: yearCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: 'Año (opcional: corregir)',
+                      labelText: context.tr(\'Año (opcional: corregir)\'),
                       filled: true,
                       fillColor: cs.surfaceContainerHighest.withOpacity(isDark ? 0.14 : 0.65),
                     ),
                     style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           value: _addCondition,
-                          decoration: const InputDecoration(labelText: 'Condición'),
+                          decoration: InputDecoration(labelText: context.tr(\'Condición\')),
                           items: const [
-                            DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
-                            DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
-                            DropdownMenuItem(value: 'VG+', child: Text('VG+')),
-                            DropdownMenuItem(value: 'VG', child: Text('VG')),
+                            DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
+                            DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
+                            DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
+                            DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
                             DropdownMenuItem(value: 'G', child: Text('G')),
                           ],
                           onChanged: (v) => setState(() => _addCondition = v ?? _addCondition),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      SizedBox(width: 10),
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           value: _addFormat,
-                          decoration: const InputDecoration(labelText: 'Formato'),
+                          decoration: InputDecoration(labelText: context.tr(\'Formato\')),
                           items: const [
-                            DropdownMenuItem(value: 'LP', child: Text('LP')),
-                            DropdownMenuItem(value: 'EP', child: Text('EP')),
-                            DropdownMenuItem(value: 'Single', child: Text('Single')),
-                            DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
+                            DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
+                            DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
+                            DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
+                            DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
                           ],
                           onChanged: (v) => setState(() => _addFormat = v ?? _addFormat),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   ElevatedButton(
                     onPressed: agregar,
-                    child: const Text('Agregar vinilo'),
+                    child: Text(context.tr(\'Agregar vinilo\')),
                   ),
                 ],
               ],
@@ -2237,7 +2235,8 @@ Widget vistaBorrar({bool embedInScroll = true}) {
         .replaceAll('ü', 'u')
         .replaceAll('ñ', 'n');
     // Quitamos símbolos iniciales comunes.
-    t = t.replaceFirst(RegExp(r"^[\s\"'\(\[\{]+"), '');
+    // Nota: usamos raw triple-quoted string para poder incluir comillas dobles y simples sin romper el parser.
+    t = t.replaceFirst(RegExp(r'''^[\s\"'\(\[\{]+'''), '');
     return t;
   }
 
@@ -2265,7 +2264,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
               color: cs.onSurface.withOpacity(0.92),
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Expanded(
             child: Container(
               height: 1,
@@ -2393,9 +2392,9 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.tune),
-                        const SizedBox(width: 10),
-                        const Expanded(child: Text('Filtros')),
+                        Icon(Icons.tune),
+                        SizedBox(width: 10),
+                        Expanded(child: Text(context.tr(\'Filtros\'))),
                         TextButton(
                           onPressed: () {
                             setLocal(() {
@@ -2406,60 +2405,60 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                               tTo = '';
                             });
                           },
-                          child: const Text('Limpiar'),
+                          child: Text(context.tr(\'Limpiar\')),
                         )
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     TextField(
-                      decoration: const InputDecoration(labelText: 'Artista o álbum'),
+                      decoration: InputDecoration(labelText: context.tr(\'Artista o álbum\')),
                       controller: TextEditingController(text: tArtist),
                       onChanged: (v) => setLocal(() => tArtist = v),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'Año desde'),
+                            decoration: InputDecoration(labelText: context.tr(\'Año desde\')),
                             controller: TextEditingController(text: tFrom),
                             onChanged: (v) => setLocal(() => tFrom = v),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Expanded(
                           child: TextField(
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'Año hasta'),
+                            decoration: InputDecoration(labelText: context.tr(\'Año hasta\')),
                             controller: TextEditingController(text: tTo),
                             onChanged: (v) => setLocal(() => tTo = v),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     TextField(
-                      decoration: const InputDecoration(labelText: 'Género (contiene)'),
+                      decoration: InputDecoration(labelText: context.tr(\'Género (contiene)\')),
                       controller: TextEditingController(text: tGenre),
                       onChanged: (v) => setLocal(() => tGenre = v),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     TextField(
-                      decoration: const InputDecoration(labelText: 'País (contiene)'),
+                      decoration: InputDecoration(labelText: context.tr(\'País (contiene)\')),
                       controller: TextEditingController(text: tCountry),
                       onChanged: (v) => setLocal(() => tCountry = v),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Cancelar'),
+                            child: Text(context.tr(\'Cancelar\')),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
                             onPressed: () {
@@ -2472,12 +2471,12 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                               });
                               Navigator.pop(ctx);
                             },
-                            child: const Text('Aplicar'),
+                            child: Text(context.tr(\'Aplicar\')),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                   ],
                 ),
               ),
@@ -2502,12 +2501,12 @@ Widget vistaBorrar({bool embedInScroll = true}) {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 58),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(subtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
             if (actionText != null && onAction != null) ...[
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               ElevatedButton(onPressed: onAction, child: Text(actionText)),
             ],
           ],
@@ -2547,7 +2546,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
           ),
           if (_hasAnyFilter)
             IconButton(
-              tooltip: 'Quitar filtros',
+              tooltip: context.tr(\'Quitar filtros\'),
               onPressed: () => setState(() {
                 _filterArtistQ = '';
                 _filterGenreQ = '';
@@ -2555,32 +2554,32 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                 _filterYearFrom = null;
                 _filterYearTo = null;
               }),
-              icon: const Icon(Icons.filter_alt_off),
+              icon: Icon(Icons.filter_alt_off),
             ),
           IconButton(
-            tooltip: 'Filtros',
+            tooltip: context.tr(\'Filtros\'),
             onPressed: _openVinylFiltersSheet,
             icon: Icon(_hasAnyFilter ? Icons.filter_alt : Icons.filter_alt_outlined),
           ),
           PopupMenuButton<VinylSortMode>(
-            tooltip: 'Ordenar',
+            tooltip: context.tr(\'Ordenar\'),
             initialValue: _sortMode,
             onSelected: (m) {
                 setState(() => _sortMode = m);
                 _persistSortMode(m);
               },
             itemBuilder: (_) => [
-              PopupMenuItem(value: VinylSortMode.code, child: Text('Código')),
-              PopupMenuItem(value: VinylSortMode.recent, child: Text('Recientes')),
-              PopupMenuItem(value: VinylSortMode.az, child: Text('A–Z')),
-              PopupMenuItem(value: VinylSortMode.yearDesc, child: Text('Año')),
+              PopupMenuItem(value: VinylSortMode.code, child: Text(context.tr(\'Código\'))),
+              PopupMenuItem(value: VinylSortMode.recent, child: Text(context.tr(\'Recientes\'))),
+              PopupMenuItem(value: VinylSortMode.az, child: Text(context.tr(\'A–Z\'))),
+              PopupMenuItem(value: VinylSortMode.yearDesc, child: Text(context.tr(\'Año\'))),
             ],
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.sort),
-                  const SizedBox(width: 6),
+                  Icon(Icons.sort),
+                  SizedBox(width: 6),
                   Text(vinylSortLabel(_sortMode)),
                 ],
               ),
@@ -2609,7 +2608,7 @@ Widget listaCompleta({
     future: future,
     builder: (context, snap) {
       if (snap.connectionState == ConnectionState.waiting) {
-        return const Center(child: CircularProgressIndicator());
+        return Center(child: CircularProgressIndicator());
       }
       if (snap.hasError) {
         return _emptyState(
@@ -2618,7 +2617,7 @@ Widget listaCompleta({
           subtitle: 'Algo falló al leer la base de datos. Cierra y vuelve a abrir la app.',
         );
       }
-      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+      if (!snap.hasData) return Center(child: CircularProgressIndicator());
       final rawItems = snap.data ?? const <Map<String, dynamic>>[];
       // En Favoritos filtramos por el estado real (DB + cache) para que al desmarcar ⭐
       // el item desaparezca al instante, incluso si el FutureBuilder aún muestra datos antiguos.
@@ -2692,9 +2691,9 @@ Widget listaCompleta({
           // Sin shrinkWrap/physics el Grid puede quedar sin altura
           // (o lanzar "unbounded height") y verse como "lista vacía".
           shrinkWrap: embedInScroll,
-          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(12),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
@@ -2714,7 +2713,7 @@ Widget listaCompleta({
         final int cols = ((w / 140).floor()).clamp(2, 5).toInt();
         return GridView.builder(
           shrinkWrap: embedInScroll,
-          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(12),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: cols,
@@ -2745,7 +2744,7 @@ Widget listaCompleta({
         }
         return ListView.builder(
           shrinkWrap: embedInScroll,
-          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: rows.length,
           itemBuilder: (context, i) {
@@ -2763,7 +2762,7 @@ Widget listaCompleta({
         // Sin shrinkWrap/physics el ListView puede quedar sin altura
         // y verse como "lista vacía".
         shrinkWrap: embedInScroll,
-        physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+        physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: visibleItems.length,
         itemBuilder: (context, i) {
@@ -2853,8 +2852,8 @@ Widget listaCompleta({
       actions: [
         if (vista == Vista.lista && _vinylScope == VinylScope.vinilos)
           IconButton(
-            tooltip: 'Agregar vinilo',
-            icon: const Icon(Icons.add_circle_outline),
+            tooltip: context.tr(\'Agregar vinilo\'),
+            icon: Icon(Icons.add_circle_outline),
             onPressed: _openAddVinylMenu,
           ),
         if (localSearchAllowed && !(vista == Vista.lista && _vinylScope == VinylScope.artistas))
@@ -2907,7 +2906,7 @@ Widget listaCompleta({
             textAlignVertical: TextAlignVertical.center,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Buscar en tu colección…',
+              hintText: context.tr(\'Buscar en tu colección…\'),
               filled: true,
               fillColor: cs.surface,
               border: OutlineInputBorder(
@@ -2925,15 +2924,15 @@ Widget listaCompleta({
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
               // Lupa un poquito más abajo para que el texto se vea completo.
-              prefixIcon: const Padding(
+              prefixIcon: Padding(
                 padding: EdgeInsets.only(top: 2),
                 child: Icon(Icons.search),
               ),
-              prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              prefixIconConstraints: BoxConstraints(minWidth: 44, minHeight: 44),
               suffixIcon: (ctrl.text.trim().isNotEmpty)
                   ? IconButton(
-                      tooltip: 'Limpiar texto',
-                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: context.tr(\'Limpiar texto\'),
+                      icon: Icon(Icons.close, size: 18),
                       onPressed: () {
                         ctrl.clear();
                         setState(() => _localQuery = '');
@@ -2954,11 +2953,11 @@ Widget listaCompleta({
               borderRadius: BorderRadius.circular(12),
               clipBehavior: Clip.antiAlias,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+                constraints: BoxConstraints(maxHeight: 260, maxWidth: 420),
                 child: ListView.separated(
                   padding: EdgeInsets.zero,
                   itemCount: list.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, __) => Divider(height: 1),
                   itemBuilder: (context, i) {
                     final s = list[i];
                     return ListTile(
@@ -2983,12 +2982,12 @@ Widget listaCompleta({
         segments: const <ButtonSegment<VinylScope>>[
           ButtonSegment(
             value: VinylScope.vinilos,
-            label: Text('Vinilos'),
+            label: Text(context.tr(\'Vinilos\')),
             icon: Icon(Icons.library_music_outlined),
           ),
           ButtonSegment(
             value: VinylScope.artistas,
-            label: Text('Artistas'),
+            label: Text(context.tr(\'Artistas\')),
             icon: Icon(Icons.groups_outlined),
           ),
         ],
@@ -3012,7 +3011,7 @@ Widget listaCompleta({
       alignment: Alignment.centerLeft,
       child: InputChip(
         label: Text(
-          'Artista: $name',
+          AppStrings.labeled(context, 'Artista', name),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -3036,11 +3035,11 @@ Widget listaCompleta({
 
   Widget _artistSummaryList({bool embedInScroll = true}) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      key: const ValueKey('artists_summary'),
+      key: ValueKey('artists_summary'),
       future: _futureArtists,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
           return _emptyState(
@@ -3098,7 +3097,7 @@ Widget listaCompleta({
 
         return ListView.builder(
           shrinkWrap: embedInScroll,
-          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: alphaRows.length,
           itemBuilder: (context, i) {
@@ -3125,7 +3124,7 @@ Widget listaCompleta({
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       SizedBox(
                         width: 54,
                         child: Text(
@@ -3135,7 +3134,7 @@ Widget listaCompleta({
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      SizedBox(width: 10),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
@@ -3144,7 +3143,7 @@ Widget listaCompleta({
                         ),
                         child: Text(
                           total.toString(),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
                     ],
@@ -3158,7 +3157,7 @@ Widget listaCompleta({
                     _setVinylScope(VinylScope.vinilos);
                   },
                 ),
-                const Divider(height: 1),
+                Divider(height: 1),
               ],
             );
           },
@@ -3172,8 +3171,8 @@ Widget listaCompleta({
       // Solo icono (sin texto "Inicio")
       return FloatingActionButton(
         onPressed: () => _setVista(Vista.inicio),
-        tooltip: 'Inicio',
-        child: const Icon(Icons.home),
+        tooltip: context.tr(\'Inicio\'),
+        child: Icon(Icons.home),
       );
     }
     return null;
@@ -3208,27 +3207,27 @@ Widget listaCompleta({
                       children: [
                         // 🔁 Sub-vista: Vinilos | Artistas (solo en "Vinilos")
                         if (vista == Vista.lista) ...[
-                          const SizedBox(height: 8),
+                          SizedBox(height: 8),
                           _vinylScopeSelector(),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                         ],
 
                         // 🔎 Buscador local (debajo del AppBar) para que se abra completo.
                         if ((vista == Vista.lista || vista == Vista.favoritos) && _localSearchActive) ...[
-                          const SizedBox(height: 8),
+                          SizedBox(height: 8),
                           _localSearchBar(),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                         ],
 
                         // 🏷️ Filtro de artista (cuando vienes desde "Artistas")
                         if (vista == Vista.lista && _vinylScope == VinylScope.vinilos) ...[
                           _artistFilterChipBar(),
                           if (_artistFilterKey != null && (_artistFilterName ?? '').trim().isNotEmpty)
-                            const SizedBox(height: 12),
+                            SizedBox(height: 12),
                         ],
                         if (vista == Vista.borrar) ...[
                           vistaBorrar(embedInScroll: false),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                           Expanded(
                             child: listaCompleta(
                               conBorrar: true,
@@ -3264,7 +3263,7 @@ Widget listaCompleta({
                         children: [
                           if (vista == Vista.inicio) ...[
                             encabezadoInicio(),
-                            const SizedBox(height: 14),
+                            SizedBox(height: 14),
                             botonesInicio(),
                           ],
                         ],

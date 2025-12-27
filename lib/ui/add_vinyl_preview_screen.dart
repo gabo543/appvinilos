@@ -8,6 +8,7 @@ import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import '../services/price_range_service.dart';
 import '../services/vinyl_add_service.dart';
+import '../l10n/app_strings.dart';
 
 /// Ficha previa a agregar, usada desde el Escáner (código / carátula / escuchar).
 ///
@@ -17,7 +18,7 @@ import '../services/vinyl_add_service.dart';
 /// - Deseos -> Estado -> Agregar
 class AddVinylPreviewScreen extends StatefulWidget {
   final PreparedVinylAdd prepared;
-  const AddVinylPreviewScreen({super.key, required this.prepared});
+  AddVinylPreviewScreen({super.key, required this.prepared});
 
   @override
   State<AddVinylPreviewScreen> createState() => _AddVinylPreviewScreenState();
@@ -194,38 +195,37 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      '¿Dónde quieres agregarlo?',
+                    Text(context.tr(\'¿Dónde quieres agregarlo?\'),
                       style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     RadioListTile<_AddDestination>(
                       value: _AddDestination.collection,
                       groupValue: selected,
-                      title: const Text('Lista (mi colección)'),
-                      secondary: const Icon(Icons.library_music_outlined),
+                      title: Text(context.tr(\'Lista (mi colección)\')),
+                      secondary: Icon(Icons.library_music_outlined),
                       onChanged: (v) => setStateDialog(() => selected = v ?? selected),
                     ),
                     RadioListTile<_AddDestination>(
                       value: _AddDestination.wishlist,
                       groupValue: selected,
-                      title: const Text('Deseos (wishlist)'),
-                      secondary: const Icon(Icons.favorite_border),
+                      title: Text(context.tr(\'Deseos (wishlist)\')),
+                      secondary: Icon(Icons.favorite_border),
                       onChanged: (v) => setStateDialog(() => selected = v ?? selected),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Cancelar'),
+                            child: Text(context.tr(\'Cancelar\')),
                           ),
                         ),
                         Expanded(
                           child: FilledButton(
                             onPressed: () => Navigator.pop(ctx, selected),
-                            child: const Text('Continuar'),
+                            child: Text(context.tr(\'Continuar\')),
                           ),
                         ),
                       ],
@@ -255,17 +255,17 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: const Text('Disco'),
+        title: Text(context.tr(\'Disco\')),
         actions: [
           IconButton(
-            tooltip: 'Recargar canciones',
+            tooltip: context.tr(\'Recargar canciones\'),
             onPressed: _loadTracks,
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh),
           ),
           IconButton(
-            tooltip: 'Actualizar precio',
+            tooltip: context.tr(\'Actualizar precio\'),
             onPressed: _loadPrice,
-            icon: const Icon(Icons.euro),
+            icon: Icon(Icons.euro),
           ),
         ],
       ),
@@ -273,8 +273,8 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
         minimum: const EdgeInsets.fromLTRB(14, 8, 14, 12),
         child: FilledButton.icon(
           onPressed: _onAddPressed,
-          icon: const Icon(Icons.add),
-          label: const Text('Agregar'),
+          icon: Icon(Icons.add),
+          label: Text(context.tr(\'Agregar\')),
         ),
       ),
       body: CustomScrollView(
@@ -295,15 +295,15 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                           height: 112,
                           color: cs.surfaceContainerHighest,
                           child: cover == null
-                              ? const Icon(Icons.album, size: 46)
+                              ? Icon(Icons.album, size: 46)
                               : Image.network(
                                   cover,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 46),
+                                  errorBuilder: (_, __, ___) => Icon(Icons.album, size: 46),
                                 ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,35 +314,35 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                             ),
-                            const SizedBox(height: 2),
+                            SizedBox(height: 2),
                             Text(
                               p.album,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                             ),
-                            const SizedBox(height: 10),
+                            SizedBox(height: 10),
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
                               children: [
                                 if (year.isNotEmpty)
                                   Chip(
-                                    label: Text('Año: $year', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    label: Text(AppStrings.labeled(context, 'Año', year), style: TextStyle(fontWeight: FontWeight.w800)),
                                     visualDensity: VisualDensity.compact,
                                   ),
                                 Chip(
-                                  label: Text(_priceLabel(), style: const TextStyle(fontWeight: FontWeight.w800)),
+                                  label: Text(_priceLabel(), style: TextStyle(fontWeight: FontWeight.w800)),
                                   visualDensity: VisualDensity.compact,
                                 ),
                                 if (genre.isNotEmpty)
                                   Chip(
-                                    label: Text(genre, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    label: Text(genre, style: TextStyle(fontWeight: FontWeight.w800)),
                                     visualDensity: VisualDensity.compact,
                                   ),
                                 if (country.isNotEmpty)
                                   Chip(
-                                    label: Text('País: $country', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    label: Text(AppStrings.labeled(context, 'País', country), style: TextStyle(fontWeight: FontWeight.w800)),
                                     visualDensity: VisualDensity.compact,
                                   ),
                               ],
@@ -352,18 +352,18 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
 
                   // Selector de carátula (si hay más de una opción)
                   if (p.coverCandidates.length > 1) ...[
-                    Text('Carátulas', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 8),
+                    Text(context.tr(\'Carátulas\'), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                    SizedBox(height: 8),
                     SizedBox(
                       height: 58,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: p.coverCandidates.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        separatorBuilder: (_, __) => SizedBox(width: 10),
                         itemBuilder: (_, i) {
                           final c = p.coverCandidates[i];
                           final selected = identical(p.selectedCover, c);
@@ -386,11 +386,11 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
                                 child: url.isEmpty
-                                    ? const Center(child: Icon(Icons.album, size: 20))
+                                    ? Center(child: Icon(Icons.album, size: 20))
                                     : Image.network(
                                         url,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.album, size: 20)),
+                                        errorBuilder: (_, __, ___) => Center(child: Icon(Icons.album, size: 20)),
                                       ),
                               ),
                             ),
@@ -398,7 +398,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                         },
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                   ],
 
                   // Reseña
@@ -414,17 +414,16 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.article_outlined, size: 18),
-                              const SizedBox(width: 8),
+                              Icon(Icons.article_outlined, size: 18),
+                              SizedBox(width: 8),
                               Expanded(
-                                child: Text(
-                                  'Reseña',
+                                child: Text(context.tr(\'Reseña\'),
                                   style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
+                          SizedBox(height: 8),
                           Text(
                             bio,
                             maxLines: _bioExpanded ? 30 : 3,
@@ -452,12 +451,11 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      'Canciones',
+                    child: Text(context.tr(\'Canciones\'),
                       style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                     ),
                   ),
-                  if (_loadingTracks) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  if (_loadingTracks) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                 ],
               ),
             ),
@@ -475,12 +473,12 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
-                    if (i.isOdd) return const Divider(height: 1);
+                    if (i.isOdd) return Divider(height: 1);
                     final idx = i ~/ 2;
                     final tr = _tracks[idx];
                     return ListTile(
                       dense: true,
-                      visualDensity: const VisualDensity(vertical: -2),
+                      visualDensity: VisualDensity(vertical: -2),
                       title: Text('${tr.number}. ${tr.title}'),
                       trailing: Text(tr.length ?? ''),
                     );
@@ -586,15 +584,14 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  'Condición y formato',
+                child: Text(context.tr(\'Condición y formato\'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
-              if (_saving) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              if (_saving) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -605,76 +602,76 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
                   height: 72,
                   color: cs.surfaceContainerHighest,
                   child: cover.isEmpty
-                      ? const Icon(Icons.album, size: 28)
+                      ? Icon(Icons.album, size: 28)
                       : Image.network(
                           cover,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 28),
+                          errorBuilder: (_, __, ___) => Icon(Icons.album, size: 28),
                         ),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(p.artist, style: const TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text(p.album, style: const TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 10),
+                    Text(p.artist, style: TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    SizedBox(height: 2),
+                    Text(p.album, style: TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    SizedBox(height: 10),
                     TextField(
                       controller: _yearCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Año', isDense: true),
+                      decoration: InputDecoration(labelText: context.tr(\'Año\'), isDense: true),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _condition,
-                  decoration: const InputDecoration(labelText: 'Condición', isDense: true),
+                  decoration: InputDecoration(labelText: context.tr(\'Condición\'), isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
-                    DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
-                    DropdownMenuItem(value: 'VG+', child: Text('VG+')),
-                    DropdownMenuItem(value: 'VG', child: Text('VG')),
+                    DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
+                    DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
+                    DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
+                    DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
                     DropdownMenuItem(value: 'G', child: Text('G')),
                   ],
                   onChanged: (v) => setState(() => _condition = v ?? _condition),
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _format,
-                  decoration: const InputDecoration(labelText: 'Formato', isDense: true),
+                  decoration: InputDecoration(labelText: context.tr(\'Formato\'), isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'LP', child: Text('LP')),
-                    DropdownMenuItem(value: 'EP', child: Text('EP')),
-                    DropdownMenuItem(value: 'Single', child: Text('Single')),
-                    DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
+                    DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
+                    DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
+                    DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
+                    DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
                   ],
                   onChanged: (v) => setState(() => _format = v ?? _format),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           FilledButton.icon(
             onPressed: _saving ? null : _add,
-            icon: const Icon(Icons.check),
-            label: const Text('Agregar a Lista'),
+            icon: Icon(Icons.check),
+            label: Text(context.tr(\'Agregar a Lista\')),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context, false),
-            child: const Text('Atrás'),
+            child: Text(context.tr(\'Atrás\')),
           ),
         ],
       ),
@@ -749,15 +746,14 @@ class _WishlistAddSheetState extends State<_WishlistAddSheet> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  'Estado en Deseos',
+                child: Text(context.tr(\'Estado en Deseos\'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
-              if (_saving) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              if (_saving) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -768,58 +764,58 @@ class _WishlistAddSheetState extends State<_WishlistAddSheet> {
                   height: 72,
                   color: cs.surfaceContainerHighest,
                   child: cover.isEmpty
-                      ? const Icon(Icons.album, size: 28)
+                      ? Icon(Icons.album, size: 28)
                       : Image.network(
                           cover,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 28),
+                          errorBuilder: (_, __, ___) => Icon(Icons.album, size: 28),
                         ),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(p.artist, style: const TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text(p.album, style: const TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 6),
-                    Text('Año: ${(p.year ?? '—')}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(p.artist, style: TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    SizedBox(height: 2),
+                    Text(p.album, style: TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    SizedBox(height: 6),
+                    Text('Año: ${(p.year ?? '—')}', style: TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           RadioListTile<String>(
             value: 'Por comprar',
             groupValue: _status,
-            title: const Text('Por comprar'),
+            title: Text(context.tr(\'Por comprar\')),
             onChanged: _saving ? null : (v) => setState(() => _status = v ?? _status),
           ),
           RadioListTile<String>(
             value: 'Buscando',
             groupValue: _status,
-            title: const Text('Buscando'),
+            title: Text(context.tr(\'Buscando\')),
             onChanged: _saving ? null : (v) => setState(() => _status = v ?? _status),
           ),
           RadioListTile<String>(
             value: 'Comprado',
             groupValue: _status,
-            title: const Text('Comprado'),
+            title: Text(context.tr(\'Comprado\')),
             onChanged: _saving ? null : (v) => setState(() => _status = v ?? _status),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           FilledButton.icon(
             onPressed: _saving ? null : _add,
-            icon: const Icon(Icons.check),
-            label: const Text('Agregar a Deseos'),
+            icon: Icon(Icons.check),
+            label: Text(context.tr(\'Agregar a Deseos\')),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context, false),
-            child: const Text('Atrás'),
+            child: Text(context.tr(\'Atrás\')),
           ),
         ],
       ),

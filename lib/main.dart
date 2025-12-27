@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'ui/home_screen.dart';
 import 'services/app_theme_service.dart';
 import 'services/view_mode_service.dart';
+import 'services/locale_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -10,6 +12,7 @@ void main() async {
   // ✅ Cargamos preferencias 1 vez para cambios instantáneos (tema + grid/list).
   await AppThemeService.load();
   await ViewModeService.load();
+  await LocaleService.load();
   runApp(const GaBoLpApp());
 }
 
@@ -600,21 +603,21 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
                         theme = _applyCardLevel(theme, cardLevel);
                         theme = _applyCardBorderStyle(theme, borderStyle);
 
-                        return MaterialApp(
+                        return ValueListenableBuilder<Locale>(
+  valueListenable: LocaleService.localeNotifier,
+  builder: (_, locale, __) {
+return MaterialApp(
                           debugShowCheckedModeBanner: false,
-                          title: 'Colección vinilos',
+                          locale: locale,
+                          supportedLocales: const [Locale('es'), Locale('en')],
+                          localizationsDelegates: const [
+                            GlobalMaterialLocalizations.delegate,
+                            GlobalWidgetsLocalizations.delegate,
+                            GlobalCupertinoLocalizations.delegate,
+                          ],
+                          title: 'GaBoLP',
                           theme: theme,
                           home: const HomeScreen(),
                         );
-                      },
-                    );
-                  },
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-}
+  },
+);

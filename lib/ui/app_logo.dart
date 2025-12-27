@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_strings.dart';
 
 // Tamaños de branding.
 // - Home mantiene su header grande.
@@ -13,7 +14,7 @@ const double kBackIconSize = 30;
 /// Logo de la app (mismo asset que el ícono del teléfono) para AppBar y headers.
 class AppLogo extends StatelessWidget {
   final double size;
-  const AppLogo({super.key, this.size = kAppBarLogoSize});
+  AppLogo({super.key, this.size = kAppBarLogoSize});
 
   @override
   Widget build(BuildContext context) {
@@ -55,10 +56,10 @@ Widget appBarLeadingLogoBack(
         AppLogo(size: logoSize),
         SizedBox(width: gap),
         IconButton(
-          tooltip: 'Volver',
-          icon: const Icon(Icons.arrow_back, size: kBackIconSize),
+          tooltip: context.tr(\'Volver\'),
+          icon: Icon(Icons.arrow_back, size: kBackIconSize),
           padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          constraints: BoxConstraints(minWidth: 48, minHeight: 48),
           onPressed: () async {
             if (onBack != null) {
               onBack();

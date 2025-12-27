@@ -10,6 +10,7 @@ import '../services/itunes_search_service.dart';
 import '../services/vinyl_add_service.dart';
 import 'add_vinyl_preview_screen.dart';
 import 'app_logo.dart';
+import '../l10n/app_strings.dart';
 
 /// Escaneo por carátula en pantalla completa.
 ///
@@ -17,7 +18,7 @@ import 'app_logo.dart';
 /// (por el AppBar con botones) y se terminaban "cortando" botones/resultados.
 /// Esta pantalla ocupa todo, con botón inferior siempre visible.
 class CoverScanScreen extends StatefulWidget {
-  const CoverScanScreen({super.key});
+  CoverScanScreen({super.key});
 
   @override
   State<CoverScanScreen> createState() => _CoverScanScreenState();
@@ -220,23 +221,23 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Opciones de búsqueda', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
-                const SizedBox(height: 6),
-                Text('Elige la opción que mejor coincida con el texto de la carátula.', style: t.textTheme.bodySmall),
-                const SizedBox(height: 10),
+                Text(context.tr(\'Opciones de búsqueda\'), style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+                SizedBox(height: 6),
+                Text(context.tr(\'Elige la opción que mejor coincida con el texto de la carátula.\'), style: t.textTheme.bodySmall),
+                SizedBox(height: 10),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: maxH),
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: options.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, __) => Divider(height: 1),
                     itemBuilder: (_, i) {
                       final opt = options[i];
                       final selected = i == selectedIndex;
                       return ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        title: Text(opt.label, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        title: Text(opt.label, style: TextStyle(fontWeight: FontWeight.w800)),
                         subtitle: Text(opt.query, maxLines: 2, overflow: TextOverflow.ellipsis),
                         trailing: selected ? Icon(Icons.check, color: cs.primary) : null,
                         onTap: () => Navigator.pop(ctx, i),
@@ -244,8 +245,8 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                     },
                   ),
                 ),
-                const SizedBox(height: 10),
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+                SizedBox(height: 10),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cerrar\'))),
               ],
             ),
           ),
@@ -311,16 +312,16 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Editar búsqueda'),
+          title: Text(context.tr(\'Editar búsqueda\')),
           content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Ej: Pink Floyd Animals'),
+            decoration: InputDecoration(hintText: context.tr(\'Ej: Pink Floyd Animals\')),
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Buscar')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr(\'Buscar\'))),
           ],
         );
       },
@@ -407,11 +408,11 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Abrir ficha del disco'),
+          title: Text(context.tr(\'Abrir ficha del disco\')),
           content: Text('${best.artist}\n${best.album}'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuar')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Continuar\'))),
           ],
         );
       },
@@ -433,36 +434,36 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: appBarTitleTextScaled('Carátula', padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr(\'Carátula\'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
           IconButton(
-            tooltip: 'Tomar foto',
+            tooltip: context.tr(\'Tomar foto\'),
             onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: true)),
-            icon: const Icon(Icons.photo_camera),
+            icon: Icon(Icons.photo_camera),
           ),
           IconButton(
-            tooltip: 'Galería',
+            tooltip: context.tr(\'Galería\'),
             onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: false)),
-            icon: const Icon(Icons.photo_library),
+            icon: Icon(Icons.photo_library),
           ),
           if (_coverSuggestions.isNotEmpty)
             IconButton(
-              tooltip: 'Opciones de búsqueda',
+              tooltip: context.tr(\'Opciones de búsqueda\'),
               onPressed: _coverSearching ? null : () => unawaited(_openCoverSearchOptions()),
-              icon: const Icon(Icons.tune),
+              icon: Icon(Icons.tune),
             ),
           if ((_coverQuery ?? '').trim().isNotEmpty)
             IconButton(
-              tooltip: 'Editar búsqueda',
+              tooltip: context.tr(\'Editar búsqueda\'),
               onPressed: _coverSearching ? null : () => unawaited(_editCoverQuery()),
-              icon: const Icon(Icons.edit),
+              icon: Icon(Icons.edit),
             ),
           if (f != null)
             IconButton(
-              tooltip: 'Limpiar',
+              tooltip: context.tr(\'Limpiar\'),
               onPressed: _coverSearching ? null : _clear,
-              icon: const Icon(Icons.clear),
+              icon: Icon(Icons.clear),
             ),
         ],
       ),
@@ -496,18 +497,18 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
-                          child: Text('Lee la carátula (foto)', style: TextStyle(fontWeight: FontWeight.w900)),
+                        Expanded(
+                          child: Text(context.tr(\'Lee la carátula (foto)\'), style: TextStyle(fontWeight: FontWeight.w900)),
                         ),
                         if (_coverSearching)
-                          const SizedBox(
+                          SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     AspectRatio(
                       aspectRatio: 16 / 9,
                       child: ClipRRect(
@@ -527,25 +528,25 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                       ),
                     ),
                     if ((_coverQuery ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       Text('Búsqueda: ${_coverQuery!}', maxLines: 2, overflow: TextOverflow.ellipsis),
                     ],
                     if ((_coverNote ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      SizedBox(height: 6),
                       Text(
                         _coverNote!,
                         style: TextStyle(color: cs.onSurface.withOpacity(0.8), fontWeight: FontWeight.w700),
                       ),
                     ],
                     if ((_coverError ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Text(_coverError!, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      SizedBox(height: 10),
+                      Text(_coverError!, style: TextStyle(fontWeight: FontWeight.w800)),
                     ],
                     if ((_coverOcr ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8),
                       ExpansionTile(
                         tilePadding: EdgeInsets.zero,
-                        title: const Text('Texto detectado'),
+                        title: Text(context.tr(\'Texto detectado\')),
                         children: [
                           Container(
                             width: double.infinity,
@@ -562,7 +563,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(12),
@@ -583,7 +584,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
 
   Widget _buildCoverResults() {
     if (_coverSearching) {
-      return const Center(child: Text('Leyendo carátula y buscando…'));
+      return Center(child: Text(context.tr(\'Leyendo carátula y buscando…\')));
     }
     if (_coverHits.isEmpty) {
       return Center(
@@ -596,7 +597,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
 
     return ListView.separated(
       itemCount: _coverHits.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, __) => Divider(height: 1),
       itemBuilder: (context, i) {
         final h = _coverHits[i];
         final rgid = (h.releaseGroupId ?? '').trim();
@@ -620,7 +621,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right),
           onTap: () => unawaited(_openAddFlow(h)),
         );
       },
@@ -907,7 +908,7 @@ class _CoverThumb extends StatelessWidget {
         height: 48,
         color: cs.surfaceContainerHighest,
         child: url.isEmpty
-            ? const Icon(Icons.album)
+            ? Icon(Icons.album)
             : Image.network(
                 url,
                 fit: BoxFit.cover,
@@ -916,10 +917,10 @@ class _CoverThumb extends StatelessWidget {
                     return Image.network(
                       f,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.album),
+                      errorBuilder: (_, __, ___) => Icon(Icons.album),
                     );
                   }
-                  return const Icon(Icons.album);
+                  return Icon(Icons.album);
                 },
               ),
       ),

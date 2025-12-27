@@ -18,9 +18,10 @@ import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 import 'add_vinyl_preview_screen.dart';
 import 'cover_scan_screen.dart';
+import '../l10n/app_strings.dart';
 
 class ScannerScreen extends StatefulWidget {
-  const ScannerScreen({super.key});
+  ScannerScreen({super.key});
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
@@ -225,11 +226,11 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               context: context,
               builder: (ctx) {
                 return AlertDialog(
-                  title: const Text('Coincidencia encontrada'),
+                  title: Text(context.tr(\'Coincidencia encontrada\')),
                   content: Text('${best.artist}\n${best.album}'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuar')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Continuar\'))),
                   ],
                 );
               },
@@ -571,7 +572,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
     // Auto-detener a los ~8s para que sea rápido y barato.
     unawaited(() async {
-      await Future.delayed(const Duration(seconds: 8));
+      await Future.delayed(Duration(seconds: 8));
       if (!mounted) return;
       if (_mode != ScannerMode.escuchar) return;
       if (_listening) await _stopListening();
@@ -736,15 +737,15 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Álbum encontrado'),
+          title: Text(context.tr(\'Álbum encontrado\')),
           content: Text(
             hasHits
                 ? '${best!.artist}\n${best.album}'
                 : '$artist\n$album\n\nNo encontré el release exacto, pero puedo abrir la ficha con esta info.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuar')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Continuar\'))),
           ],
         );
       },
@@ -822,33 +823,33 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
             return AlertDialog(
-              title: const Text('Estado (wishlist)'),
+              title: Text(context.tr(\'Estado (wishlist)\')),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RadioListTile<String>(
                     value: 'Por comprar',
                     groupValue: picked,
-                    title: const Text('Por comprar'),
+                    title: Text(context.tr(\'Por comprar\')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Buscando',
                     groupValue: picked,
-                    title: const Text('Buscando'),
+                    title: Text(context.tr(\'Buscando\')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Comprado',
                     groupValue: picked,
-                    title: const Text('Comprado'),
+                    title: Text(context.tr(\'Comprado\')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-                ElevatedButton(onPressed: () => Navigator.pop(ctx, picked), child: const Text('Aceptar')),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
+                ElevatedButton(onPressed: () => Navigator.pop(ctx, picked), child: Text(context.tr(\'Aceptar\'))),
               ],
             );
           },
@@ -1139,29 +1140,27 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Opciones de búsqueda',
+                Text(context.tr(\'Opciones de búsqueda\'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Elige la opción que mejor coincida con el texto de la carátula.',
+                SizedBox(height: 6),
+                Text(context.tr(\'Elige la opción que mejor coincida con el texto de la carátula.\'),
                   style: t.textTheme.bodySmall,
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: maxH),
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: options.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, __) => Divider(height: 1),
                     itemBuilder: (_, i) {
                       final opt = options[i];
                       final selected = i == selectedIndex;
                       return ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        title: Text(opt.label, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        title: Text(opt.label, style: TextStyle(fontWeight: FontWeight.w800)),
                         subtitle: Text(opt.query, maxLines: 2, overflow: TextOverflow.ellipsis),
                         trailing: selected ? Icon(Icons.check, color: cs.primary) : null,
                         onTap: () => Navigator.pop(ctx, i),
@@ -1169,8 +1168,8 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     },
                   ),
                 ),
-                const SizedBox(height: 10),
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+                SizedBox(height: 10),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cerrar\'))),
               ],
             ),
           ),
@@ -1198,16 +1197,16 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Editar búsqueda'),
+          title: Text(context.tr(\'Editar búsqueda\')),
           content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Ej: Pink Floyd Animals'),
+            decoration: InputDecoration(hintText: context.tr(\'Ej: Pink Floyd Animals\')),
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Buscar')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr(\'Buscar\'))),
           ],
         );
       },
@@ -1282,16 +1281,16 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Editar búsqueda'),
+          title: Text(context.tr(\'Editar búsqueda\')),
           content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Ej: Pink Floyd Animals'),
+            decoration: InputDecoration(hintText: context.tr(\'Ej: Pink Floyd Animals\')),
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Buscar')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr(\'Buscar\'))),
           ],
         );
       },
@@ -1474,7 +1473,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     if (!mounted) return;
 
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CoverScanScreen()),
+      MaterialPageRoute(builder: (_) => CoverScanScreen()),
     );
 
     if (!mounted) return;
@@ -1500,7 +1499,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: TextStyle(fontWeight: FontWeight.w900, color: textColor)),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(subtitle, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: subColor)),
         ],
       );
@@ -1532,7 +1531,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         // Más aire entre la flecha (leading) y el título.
-        title: appBarTitleTextScaled('Escáner', padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr(\'Escáner\'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         bottom: PreferredSize(
           // Más alto: los 3 botones van vertical para que siempre se lean completos.
@@ -1547,7 +1546,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 if (_mode == ScannerMode.codigo)
                   Row(
                     children: [
-                      const Spacer(),
+                      Spacer(),
                       ValueListenableBuilder<MobileScannerState>(
                         valueListenable: _controller,
                         builder: (context, state, _) {
@@ -1560,20 +1559,20 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                         },
                       ),
                       IconButton(
-                        tooltip: 'Cambiar cámara',
-                        icon: const Icon(Icons.cameraswitch),
+                        tooltip: context.tr(\'Cambiar cámara\'),
+                        icon: Icon(Icons.cameraswitch),
                         onPressed: () => unawaited(_controller.switchCamera()),
                       ),
                     ],
                   ),
-                if (_mode == ScannerMode.codigo) const SizedBox(height: 6) else const SizedBox(height: 2),
+                if (_mode == ScannerMode.codigo) SizedBox(height: 6) else SizedBox(height: 2),
                 modeButton(
                   mode: ScannerMode.codigo,
                   icon: Icons.qr_code_2,
                   title: 'Código de barras',
                   subtitle: 'Busca el álbum por UPC/EAN.',
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 // Carátula se abre en una pantalla aparte (full-screen) para que nunca se corte nada.
                 FilledButton.tonalIcon(
                   style: ButtonStyle(
@@ -1582,20 +1581,19 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                   ),
                   onPressed: () => unawaited(_openCoverFullScreen()),
-                  icon: const Icon(Icons.image_search),
+                  icon: Icon(Icons.image_search),
                   label: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Carátula', style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Lee artista y álbum desde la portada.',
+                      Text(context.tr(\'Carátula\'), style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
+                      SizedBox(height: 2),
+                      Text(context.tr(\'Lee artista y álbum desde la portada.\'),
                         style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(0.72)),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 modeButton(
                   mode: ScannerMode.escuchar,
                   icon: Icons.hearing_outlined,
@@ -1687,13 +1685,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                 children: [
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text('Lee la carátula (foto)', style: TextStyle(fontWeight: FontWeight.w900)),
+                      Expanded(
+                        child: Text(context.tr(\'Lee la carátula (foto)\'), style: TextStyle(fontWeight: FontWeight.w900)),
                       ),
-                      if (_coverSearching) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                      if (_coverSearching) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   AspectRatio(
                     aspectRatio: 16 / 9,
                     child: ClipRRect(
@@ -1712,20 +1710,20 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     children: [
                       FilledButton.icon(
                         onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: true)),
-                        icon: const Icon(Icons.photo_camera),
-                        label: const Text('Tomar foto'),
+                        icon: Icon(Icons.photo_camera),
+                        label: Text(context.tr(\'Tomar foto\')),
                       ),
                       OutlinedButton.icon(
                         onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: false)),
-                        icon: const Icon(Icons.photo_library),
-                        label: const Text('Galería'),
+                        icon: Icon(Icons.photo_library),
+                        label: Text(context.tr(\'Galería\')),
                       ),
                       if (f != null)
                         TextButton.icon(
@@ -1745,49 +1743,49 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                                     _coverAutoPrompted = false;
                                   });
                                 },
-                          icon: const Icon(Icons.clear),
-                          label: const Text('Limpiar'),
+                          icon: Icon(Icons.clear),
+                          label: Text(context.tr(\'Limpiar\')),
                         ),
                     ],
                   ),
                   // En vez de mostrar un "menú" grande debajo de la foto (que en algunos móviles queda
                   // cortado), ofrecemos las opciones en un Bottom Sheet.
                   if (_coverSuggestions.isNotEmpty) ...[
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     OutlinedButton.icon(
                       onPressed: _coverSearching ? null : () => unawaited(_openCoverSearchOptions()),
-                      icon: const Icon(Icons.tune),
-                      label: const Text('Opciones de búsqueda'),
+                      icon: Icon(Icons.tune),
+                      label: Text(context.tr(\'Opciones de búsqueda\')),
                     ),
                   ],
                   if ((_coverQuery ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
                           child: Text('Búsqueda: ${_coverQuery!}', maxLines: 2, overflow: TextOverflow.ellipsis),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         IconButton(
-                          tooltip: 'Editar búsqueda',
+                          tooltip: context.tr(\'Editar búsqueda\'),
                           onPressed: _coverSearching ? null : () => unawaited(_editCoverQuery()),
-                          icon: const Icon(Icons.edit),
+                          icon: Icon(Icons.edit),
                         ),
                       ],
                     ),
                   ],
                   if ((_coverNote ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                     Text(
                       _coverNote!,
                       style: TextStyle(color: cs.onSurface.withOpacity(0.8), fontWeight: FontWeight.w700),
                     ),
                   ],
                   if ((_coverOcr ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,
-                      title: const Text('Texto detectado'),
+                      title: Text(context.tr(\'Texto detectado\')),
                       children: [
                         Container(
                           width: double.infinity,
@@ -1802,13 +1800,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     ),
                   ],
                   if (_coverError != null) ...[
-                    const SizedBox(height: 10),
-                    Text(_coverError!, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    SizedBox(height: 10),
+                    Text(_coverError!, style: TextStyle(fontWeight: FontWeight.w800)),
                   ],
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(12),
@@ -1828,7 +1826,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
   Widget _buildCoverResults() {
     if (_coverSearching) {
-      return const Center(child: Text('Leyendo carátula y buscando…'));
+      return Center(child: Text(context.tr(\'Leyendo carátula y buscando…\')));
     }
     if (_coverHits.isEmpty) {
       return Center(
@@ -1840,7 +1838,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
     return ListView.separated(
       itemCount: _coverHits.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, __) => Divider(height: 1),
       itemBuilder: (context, i) {
         final h = _coverHits[i];
         final rgid = (h.releaseGroupId ?? '').trim();
@@ -1863,7 +1861,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right),
           onTap: () => unawaited(_openAddFlow(h)),
         );
       },
@@ -1896,23 +1894,22 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.hearing_outlined),
-                    const SizedBox(width: 8),
+                    Icon(Icons.hearing_outlined),
+                    SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        'Escuchar y reconocer',
+                      child: Text(context.tr(\'Escuchar y reconocer\'),
                         style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8),
+                Text(
                   'Toca “Escuchar” para grabar ~8 segundos y reconocer la canción.\n'
                   'Luego te muestro el álbum más probable para abrir su ficha y agregarlo a tu Lista o a Deseos.',
                   style: TextStyle(fontSize: 14),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Wrap(
                   spacing: 10,
                   runSpacing: 8,
@@ -1927,22 +1924,22 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                       icon: Icon(_listening ? Icons.stop : Icons.mic),
                       label: Text(_listening ? 'Detener' : 'Escuchar'),
                     ),
-                    if (isBusy) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    if (isBusy) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                     TextButton.icon(
                       onPressed: isBusy ? null : _clearListen,
-                      icon: const Icon(Icons.clear),
-                      label: const Text('Limpiar'),
+                      icon: Icon(Icons.clear),
+                      label: Text(context.tr(\'Limpiar\')),
                     ),
                   ],
                 ),
 
                 if (_listenError != null) ...[
-                  const SizedBox(height: 10),
-                  Text(_listenError!, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  SizedBox(height: 10),
+                  Text(_listenError!, style: TextStyle(fontWeight: FontWeight.w800)),
                 ],
 
                 if (hasRes) ...[
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -1955,29 +1952,29 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                       children: [
                         Text(
                           '${res!.artist ?? ''} — ${res.title ?? ''}',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+                          style: TextStyle(fontWeight: FontWeight.w900),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                         if ((res.album ?? '').trim().isNotEmpty) ...[
-                          const SizedBox(height: 2),
+                          SizedBox(height: 2),
                           Text('Álbum: ${res.album}', maxLines: 2, overflow: TextOverflow.ellipsis),
                         ],
                       ],
                     ),
                   ),
                   if ((res.album ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     FilledButton.icon(
                       onPressed: isBusy ? null : () => unawaited(_continueFromListenResult()),
-                      icon: const Icon(Icons.chevron_right),
-                      label: const Text('Continuar'),
+                      icon: Icon(Icons.chevron_right),
+                      label: Text(context.tr(\'Continuar\')),
                     ),
                   ],
                 ],
 
                 if (_listenSuggestions.isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Wrap(
                     spacing: 10,
                     runSpacing: 8,
@@ -1997,7 +1994,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   ),
                 ],
                 if ((_listenQuery ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(
@@ -2007,17 +2004,17 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       IconButton(
-                        tooltip: 'Editar búsqueda',
+                        tooltip: context.tr(\'Editar búsqueda\'),
                         onPressed: _listenIdentifying ? null : () => unawaited(_editListenQuery()),
-                        icon: const Icon(Icons.edit),
+                        icon: Icon(Icons.edit),
                       ),
                     ],
                   ),
                 ],
                 if ((_listenNote ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   Text(
                     _listenNote!,
                     style: TextStyle(color: cs.onSurface.withOpacity(0.8), fontWeight: FontWeight.w700),
@@ -2026,7 +2023,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Expanded(
             child: Container(
               padding: const EdgeInsets.all(12),
@@ -2045,10 +2042,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
   Widget _buildListenResults() {
     if (_listening) {
-      return const Center(child: Text('Escuchando…'));
+      return Center(child: Text(context.tr(\'Escuchando…\')));
     }
     if (_listenIdentifying) {
-      return const Center(child: Text('Reconociendo y buscando…'));
+      return Center(child: Text(context.tr(\'Reconociendo y buscando…\')));
     }
     if (_listenHits.isEmpty) {
       return Center(
@@ -2063,7 +2060,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
     return ListView.separated(
       itemCount: _listenHits.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (_, __) => Divider(height: 1),
       itemBuilder: (context, i) {
         final h = _listenHits[i];
         final rgid = (h.releaseGroupId ?? '').trim();
@@ -2082,7 +2079,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(Icons.chevron_right),
           onTap: () => unawaited(_openAddFlow(h)),
         );
       },
@@ -2116,19 +2113,18 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
     if (code == null) {
       return Row(
-        key: const ValueKey('idle'),
+        key: ValueKey('idle'),
         children: [
-          const Expanded(
-            child: Text(
-              'Apunta al código de barras del vinilo.',
+          Expanded(
+            child: Text(context.tr(\'Apunta al código de barras del vinilo.\'),
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           FilledButton.icon(
             onPressed: _reset,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Listo'),
+            icon: Icon(Icons.refresh),
+            label: Text(context.tr(\'Listo\')),
           ),
         ],
       );
@@ -2136,40 +2132,40 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
     if (_searching) {
       return Row(
-        key: const ValueKey('searching'),
+        key: ValueKey('searching'),
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Buscando en MusicBrainz…', style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 2),
-                Text('Código: $code', style: const TextStyle(fontSize: 14)),
+                Text(context.tr(\'Buscando en MusicBrainz…\'), style: TextStyle(fontWeight: FontWeight.w800)),
+                SizedBox(height: 2),
+                Text('Código: $code', style: TextStyle(fontSize: 14)),
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 10),
+          SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
         ],
       );
     }
 
     if (_error != null) {
       return Column(
-        key: const ValueKey('error'),
+        key: ValueKey('error'),
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(_error!, style: const TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 6),
+          Text(_error!, style: TextStyle(fontWeight: FontWeight.w800)),
+          SizedBox(height: 6),
           Row(
             children: [
-              Expanded(child: Text('Código: $code', style: const TextStyle(fontSize: 14))),
+              Expanded(child: Text('Código: $code', style: TextStyle(fontSize: 14))),
               TextButton.icon(
                 onPressed: _reset,
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Escanear otro'),
+                icon: Icon(Icons.qr_code_scanner),
+                label: Text(context.tr(\'Escanear otro\')),
               ),
             ],
           ),
@@ -2178,7 +2174,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
 
     return Column(
-      key: const ValueKey('results'),
+      key: ValueKey('results'),
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -2187,25 +2183,25 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             Expanded(
               child: Text(
                 'Resultados (${_hits.length}) — $code',
-                style: const TextStyle(fontWeight: FontWeight.w900),
+                style: TextStyle(fontWeight: FontWeight.w900),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             TextButton.icon(
               onPressed: _reset,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Otro'),
+              icon: Icon(Icons.qr_code_scanner),
+              label: Text(context.tr(\'Otro\')),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 260),
+          constraints: BoxConstraints(maxHeight: 260),
           child: ListView.separated(
             shrinkWrap: true,
             itemCount: _hits.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, __) => Divider(height: 1),
             itemBuilder: (context, i) {
               final h = _hits[i];
               final rgid = (h.releaseGroupId ?? '').trim();
@@ -2224,7 +2220,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: Icon(Icons.chevron_right),
                 onTap: () => unawaited(_openAddFlow(h)),
               );
             },
@@ -2276,7 +2272,7 @@ class _CoverThumb extends StatelessWidget {
     final p = (primary ?? '').trim();
     final f = (fallback ?? '').trim();
     if (p.isEmpty && f.isEmpty) {
-      return const Icon(Icons.album);
+      return Icon(Icons.album);
     }
 
     Widget buildImg(String url, {Widget? onErr}) {
@@ -2285,14 +2281,14 @@ class _CoverThumb extends StatelessWidget {
         width: 44,
         height: 44,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => onErr ?? const Icon(Icons.album),
+        errorBuilder: (_, __, ___) => onErr ?? Icon(Icons.album),
       );
     }
 
     final img = p.isNotEmpty
         ? buildImg(
             p,
-            onErr: f.isNotEmpty ? buildImg(f) : const Icon(Icons.album),
+            onErr: f.isNotEmpty ? buildImg(f) : Icon(Icons.album),
           )
         : buildImg(f);
 
@@ -2396,15 +2392,14 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  'Agregar a tu lista',
+                child: Text(context.tr(\'Agregar a tu lista\'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
-              if (_saving) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              if (_saving) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -2415,7 +2410,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                   height: 92,
                   color: cs.surfaceContainerHighest,
                   child: ((cover ?? '').trim().isEmpty && (fallback ?? '').trim().isEmpty)
-                      ? const Icon(Icons.album, size: 34)
+                      ? Icon(Icons.album, size: 34)
                       : Image.network(
                           ((cover ?? '').trim().isNotEmpty) ? cover! : fallback!,
                           fit: BoxFit.cover,
@@ -2428,32 +2423,32 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                               return Image.network(
                                 fallback!,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 34),
+                                errorBuilder: (_, __, ___) => Icon(Icons.album, size: 34),
                               );
                             }
-                            return const Icon(Icons.album, size: 34);
+                            return Icon(Icons.album, size: 34);
                           },
                         ),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(p.artist, style: const TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text(p.album, style: const TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 8),
+                    Text(p.artist, style: TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    SizedBox(height: 2),
+                    Text(p.album, style: TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    SizedBox(height: 8),
                     TextField(
                       controller: _yearCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Año',
+                      decoration: InputDecoration(
+                        labelText: context.tr(\'Año\'),
                         isDense: true,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
 
                     // ✅ Selector simple de carátula (máx 5 candidatos)
                     if (p.coverCandidates.length > 1)
@@ -2462,7 +2457,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: p.coverCandidates.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 10),
+                          separatorBuilder: (_, __) => SizedBox(width: 10),
                           itemBuilder: (_, i) {
                             final c = p.coverCandidates[i];
                             final selected = identical(p.selectedCover, c);
@@ -2485,11 +2480,11 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
                                   child: (url.isEmpty)
-                                      ? const Center(child: Icon(Icons.album, size: 20))
+                                      ? Center(child: Icon(Icons.album, size: 20))
                                       : Image.network(
                                           url,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.album, size: 20)),
+                                          errorBuilder: (_, __, ___) => Center(child: Icon(Icons.album, size: 20)),
                                         ),
                                 ),
                               ),
@@ -2497,39 +2492,39 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                           },
                         ),
                       ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             value: _condition,
-                            decoration: const InputDecoration(
-                              labelText: 'Condición',
+                            decoration: InputDecoration(
+                              labelText: context.tr(\'Condición\'),
                               isDense: true,
                             ),
                             items: const [
-                              DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
-                              DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
-                              DropdownMenuItem(value: 'VG+', child: Text('VG+')),
-                              DropdownMenuItem(value: 'VG', child: Text('VG')),
+                              DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
+                              DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
+                              DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
+                              DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
                               DropdownMenuItem(value: 'G', child: Text('G')),
                             ],
                             onChanged: (v) => setState(() => _condition = v ?? _condition),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             value: _format,
-                            decoration: const InputDecoration(
-                              labelText: 'Formato',
+                            decoration: InputDecoration(
+                              labelText: context.tr(\'Formato\'),
                               isDense: true,
                             ),
                             items: const [
-                              DropdownMenuItem(value: 'LP', child: Text('LP')),
-                              DropdownMenuItem(value: 'EP', child: Text('EP')),
-                              DropdownMenuItem(value: 'Single', child: Text('Single')),
-                              DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
+                              DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
+                              DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
+                              DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
+                              DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
                             ],
                             onChanged: (v) => setState(() => _format = v ?? _format),
                           ),
@@ -2541,7 +2536,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           if ((p.genre ?? '').trim().isNotEmpty || (p.country ?? '').trim().isNotEmpty)
             Wrap(
               spacing: 8,
@@ -2549,26 +2544,26 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
               children: [
                 if ((p.genre ?? '').trim().isNotEmpty)
                   Chip(
-                    label: Text(p.genre!.trim(), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    label: Text(p.genre!.trim(), style: TextStyle(fontWeight: FontWeight.w800)),
                     visualDensity: VisualDensity.compact,
                   ),
                 if ((p.country ?? '').trim().isNotEmpty)
                   Chip(
-                    label: Text(p.country!.trim(), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    label: Text(p.country!.trim(), style: TextStyle(fontWeight: FontWeight.w800)),
                     visualDensity: VisualDensity.compact,
                   ),
               ],
             ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           FilledButton.icon(
             onPressed: _saving ? null : _add,
-            icon: const Icon(Icons.check),
-            label: const Text('Aceptar'),
+            icon: Icon(Icons.check),
+            label: Text(context.tr(\'Aceptar\')),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context),
-            child: const Text('Cancelar'),
+            child: Text(context.tr(\'Cancelar\')),
           ),
         ],
       ),

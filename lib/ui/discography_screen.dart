@@ -10,9 +10,10 @@ import '../services/add_defaults_service.dart';
 import '../services/price_range_service.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
+import '../l10n/app_strings.dart';
 
 class DiscographyScreen extends StatefulWidget {
-  const DiscographyScreen({super.key});
+  DiscographyScreen({super.key});
 
   @override
   State<DiscographyScreen> createState() => _DiscographyScreenState();
@@ -217,7 +218,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       return;
     }
 
-    _debounce = Timer(const Duration(milliseconds: 260), () async {
+    _debounce = Timer(Duration(milliseconds: 260), () async {
       if (!mounted) return;
       setState(() => searchingArtists = true);
       try {
@@ -334,41 +335,41 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Agregar a tu lista'),
+          title: Text(context.tr(\'Agregar a tu lista\')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 value: condition,
-                decoration: const InputDecoration(labelText: 'Condición'),
+                decoration: InputDecoration(labelText: context.tr(\'Condición\')),
                 items: const [
-                  DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
-                  DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
-                  DropdownMenuItem(value: 'VG+', child: Text('VG+')),
-                  DropdownMenuItem(value: 'VG', child: Text('VG')),
+                  DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
+                  DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
+                  DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
+                  DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
                   DropdownMenuItem(value: 'G', child: Text('G')),
                 ],
                 onChanged: (v) => condition = v ?? condition,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: format,
-                decoration: const InputDecoration(labelText: 'Formato'),
+                decoration: InputDecoration(labelText: context.tr(\'Formato\')),
                 items: const [
-                  DropdownMenuItem(value: 'LP', child: Text('LP')),
-                  DropdownMenuItem(value: 'EP', child: Text('EP')),
-                  DropdownMenuItem(value: 'Single', child: Text('Single')),
-                  DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
+                  DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
+                  DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
+                  DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
+                  DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
                 ],
                 onChanged: (v) => format = v ?? format,
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () { _dismissKeyboard(); Navigator.pop(ctx); }, child: const Text('Cancelar')),
+            TextButton(onPressed: () { _dismissKeyboard(); Navigator.pop(ctx); }, child: Text(context.tr(\'Cancelar\'))),
             ElevatedButton(
               onPressed: () { _dismissKeyboard(); Navigator.pop(ctx, {'condition': condition, 'format': format}); },
-              child: const Text('Aceptar'),
+              child: Text(context.tr(\'Aceptar\')),
             ),
           ],
         );
@@ -391,26 +392,26 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
             return AlertDialog(
-              title: const Text('Estado (wishlist)'),
+              title: Text(context.tr(\'Estado (wishlist)\')),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RadioListTile<String>(
                     value: 'Por comprar',
                     groupValue: picked,
-                    title: const Text('Por comprar'),
+                    title: Text(context.tr(\'Por comprar\')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Buscando',
                     groupValue: picked,
-                    title: const Text('Buscando'),
+                    title: Text(context.tr(\'Buscando\')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Comprado',
                     groupValue: picked,
-                    title: const Text('Comprado'),
+                    title: Text(context.tr(\'Comprado\')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                 ],
@@ -421,14 +422,14 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                     _dismissKeyboard();
                     Navigator.pop(ctx);
                   },
-                  child: const Text('Cancelar'),
+                  child: Text(context.tr(\'Cancelar\')),
                 ),
                 ElevatedButton(
                   onPressed: () {
                     _dismissKeyboard();
                     Navigator.pop(ctx, picked);
                   },
-                  child: const Text('Aceptar'),
+                  child: Text(context.tr(\'Aceptar\')),
                 ),
               ],
             );
@@ -619,13 +620,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: appBarTitleTextScaled('Discografías', padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr(\'Discografías\'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
           if ((pickedArtist != null || albums.isNotEmpty) && artistName.trim().isNotEmpty)
             IconButton(
               tooltip: _showPrices ? 'Ocultar precios' : 'Mostrar precios',
-              icon: const Icon(Icons.euro_symbol),
+              icon: Icon(Icons.euro_symbol),
               onPressed: () {
                 setState(() => _showPrices = !_showPrices);
               },
@@ -645,30 +646,30 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                 _onArtistTextChanged(v);
               },
               decoration: InputDecoration(
-                labelText: 'Artista',
-                prefixIcon: const Icon(Icons.search),
+                labelText: context.tr(\'Artista\'),
+                prefixIcon: Icon(Icons.search),
                 suffixIcon: artistCtrl.text.trim().isEmpty
                     ? null
                     : IconButton(
-                        tooltip: 'Limpiar',
-                        icon: const Icon(Icons.close),
+                        tooltip: context.tr(\'Limpiar\'),
+                        icon: Icon(Icons.close),
                         onPressed: () => _clearArtistSearch(),
                       ),
               ),
             ),
-            const SizedBox(height: 10),
-            if (searchingArtists) const LinearProgressIndicator(),
+            SizedBox(height: 10),
+            if (searchingArtists) LinearProgressIndicator(),
             if (artistResults.isNotEmpty)
               Expanded(
                 child: ListView.separated(
                   itemCount: artistResults.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, __) => Divider(height: 1),
                   itemBuilder: (_, i) {
                     final a = artistResults[i];
                     return ListTile(
                       title: Text(a.name),
                       subtitle: Text((a.country ?? '').trim().isEmpty ? '—' : (a.country ?? '').trim()),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: Icon(Icons.chevron_right),
                       onTap: () => _pickArtist(a),
                     );
                   },
@@ -677,9 +678,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             else
               Expanded(
                 child: loadingAlbums
-                    ? const Center(child: CircularProgressIndicator())
+                    ? Center(child: CircularProgressIndicator())
                     : (albums.isEmpty
-                        ? const Center(child: Text('Busca un artista para ver su discografía.'))
+                        ? Center(child: Text(context.tr(\'Busca un artista para ver su discografía.\')))
                         : ListView.builder(
                             itemCount: albums.length,
                             itemBuilder: (_, i) {
@@ -737,7 +738,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Icon(icon, color: color),
-                                          const SizedBox(height: 2),
+                                          SizedBox(height: 2),
                                           Text(
                                             label,
                                             style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
@@ -760,10 +761,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                           width: 56,
                                           height: 56,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 34),
+                                          errorBuilder: (_, __, ___) => Icon(Icons.album, size: 34),
                                           loadingBuilder: (ctx, child, prog) {
                                             if (prog == null) return child;
-                                            return const SizedBox(
+                                            return SizedBox(
                                               width: 56,
                                               height: 56,
                                               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
@@ -780,7 +781,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                         children: [
                                           Expanded(
                                             child: Text(
-                                              'Año: ${((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')}',
+                                              AppStrings.labeled(context, 'Año', ((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -806,7 +807,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                         );
                                       },
                                     ),
-                                    const Divider(height: 1),
+                                    Divider(height: 1),
                                     Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 8),
                                       child: Row(
@@ -818,7 +819,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                 final c = (pickedArtist?.country ?? '').trim();
                                                 if (c.isEmpty) return const SizedBox.shrink();
                                                 return Text(
-                                                  'País: $c',
+                                                  AppStrings.labeled(context, 'País', c),
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
                                                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -870,7 +871,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                 },
                                               ),
                                               if (busy)
-                                                const Padding(
+                                                Padding(
                                                   padding: EdgeInsets.only(left: 8),
                                                   child: SizedBox(
                                                     width: 16,

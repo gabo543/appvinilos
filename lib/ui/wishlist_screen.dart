@@ -8,9 +8,10 @@ import '../services/add_defaults_service.dart';
 import 'album_tracks_screen.dart';
 import 'vinyl_detail_sheet.dart';
 import 'app_logo.dart';
+import '../l10n/app_strings.dart';
 
 class WishlistScreen extends StatefulWidget {
-  const WishlistScreen({super.key});
+  WishlistScreen({super.key});
 
   @override
   State<WishlistScreen> createState() => _WishlistScreenState();
@@ -62,7 +63,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       icon = Icons.bookmark_border;
     }
 
-    final textStyle = (Theme.of(context).textTheme.labelMedium ?? const TextStyle())
+    final textStyle = (Theme.of(context).textTheme.labelMedium ?? TextStyle())
         .copyWith(color: fg, fontWeight: FontWeight.w800);
 
     return Container(
@@ -76,7 +77,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: fg),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Text(status, style: textStyle),
         ],
       ),
@@ -100,42 +101,42 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
       return StatefulBuilder(
         builder: (ctx, setSt) {
           return AlertDialog(
-            title: const Text('Agregar a tu lista'),
+            title: Text(context.tr(\'Agregar a tu lista\')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
                   value: condition,
-                  decoration: const InputDecoration(labelText: 'Condición'),
+                  decoration: InputDecoration(labelText: context.tr(\'Condición\')),
                   items: const [
-                    DropdownMenuItem(value: 'M', child: Text('M (Mint)')),
-                    DropdownMenuItem(value: 'NM', child: Text('NM (Near Mint)')),
-                    DropdownMenuItem(value: 'VG+', child: Text('VG+')),
-                    DropdownMenuItem(value: 'VG', child: Text('VG')),
+                    DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
+                    DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
+                    DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
+                    DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
                     DropdownMenuItem(value: 'G', child: Text('G')),
                   ],
                   onChanged: (v) => setSt(() => condition = v ?? condition),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: format,
-                  decoration: const InputDecoration(labelText: 'Formato'),
+                  decoration: InputDecoration(labelText: context.tr(\'Formato\')),
                   items: const [
-                    DropdownMenuItem(value: 'LP', child: Text('LP')),
-                    DropdownMenuItem(value: 'EP', child: Text('EP')),
-                    DropdownMenuItem(value: 'Single', child: Text('Single')),
-                    DropdownMenuItem(value: '2xLP', child: Text('2xLP')),
-                    DropdownMenuItem(value: 'Boxset', child: Text('Boxset')),
+                    DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
+                    DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
+                    DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
+                    DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
+                    DropdownMenuItem(value: 'Boxset', child: Text(context.tr(\'Boxset\'))),
                   ],
                   onChanged: (v) => setSt(() => format = v ?? format),
                 ),
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
               ElevatedButton(
                 onPressed: () => Navigator.pop(ctx, {'condition': condition, 'format': format}),
-                child: const Text('Aceptar'),
+                child: Text(context.tr(\'Aceptar\')),
               ),
             ],
           );
@@ -266,7 +267,7 @@ Widget _placeholder() {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 2, right: 4),
@@ -282,14 +283,14 @@ Widget _placeholder() {
                           if (status.isNotEmpty) _statusChip(context, status),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       Text(
                         artista.isEmpty ? '—' : artista,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: 2),
                       Text(
                         album.isEmpty ? '—' : album,
                         maxLines: 2,
@@ -300,12 +301,12 @@ Widget _placeholder() {
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
+              SizedBox(width: 6),
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip: 'Agregar a vinilos',
+                    tooltip: context.tr(\'Agregar a vinilos\'),
                     icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
                     visualDensity: VisualDensity.compact,
                     onPressed: () async {
@@ -338,7 +339,7 @@ Widget _placeholder() {
                     },
                   ),
                   IconButton(
-                    tooltip: 'Eliminar',
+                    tooltip: context.tr(\'Eliminar\'),
                     icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
                     visualDensity: VisualDensity.compact,
                     onPressed: () => _removeItem(w),
@@ -400,23 +401,23 @@ Widget _placeholder() {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: 2),
                   Text(
                     album.isEmpty ? '—' : album,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Row(
                     children: [
                       _metaPill(context, year),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       if (status.isNotEmpty)
                         Expanded(child: Align(alignment: Alignment.centerLeft, child: _statusChip(context, status))),
-                      const Spacer(),
+                      Spacer(),
                       IconButton(
-                        tooltip: 'Agregar a vinilos',
+                        tooltip: context.tr(\'Agregar a vinilos\'),
                         icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 20),
                         visualDensity: VisualDensity.compact,
                         onPressed: () async {
@@ -449,7 +450,7 @@ Widget _placeholder() {
                         },
                       ),
                       IconButton(
-                        tooltip: 'Eliminar',
+                        tooltip: context.tr(\'Eliminar\'),
                         icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 20),
                         visualDensity: VisualDensity.compact,
                         onPressed: () => _removeItem(w),
@@ -529,7 +530,7 @@ Widget _placeholder() {
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         // Más aire entre el leading (logo + back) y el título.
-        title: appBarTitleTextScaled('Deseos', padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr(\'Deseos\'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
           IconButton(
@@ -543,7 +544,7 @@ Widget _placeholder() {
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
             return Center(
@@ -557,13 +558,13 @@ Widget _placeholder() {
           final items = snap.data ?? const [];
 
           if (items.isEmpty) {
-            return const Center(child: Text('Tu lista de deseos está vacía'));
+            return Center(child: Text(context.tr(\'Tu lista de deseos está vacía\')));
           }
 
           return _grid
               ? GridView.builder(
                   padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,

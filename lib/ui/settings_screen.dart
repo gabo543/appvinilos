@@ -7,11 +7,13 @@ import '../services/app_theme_service.dart';
 import '../services/cover_cache_service.dart';
 import '../services/export_service.dart';
 import '../services/audio_recognition_service.dart';
+import '../services/locale_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
+import '../l10n/app_strings.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -100,31 +102,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Reconocimiento (Escuchar)'),
+          title: Text(context.tr(\'Reconocimiento (Escuchar)\')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 'Para reconocer canciones necesitas un token (AudD).\n\n'
                 'Pega tu token aquí. Puedes dejarlo vacío para desactivar.',
                 style: TextStyle(fontSize: 14),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: ctrl,
-                decoration: const InputDecoration(
-                  labelText: 'Token AudD',
-                  hintText: 'api_token…',
+                decoration: InputDecoration(
+                  labelText: context.tr(\'Token AudD\'),
+                  hintText: context.tr(\'api_token…\'),
                 ),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Guardar'),
+              child: Text(context.tr(\'Guardar\')),
             ),
           ],
         );
@@ -141,7 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _snack(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(msg)))));
   }
 
   Future<void> _descargarCaratulas() async {
@@ -161,16 +163,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final t = _coversTotal <= 0 ? 'Preparando…' : '$_coversDone / $_coversTotal';
           final p = (_coversTotal <= 0) ? null : (_coversDone / _coversTotal).clamp(0.0, 1.0);
           return AlertDialog(
-            title: const Text('Descargando carátulas'),
+            title: Text(context.tr(\'Descargando carátulas\')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (p == null) const LinearProgressIndicator() else LinearProgressIndicator(value: p),
-                const SizedBox(height: 12),
+                if (p == null) LinearProgressIndicator() else LinearProgressIndicator(value: p),
+                SizedBox(height: 12),
                 Text(t),
-                const SizedBox(height: 6),
-                const Text('Esto deja tus carátulas guardadas para ver offline.', style: TextStyle(fontSize: 14)),
+                SizedBox(height: 6),
+                Text(context.tr(\'Esto deja tus carátulas guardadas para ver offline.\'), style: TextStyle(fontSize: 14)),
               ],
             ),
           );
@@ -215,7 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            title: const Text('Duplicados encontrados'),
+            title: Text(context.tr(\'Duplicados encontrados\')),
             content: SizedBox(
               width: double.maxFinite,
               child: ListView.builder(
@@ -236,8 +238,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cerrar')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Fusionar duplicados')),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cerrar\'))),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Fusionar duplicados\'))),
             ],
           );
         },
@@ -322,7 +324,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final mode = await showDialog<BackupImportMode>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Importar backup'),
+          title: Text(context.tr(\'Importar backup\')),
           content: Text(
             '${preview.pretty()}\n\nArchivo:\n${f.path}\n\n'
             'Elige cómo importarlo:',
@@ -330,19 +332,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar'),
+              child: Text(context.tr(\'Cancelar\')),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, BackupImportMode.onlyMissing),
-              child: const Text('Solo faltantes'),
+              child: Text(context.tr(\'Solo faltantes\')),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, BackupImportMode.merge),
-              child: const Text('Fusionar (recomendado)'),
+              child: Text(context.tr(\'Fusionar (recomendado)\')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, BackupImportMode.replace),
-              child: const Text('Reemplazar todo'),
+              child: Text(context.tr(\'Reemplazar todo\')),
             ),
           ],
         ),
@@ -389,20 +391,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final previewBorder = borderBase.withOpacity(isDark ? 0.90 : 0.70);
 
     Widget sectionTitle(IconData icon, String title, {String? subtitle}) {
+    final titleT = context.tr(title);
+    final subtitleT = (subtitle == null) ? null : context.tr(subtitle!);
       return Padding(
         padding: const EdgeInsets.fromLTRB(6, 12, 6, 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Icon(icon, size: 18, color: cs.onSurface.withOpacity(0.82)),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.2)),
                   if (subtitle != null) ...[
-                    const SizedBox(height: 3),
+                    SizedBox(height: 3),
                     Text(
                       subtitle,
                       style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700),
@@ -424,96 +428,120 @@ class _SettingsScreenState extends State<SettingsScreen> {
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         // Más aire entre el leading (logo + back) y el título.
-        title: appBarTitleTextScaled('Ajustes', padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr(\'Ajustes\'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 sectionTitle(Icons.tune, 'General', subtitle: 'Opciones básicas y respaldo automático.'),
                 Card(
-                  child: SwitchListTile(
-                    value: _auto,
-                    onChanged: (v) async {
-                      setState(() => _auto = v);
-                      await BackupService.setAutoEnabled(v);
-                      if (v) {
-                        await BackupService.saveListNow();
-                        _snack('Guardado automático: ACTIVADO ☁️');
-                      } else {
-                        _snack('Guardado automático: MANUAL ☁️');
-                      }
-                    },
-                    secondary: Icon(_auto ? Icons.cloud_done : Icons.cloud_off),
-                    title: const Text('Guardado automático'),
-                    subtitle: Text(
-                      _auto
-                          ? 'Respalda solo cuando agregas o borras vinilos.'
-                          : 'Debes usar “Guardar backup” manualmente.',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
+  child: Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ValueListenableBuilder<Locale>(
+        valueListenable: LocaleService.localeNotifier,
+        builder: (_, locale, __) {
+          final isEn = locale.languageCode == 'en';
+          return SwitchListTile(
+            value: isEn,
+            onChanged: (v) async {
+              await LocaleService.setCode(v ? 'en' : 'es');
+              if (!mounted) return;
+              setState(() {});
+            },
+            title: Text(context.tr('Idioma')),
+            subtitle: Text(context.tr('Cambiar idioma entre Español e Inglés.')),
+            secondary: const Icon(Icons.language),
+          );
+        },
+      ),
+      const Divider(height: 1),
+      SwitchListTile(
+    value: _auto,
+    onChanged: (v) async {
+      setState(() => _auto = v);
+      await BackupService.setAutoEnabled(v);
+      if (v) {
+        await BackupService.saveListNow();
+        _snack('Guardado automático: ACTIVADO ☁️');
+      } else {
+        _snack('Guardado automático: MANUAL ☁️');
+      }
+    },
+    secondary: Icon(_auto ? Icons.cloud_done : Icons.cloud_off),
+    title: Text(context.tr(\'Guardado automático\')),
+    subtitle: Text(
+      _auto
+          ? 'Respalda solo cuando agregas o borras vinilos.'
+          : 'Debes usar “Guardar backup” manualmente.',
+    ),
+  ),
+)
+    ],
+  ),
+),
+                SizedBox(height: 14),
 
                 sectionTitle(Icons.backup_outlined, 'Backup y exportación', subtitle: 'Guardar, importar y compartir tu colección.'),
                 Card(
                   child: Column(
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.save_alt),
-                        title: const Text('Guardar backup'),
-                        subtitle: const Text('Crea un respaldo completo (colección + deseos + ajustes).'),
+                        leading: Icon(Icons.save_alt),
+                        title: Text(context.tr(\'Guardar backup\')),
+                        subtitle: Text(context.tr(\'Crea un respaldo completo (colección + deseos + ajustes).\')),
                         onTap: _guardar,
                       ),
                       div,
                       ListTile(
-                        leading: const Icon(Icons.download_for_offline_outlined),
-                        title: const Text('Exportar backup (Descargas)'),
-                        subtitle: const Text('Guárdalo en Descargas para copiarlo o enviarlo.'),
+                        leading: Icon(Icons.download_for_offline_outlined),
+                        title: Text(context.tr(\'Exportar backup (Descargas)\')),
+                        subtitle: Text(context.tr(\'Guárdalo en Descargas para copiarlo o enviarlo.\')),
                         onTap: _exportarDescargas,
                       ),
                       div,
                       ListTile(
-                        leading: const Icon(Icons.file_download_outlined),
-                        title: const Text('Importar backup'),
-                        subtitle: const Text('Selecciona un archivo para fusionar o reemplazar datos.'),
+                        leading: Icon(Icons.file_download_outlined),
+                        title: Text(context.tr(\'Importar backup\')),
+                        subtitle: Text(context.tr(\'Selecciona un archivo para fusionar o reemplazar datos.\')),
                         onTap: _importarDescargas,
                       ),
                       div,
                       ListTile(
-                        leading: const Icon(Icons.share_outlined),
-                        title: const Text('Compartir backup'),
-                        subtitle: const Text('Enviar a Drive / WhatsApp / correo.'),
+                        leading: Icon(Icons.share_outlined),
+                        title: Text(context.tr(\'Compartir backup\')),
+                        subtitle: Text(context.tr(\'Enviar a Drive / WhatsApp / correo.\')),
                         onTap: _compartirBackup,
                       ),
                       div,
                       ListTile(
-                        leading: const Icon(Icons.table_chart_outlined),
-                        title: const Text('Exportar inventario (CSV)'),
-                        subtitle: const Text('Planilla para Excel / Google Sheets.'),
+                        leading: Icon(Icons.table_chart_outlined),
+                        title: Text(context.tr(\'Exportar inventario (CSV)\')),
+                        subtitle: Text(context.tr(\'Planilla para Excel / Google Sheets.\')),
                         onTap: _exportarCsvInventario,
                       ),
                       div,
                       ListTile(
-                        leading: const Icon(Icons.picture_as_pdf_outlined),
-                        title: const Text('Exportar inventario (PDF)'),
-                        subtitle: const Text('Inventario listo para imprimir.'),
+                        leading: Icon(Icons.picture_as_pdf_outlined),
+                        title: Text(context.tr(\'Exportar inventario (PDF)\')),
+                        subtitle: Text(context.tr(\'Inventario listo para imprimir.\')),
                         onTap: _exportarPdfInventario,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
 
                 sectionTitle(Icons.hearing_outlined, 'Escáner y audio', subtitle: 'Reconocimiento por micrófono y carátulas offline.'),
                 Card(
                   child: Column(
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.hearing_outlined),
-                        title: const Text('Reconocimiento (Escuchar)'),
+                        leading: Icon(Icons.hearing_outlined),
+                        title: Text(context.tr(\'Reconocimiento (Escuchar)\')),
                         subtitle: Text(
                           _audioConfigured
                               ? 'Token configurado ✅'
@@ -523,37 +551,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       div,
                       ListTile(
-                        leading: const Icon(Icons.cloud_download_outlined),
-                        title: const Text('Descargar carátulas faltantes'),
-                        subtitle: const Text('Guarda portadas para ver offline.'),
+                        leading: Icon(Icons.cloud_download_outlined),
+                        title: Text(context.tr(\'Descargar carátulas faltantes\')),
+                        subtitle: Text(context.tr(\'Guarda portadas para ver offline.\')),
                         onTap: _downloadingCovers ? null : _descargarCaratulas,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
 
                 sectionTitle(Icons.library_music, 'Colección', subtitle: 'Mantenimiento y limpieza de tu lista.'),
                 Card(
                   child: Column(
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.content_copy_outlined),
-                        title: const Text('Detectar / fusionar duplicados'),
-                        subtitle: const Text('Encuentra repetidos por artista+álbum y los fusiona.'),
+                        leading: Icon(Icons.content_copy_outlined),
+                        title: Text(context.tr(\'Detectar / fusionar duplicados\')),
+                        subtitle: Text(context.tr(\'Encuentra repetidos por artista+álbum y los fusiona.\')),
                         onTap: _duplicados,
                       ),
                       div,
                       ExpansionTile(
-                        leading: const Icon(Icons.warning_amber_outlined),
-                        title: const Text('Avanzado'),
-                        subtitle: const Text('Opciones que pueden reemplazar datos.'),
+                        leading: Icon(Icons.warning_amber_outlined),
+                        title: Text(context.tr(\'Avanzado\')),
+                        subtitle: Text(context.tr(\'Opciones que pueden reemplazar datos.\')),
                         childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                         children: [
                           ListTile(
-                            leading: const Icon(Icons.upload_file),
-                            title: const Text('Cargar backup local'),
-                            subtitle: const Text('Reemplaza TODO por el último backup local.'),
+                            leading: Icon(Icons.upload_file),
+                            title: Text(context.tr(\'Cargar backup local\')),
+                            subtitle: Text(context.tr(\'Reemplaza TODO por el último backup local.\')),
                             onTap: _cargar,
                           ),
                         ],
@@ -561,19 +589,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
 
                 sectionTitle(Icons.palette_outlined, 'Apariencia', subtitle: 'Tema, contraste y bordes.'),
                 Card(
                   child: ExpansionTile(
-                    leading: const Icon(Icons.palette_outlined),
-                    title: const Text('Personalizar diseño'),
+                    leading: Icon(Icons.palette_outlined),
+                    title: Text(context.tr(\'Personalizar diseño\')),
                     subtitle: Text('Tema: $themeName · Texto: $intensityName'),
                     childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                     children: [
-                      const SizedBox(height: 10),
-                      Text('Tema', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 10),
+                      Text(context.tr(\'Tema\'), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      SizedBox(height: 8),
                       SegmentedButton<int>(
                         segments: const [
                           ButtonSegment(value: 1, icon: Icon(Icons.graphic_eq)),
@@ -591,16 +619,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           AppThemeService.setTheme(v);
                         },
                       ),
-                      const SizedBox(height: 6),
-                      Text('Cambia el estilo visual de la app.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 16),
+                      SizedBox(height: 6),
+                      Text(context.tr(\'Cambia el estilo visual de la app.\'), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                      SizedBox(height: 16),
 
-                      Text('Texto', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 6),
+                      Text(context.tr(\'Texto\'), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      SizedBox(height: 6),
                       Row(
                         children: [
-                          Text('Intensidad:', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
-                          const SizedBox(width: 8),
+                          Text(context.tr(\'Intensidad:\'), style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          SizedBox(width: 8),
                           Text(intensityName, style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
                         ],
                       ),
@@ -616,15 +644,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           AppThemeService.setTextIntensity(iv);
                         },
                       ),
-                      Text('Ajusta el contraste del texto.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 14),
+                      Text(context.tr(\'Ajusta el contraste del texto.\'), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                      SizedBox(height: 14),
 
-                      Text('Niveles visuales', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 6),
+                      Text(context.tr(\'Niveles visuales\'), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      SizedBox(height: 6),
                       Row(
                         children: [
-                          Text('Fondo', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
-                          const Spacer(),
+                          Text(context.tr(\'Fondo\'), style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          Spacer(),
                           Text('Nivel $_bgLevel', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
                         ],
                       ),
@@ -642,8 +670,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       Row(
                         children: [
-                          Text('Cuadros', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
-                          const Spacer(),
+                          Text(context.tr(\'Cuadros\'), style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          Spacer(),
                           Text('Nivel $_cardLevel', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
                         ],
                       ),
@@ -659,15 +687,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           AppThemeService.setCardLevel(iv);
                         },
                       ),
-                      Text('Ajusta fondo y estilo de cards.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 14),
+                      Text(context.tr(\'Ajusta fondo y estilo de cards.\'), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                      SizedBox(height: 14),
 
-                      Text('Borde de tarjetas', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
-                      const SizedBox(height: 6),
+                      Text(context.tr(\'Borde de tarjetas\'), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      SizedBox(height: 6),
                       Row(
                         children: [
-                          Text('Color:', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
-                          const SizedBox(width: 8),
+                          Text(context.tr(\'Color:\'), style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          SizedBox(width: 8),
                           Text('$_borderStyle · $borderName', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
                         ],
                       ),
@@ -691,17 +719,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           color: cs.surface,
                         ),
                         alignment: Alignment.center,
-                        child: Text(
-                          'Vista previa',
+                        child: Text(context.tr(\'Vista previa\'),
                           style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Text('Cambia el contorno de los cuadros.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                      SizedBox(height: 6),
+                      Text(context.tr(\'Cambia el contorno de los cuadros.\'), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
-                const SizedBox(height: 18),
+                SizedBox(height: 18),
               ],
             ),
     );

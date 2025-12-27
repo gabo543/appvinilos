@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/vinyl_add_service.dart';
 import 'add_vinyl_preview_screen.dart';
+import '../l10n/app_strings.dart';
 
 /// Ingreso manual de vinilos (sin escáner).
 ///
@@ -9,7 +10,7 @@ import 'add_vinyl_preview_screen.dart';
 /// 1) Formulario (artista + álbum obligatorios; año/género opcionales)
 /// 2) Abre la ficha [AddVinylPreviewScreen] para revisar y agregar a Lista/Deseos.
 class ManualVinylEntryScreen extends StatefulWidget {
-  const ManualVinylEntryScreen({super.key});
+  ManualVinylEntryScreen({super.key});
 
   @override
   State<ManualVinylEntryScreen> createState() => _ManualVinylEntryScreenState();
@@ -110,7 +111,7 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Agregar a mano'),
+        title: Text(context.tr(\'Agregar a mano\')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -120,31 +121,30 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Escribe los datos básicos. Luego podrás revisar la ficha y agregar a tu lista o a deseos.',
+                Text(context.tr(\'Escribe los datos básicos. Luego podrás revisar la ficha y agregar a tu lista o a deseos.\'),
                   style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 TextFormField(
                   controller: _artistCtrl,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Artista / Banda',
-                    hintText: 'Ej: Pink Floyd',
+                  decoration: InputDecoration(
+                    labelText: context.tr(\'Artista / Banda\'),
+                    hintText: context.tr(\'Ej: Pink Floyd\'),
                   ),
                   validator: (v) => (v ?? '').trim().isEmpty ? 'El artista es obligatorio.' : null,
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 TextFormField(
                   controller: _albumCtrl,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Álbum',
-                    hintText: 'Ej: The Dark Side of the Moon',
+                  decoration: InputDecoration(
+                    labelText: context.tr(\'Álbum\'),
+                    hintText: context.tr(\'Ej: The Dark Side of the Moon\'),
                   ),
                   validator: (v) => (v ?? '').trim().isEmpty ? 'El álbum es obligatorio.' : null,
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
@@ -152,31 +152,31 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
                         controller: _yearCtrl,
                         keyboardType: TextInputType.number,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'Año (opcional)',
-                          hintText: 'Ej: 1973',
+                        decoration: InputDecoration(
+                          labelText: context.tr(\'Año (opcional)\'),
+                          hintText: context.tr(\'Ej: 1973\'),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: 10),
                     Expanded(
                       child: TextFormField(
                         controller: _genreCtrl,
                         textInputAction: TextInputAction.done,
-                        decoration: const InputDecoration(
-                          labelText: 'Género (opcional)',
-                          hintText: 'Ej: Rock',
+                        decoration: InputDecoration(
+                          labelText: context.tr(\'Género (opcional)\'),
+                          hintText: context.tr(\'Ej: Rock\'),
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                SizedBox(height: 18),
                 FilledButton.icon(
                   onPressed: _loading ? null : _continue,
                   icon: _loading
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.arrow_forward),
+                      ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(Icons.arrow_forward),
                   label: Text(_loading ? 'Preparando…' : 'Continuar'),
                 ),
               ],

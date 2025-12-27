@@ -2,13 +2,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
+import '../l10n/app_strings.dart';
 
 class AlbumTracksScreen extends StatefulWidget {
   final AlbumItem album;
   final String artistName;
   final String? artistId;
 
-  const AlbumTracksScreen({
+  AlbumTracksScreen({
     super.key,
     required this.album,
     required this.artistName,
@@ -89,8 +90,8 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
         actions: [
           IconButton(
             onPressed: _load,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Recargar canciones',
+            icon: Icon(Icons.refresh),
+            tooltip: context.tr(\'Recargar canciones\'),
           ),
         ],
       ),
@@ -110,10 +111,10 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                           width: 72,
                           height: 72,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 48),
+                          errorBuilder: (_, __, ___) => Icon(Icons.album, size: 48),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,26 +124,26 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                               widget.album.title,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w900),
+                              style: TextStyle(fontWeight: FontWeight.w900),
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(height: 4),
                             Text(
                               widget.artistName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w800),
+                              style: TextStyle(fontWeight: FontWeight.w800),
                             ),
                             Text(
-                              'Año: $y',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              AppStrings.labeled(context, 'Año', y),
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  if (loadingInfo) const LinearProgressIndicator(),
+                  SizedBox(height: 10),
+                  if (loadingInfo) LinearProgressIndicator(),
                   if (!loadingInfo && info != null)
                     Container(
                       width: double.infinity,
@@ -164,7 +165,7 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                             ],
                           ),
                           if ((info!.bio ?? '').trim().isNotEmpty) ...[
-                            const SizedBox(height: 8),
+                            SizedBox(height: 8),
                             Text(
                               info!.bio!,
                               maxLines: _bioExpanded ? 30 : 2,
@@ -181,8 +182,8 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                         ],
                       ),
                     ),
-                  const SizedBox(height: 12),
-                  if (loading) const LinearProgressIndicator(),
+                  SizedBox(height: 12),
+                  if (loading) LinearProgressIndicator(),
                   if (!loading && msg != null)
                     Padding(
                       padding: const EdgeInsets.all(10),
@@ -193,10 +194,10 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         'Canciones (${tracks.length})',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        style: TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                 ],
               ),
             ),
@@ -208,12 +209,12 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
                     // Intercalamos divisores: item, divider, item, divider...
-                    if (i.isOdd) return const Divider(height: 1);
+                    if (i.isOdd) return Divider(height: 1);
                     final idx = i ~/ 2;
                     final t = tracks[idx];
                     return ListTile(
                       dense: true,
-                      visualDensity: const VisualDensity(vertical: -2),
+                      visualDensity: VisualDensity(vertical: -2),
                       title: Text('${t.number}. ${t.title}'),
                       trailing: Text(t.length ?? ''),
                     );
