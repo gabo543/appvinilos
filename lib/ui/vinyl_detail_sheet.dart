@@ -73,7 +73,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                     DropdownButtonFormField<String>(
                       value: condition,
                       decoration: InputDecoration(labelText: context.tr('Condición')),
-                      items: const [
+                      items: [
                         DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
                         DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
                         DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
@@ -86,7 +86,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                     DropdownButtonFormField<String>(
                       value: format,
                       decoration: InputDecoration(labelText: context.tr('Formato')),
-                      items: const [
+                      items: [
                         DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
                         DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
                         DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),

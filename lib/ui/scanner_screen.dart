@@ -2502,7 +2502,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                               labelText: context.tr('Condición'),
                               isDense: true,
                             ),
-                            items: const [
+                            items: [
                               DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
                               DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
                               DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
@@ -2520,7 +2520,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                               labelText: context.tr('Formato'),
                               isDense: true,
                             ),
-                            items: const [
+                            items: [
                               DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
                               DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
                               DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),
