@@ -226,11 +226,11 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               context: context,
               builder: (ctx) {
                 return AlertDialog(
-                  title: Text(context.tr(\'Coincidencia encontrada\')),
+                  title: Text(context.tr('Coincidencia encontrada')),
                   content: Text('${best.artist}\n${best.album}'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Continuar\'))),
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('Cancelar'))),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr('Continuar'))),
                   ],
                 );
               },
@@ -737,15 +737,15 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(context.tr(\'Álbum encontrado\')),
+          title: Text(context.tr('Álbum encontrado')),
           content: Text(
             hasHits
                 ? '${best!.artist}\n${best.album}'
                 : '$artist\n$album\n\nNo encontré el release exacto, pero puedo abrir la ficha con esta info.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Continuar\'))),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('Cancelar'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr('Continuar'))),
           ],
         );
       },
@@ -823,33 +823,33 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
             return AlertDialog(
-              title: Text(context.tr(\'Estado (wishlist)\')),
+              title: Text(context.tr('Estado (wishlist)')),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RadioListTile<String>(
                     value: 'Por comprar',
                     groupValue: picked,
-                    title: Text(context.tr(\'Por comprar\')),
+                    title: Text(context.tr('Por comprar')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Buscando',
                     groupValue: picked,
-                    title: Text(context.tr(\'Buscando\')),
+                    title: Text(context.tr('Buscando')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Comprado',
                     groupValue: picked,
-                    title: Text(context.tr(\'Comprado\')),
+                    title: Text(context.tr('Comprado')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
-                ElevatedButton(onPressed: () => Navigator.pop(ctx, picked), child: Text(context.tr(\'Aceptar\'))),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cancelar'))),
+                ElevatedButton(onPressed: () => Navigator.pop(ctx, picked), child: Text(context.tr('Aceptar'))),
               ],
             );
           },
@@ -1140,11 +1140,11 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(context.tr(\'Opciones de búsqueda\'),
+                Text(context.tr('Opciones de búsqueda'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 SizedBox(height: 6),
-                Text(context.tr(\'Elige la opción que mejor coincida con el texto de la carátula.\'),
+                Text(context.tr('Elige la opción que mejor coincida con el texto de la carátula.'),
                   style: t.textTheme.bodySmall,
                 ),
                 SizedBox(height: 10),
@@ -1169,7 +1169,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   ),
                 ),
                 SizedBox(height: 10),
-                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cerrar\'))),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cerrar'))),
               ],
             ),
           ),
@@ -1197,16 +1197,16 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(context.tr(\'Editar búsqueda\')),
+          title: Text(context.tr('Editar búsqueda')),
           content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: InputDecoration(hintText: context.tr(\'Ej: Pink Floyd Animals\')),
+            decoration: InputDecoration(hintText: context.tr('Ej: Pink Floyd Animals')),
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr(\'Buscar\'))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cancelar'))),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr('Buscar'))),
           ],
         );
       },
@@ -1281,16 +1281,16 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(context.tr(\'Editar búsqueda\')),
+          title: Text(context.tr('Editar búsqueda')),
           content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: InputDecoration(hintText: context.tr(\'Ej: Pink Floyd Animals\')),
+            decoration: InputDecoration(hintText: context.tr('Ej: Pink Floyd Animals')),
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr(\'Buscar\'))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cancelar'))),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr('Buscar'))),
           ],
         );
       },
@@ -1531,7 +1531,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         // Más aire entre la flecha (leading) y el título.
-        title: appBarTitleTextScaled(context.tr(\'Escáner\'), padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr('Escáner'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         bottom: PreferredSize(
           // Más alto: los 3 botones van vertical para que siempre se lean completos.
@@ -1559,7 +1559,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                         },
                       ),
                       IconButton(
-                        tooltip: context.tr(\'Cambiar cámara\'),
+                        tooltip: context.tr('Cambiar cámara'),
                         icon: Icon(Icons.cameraswitch),
                         onPressed: () => unawaited(_controller.switchCamera()),
                       ),
@@ -1585,9 +1585,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   label: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(context.tr(\'Carátula\'), style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
+                      Text(context.tr('Carátula'), style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
                       SizedBox(height: 2),
-                      Text(context.tr(\'Lee artista y álbum desde la portada.\'),
+                      Text(context.tr('Lee artista y álbum desde la portada.'),
                         style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(0.72)),
                       ),
                     ],
@@ -1686,7 +1686,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   Row(
                     children: [
                       Expanded(
-                        child: Text(context.tr(\'Lee la carátula (foto)\'), style: TextStyle(fontWeight: FontWeight.w900)),
+                        child: Text(context.tr('Lee la carátula (foto)'), style: TextStyle(fontWeight: FontWeight.w900)),
                       ),
                       if (_coverSearching) SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                     ],
@@ -1718,12 +1718,12 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                       FilledButton.icon(
                         onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: true)),
                         icon: Icon(Icons.photo_camera),
-                        label: Text(context.tr(\'Tomar foto\')),
+                        label: Text(context.tr('Tomar foto')),
                       ),
                       OutlinedButton.icon(
                         onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: false)),
                         icon: Icon(Icons.photo_library),
-                        label: Text(context.tr(\'Galería\')),
+                        label: Text(context.tr('Galería')),
                       ),
                       if (f != null)
                         TextButton.icon(
@@ -1744,7 +1744,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                                   });
                                 },
                           icon: Icon(Icons.clear),
-                          label: Text(context.tr(\'Limpiar\')),
+                          label: Text(context.tr('Limpiar')),
                         ),
                     ],
                   ),
@@ -1755,7 +1755,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     OutlinedButton.icon(
                       onPressed: _coverSearching ? null : () => unawaited(_openCoverSearchOptions()),
                       icon: Icon(Icons.tune),
-                      label: Text(context.tr(\'Opciones de búsqueda\')),
+                      label: Text(context.tr('Opciones de búsqueda')),
                     ),
                   ],
                   if ((_coverQuery ?? '').trim().isNotEmpty) ...[
@@ -1767,7 +1767,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                         ),
                         SizedBox(width: 8),
                         IconButton(
-                          tooltip: context.tr(\'Editar búsqueda\'),
+                          tooltip: context.tr('Editar búsqueda'),
                           onPressed: _coverSearching ? null : () => unawaited(_editCoverQuery()),
                           icon: Icon(Icons.edit),
                         ),
@@ -1785,7 +1785,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     SizedBox(height: 8),
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,
-                      title: Text(context.tr(\'Texto detectado\')),
+                      title: Text(context.tr('Texto detectado')),
                       children: [
                         Container(
                           width: double.infinity,
@@ -1826,7 +1826,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
   Widget _buildCoverResults() {
     if (_coverSearching) {
-      return Center(child: Text(context.tr(\'Leyendo carátula y buscando…\')));
+      return Center(child: Text(context.tr('Leyendo carátula y buscando…')));
     }
     if (_coverHits.isEmpty) {
       return Center(
@@ -1897,7 +1897,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     Icon(Icons.hearing_outlined),
                     SizedBox(width: 8),
                     Expanded(
-                      child: Text(context.tr(\'Escuchar y reconocer\'),
+                      child: Text(context.tr('Escuchar y reconocer'),
                         style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ),
@@ -1928,7 +1928,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     TextButton.icon(
                       onPressed: isBusy ? null : _clearListen,
                       icon: Icon(Icons.clear),
-                      label: Text(context.tr(\'Limpiar\')),
+                      label: Text(context.tr('Limpiar')),
                     ),
                   ],
                 ),
@@ -1968,7 +1968,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     FilledButton.icon(
                       onPressed: isBusy ? null : () => unawaited(_continueFromListenResult()),
                       icon: Icon(Icons.chevron_right),
-                      label: Text(context.tr(\'Continuar\')),
+                      label: Text(context.tr('Continuar')),
                     ),
                   ],
                 ],
@@ -2006,7 +2006,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                       ),
                       SizedBox(width: 8),
                       IconButton(
-                        tooltip: context.tr(\'Editar búsqueda\'),
+                        tooltip: context.tr('Editar búsqueda'),
                         onPressed: _listenIdentifying ? null : () => unawaited(_editListenQuery()),
                         icon: Icon(Icons.edit),
                       ),
@@ -2042,10 +2042,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
   Widget _buildListenResults() {
     if (_listening) {
-      return Center(child: Text(context.tr(\'Escuchando…\')));
+      return Center(child: Text(context.tr('Escuchando…')));
     }
     if (_listenIdentifying) {
-      return Center(child: Text(context.tr(\'Reconociendo y buscando…\')));
+      return Center(child: Text(context.tr('Reconociendo y buscando…')));
     }
     if (_listenHits.isEmpty) {
       return Center(
@@ -2116,7 +2116,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         key: ValueKey('idle'),
         children: [
           Expanded(
-            child: Text(context.tr(\'Apunta al código de barras del vinilo.\'),
+            child: Text(context.tr('Apunta al código de barras del vinilo.'),
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -2124,7 +2124,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
           FilledButton.icon(
             onPressed: _reset,
             icon: Icon(Icons.refresh),
-            label: Text(context.tr(\'Listo\')),
+            label: Text(context.tr('Listo')),
           ),
         ],
       );
@@ -2139,7 +2139,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(context.tr(\'Buscando en MusicBrainz…\'), style: TextStyle(fontWeight: FontWeight.w800)),
+                Text(context.tr('Buscando en MusicBrainz…'), style: TextStyle(fontWeight: FontWeight.w800)),
                 SizedBox(height: 2),
                 Text('Código: $code', style: TextStyle(fontSize: 14)),
               ],
@@ -2165,7 +2165,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               TextButton.icon(
                 onPressed: _reset,
                 icon: Icon(Icons.qr_code_scanner),
-                label: Text(context.tr(\'Escanear otro\')),
+                label: Text(context.tr('Escanear otro')),
               ),
             ],
           ),
@@ -2191,7 +2191,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             TextButton.icon(
               onPressed: _reset,
               icon: Icon(Icons.qr_code_scanner),
-              label: Text(context.tr(\'Otro\')),
+              label: Text(context.tr('Otro')),
             ),
           ],
         ),
@@ -2392,7 +2392,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
           Row(
             children: [
               Expanded(
-                child: Text(context.tr(\'Agregar a tu lista\'),
+                child: Text(context.tr('Agregar a tu lista'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
@@ -2444,7 +2444,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                       controller: _yearCtrl,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
-                        labelText: context.tr(\'Año\'),
+                        labelText: context.tr('Año'),
                         isDense: true,
                       ),
                     ),
@@ -2499,14 +2499,14 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                           child: DropdownButtonFormField<String>(
                             value: _condition,
                             decoration: InputDecoration(
-                              labelText: context.tr(\'Condición\'),
+                              labelText: context.tr('Condición'),
                               isDense: true,
                             ),
                             items: const [
-                              DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
-                              DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
-                              DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
-                              DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
+                              DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
+                              DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
+                              DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
+                              DropdownMenuItem(value: 'VG', child: Text(context.tr('VG'))),
                               DropdownMenuItem(value: 'G', child: Text('G')),
                             ],
                             onChanged: (v) => setState(() => _condition = v ?? _condition),
@@ -2517,14 +2517,14 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                           child: DropdownButtonFormField<String>(
                             value: _format,
                             decoration: InputDecoration(
-                              labelText: context.tr(\'Formato\'),
+                              labelText: context.tr('Formato'),
                               isDense: true,
                             ),
                             items: const [
-                              DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
-                              DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
-                              DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
-                              DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
+                              DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
+                              DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
+                              DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),
+                              DropdownMenuItem(value: '2xLP', child: Text(context.tr('2xLP'))),
                             ],
                             onChanged: (v) => setState(() => _format = v ?? _format),
                           ),
@@ -2558,12 +2558,12 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
           FilledButton.icon(
             onPressed: _saving ? null : _add,
             icon: Icon(Icons.check),
-            label: Text(context.tr(\'Aceptar\')),
+            label: Text(context.tr('Aceptar')),
           ),
           SizedBox(height: 8),
           TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context),
-            child: Text(context.tr(\'Cancelar\')),
+            child: Text(context.tr('Cancelar')),
           ),
         ],
       ),

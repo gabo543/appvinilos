@@ -335,18 +335,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(context.tr(\'Agregar a tu lista\')),
+          title: Text(context.tr('Agregar a tu lista')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 value: condition,
-                decoration: InputDecoration(labelText: context.tr(\'Condición\')),
+                decoration: InputDecoration(labelText: context.tr('Condición')),
                 items: const [
-                  DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
-                  DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
-                  DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
-                  DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
+                  DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
+                  DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
+                  DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
+                  DropdownMenuItem(value: 'VG', child: Text(context.tr('VG'))),
                   DropdownMenuItem(value: 'G', child: Text('G')),
                 ],
                 onChanged: (v) => condition = v ?? condition,
@@ -354,22 +354,22 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
               SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: format,
-                decoration: InputDecoration(labelText: context.tr(\'Formato\')),
+                decoration: InputDecoration(labelText: context.tr('Formato')),
                 items: const [
-                  DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
-                  DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
-                  DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
-                  DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
+                  DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
+                  DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
+                  DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),
+                  DropdownMenuItem(value: '2xLP', child: Text(context.tr('2xLP'))),
                 ],
                 onChanged: (v) => format = v ?? format,
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () { _dismissKeyboard(); Navigator.pop(ctx); }, child: Text(context.tr(\'Cancelar\'))),
+            TextButton(onPressed: () { _dismissKeyboard(); Navigator.pop(ctx); }, child: Text(context.tr('Cancelar'))),
             ElevatedButton(
               onPressed: () { _dismissKeyboard(); Navigator.pop(ctx, {'condition': condition, 'format': format}); },
-              child: Text(context.tr(\'Aceptar\')),
+              child: Text(context.tr('Aceptar')),
             ),
           ],
         );
@@ -392,26 +392,26 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         return StatefulBuilder(
           builder: (ctx, setStateDialog) {
             return AlertDialog(
-              title: Text(context.tr(\'Estado (wishlist)\')),
+              title: Text(context.tr('Estado (wishlist)')),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   RadioListTile<String>(
                     value: 'Por comprar',
                     groupValue: picked,
-                    title: Text(context.tr(\'Por comprar\')),
+                    title: Text(context.tr('Por comprar')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Buscando',
                     groupValue: picked,
-                    title: Text(context.tr(\'Buscando\')),
+                    title: Text(context.tr('Buscando')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                   RadioListTile<String>(
                     value: 'Comprado',
                     groupValue: picked,
-                    title: Text(context.tr(\'Comprado\')),
+                    title: Text(context.tr('Comprado')),
                     onChanged: (v) => setStateDialog(() => picked = v ?? picked),
                   ),
                 ],
@@ -422,14 +422,14 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                     _dismissKeyboard();
                     Navigator.pop(ctx);
                   },
-                  child: Text(context.tr(\'Cancelar\')),
+                  child: Text(context.tr('Cancelar')),
                 ),
                 ElevatedButton(
                   onPressed: () {
                     _dismissKeyboard();
                     Navigator.pop(ctx, picked);
                   },
-                  child: Text(context.tr(\'Aceptar\')),
+                  child: Text(context.tr('Aceptar')),
                 ),
               ],
             );
@@ -620,7 +620,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: appBarTitleTextScaled(context.tr(\'Discografías\'), padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr('Discografías'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
           if ((pickedArtist != null || albums.isNotEmpty) && artistName.trim().isNotEmpty)
@@ -646,12 +646,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                 _onArtistTextChanged(v);
               },
               decoration: InputDecoration(
-                labelText: context.tr(\'Artista\'),
+                labelText: context.tr('Artista'),
                 prefixIcon: Icon(Icons.search),
                 suffixIcon: artistCtrl.text.trim().isEmpty
                     ? null
                     : IconButton(
-                        tooltip: context.tr(\'Limpiar\'),
+                        tooltip: context.tr('Limpiar'),
                         icon: Icon(Icons.close),
                         onPressed: () => _clearArtistSearch(),
                       ),
@@ -680,7 +680,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                 child: loadingAlbums
                     ? Center(child: CircularProgressIndicator())
                     : (albums.isEmpty
-                        ? Center(child: Text(context.tr(\'Busca un artista para ver su discografía.\')))
+                        ? Center(child: Text(context.tr('Busca un artista para ver su discografía.')))
                         : ListView.builder(
                             itemCount: albums.length,
                             itemBuilder: (_, i) {

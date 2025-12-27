@@ -91,7 +91,7 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
           IconButton(
             onPressed: _load,
             icon: Icon(Icons.refresh),
-            tooltip: context.tr(\'Recargar canciones\'),
+            tooltip: context.tr('Recargar canciones'),
           ),
         ],
       ),

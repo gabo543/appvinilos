@@ -101,18 +101,18 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
       return StatefulBuilder(
         builder: (ctx, setSt) {
           return AlertDialog(
-            title: Text(context.tr(\'Agregar a tu lista\')),
+            title: Text(context.tr('Agregar a tu lista')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
                   value: condition,
-                  decoration: InputDecoration(labelText: context.tr(\'Condición\')),
+                  decoration: InputDecoration(labelText: context.tr('Condición')),
                   items: const [
-                    DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
-                    DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
-                    DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
-                    DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
+                    DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
+                    DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
+                    DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
+                    DropdownMenuItem(value: 'VG', child: Text(context.tr('VG'))),
                     DropdownMenuItem(value: 'G', child: Text('G')),
                   ],
                   onChanged: (v) => setSt(() => condition = v ?? condition),
@@ -120,23 +120,23 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
                 SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: format,
-                  decoration: InputDecoration(labelText: context.tr(\'Formato\')),
+                  decoration: InputDecoration(labelText: context.tr('Formato')),
                   items: const [
-                    DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
-                    DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
-                    DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
-                    DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
-                    DropdownMenuItem(value: 'Boxset', child: Text(context.tr(\'Boxset\'))),
+                    DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
+                    DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
+                    DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),
+                    DropdownMenuItem(value: '2xLP', child: Text(context.tr('2xLP'))),
+                    DropdownMenuItem(value: 'Boxset', child: Text(context.tr('Boxset'))),
                   ],
                   onChanged: (v) => setSt(() => format = v ?? format),
                 ),
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cancelar'))),
               ElevatedButton(
                 onPressed: () => Navigator.pop(ctx, {'condition': condition, 'format': format}),
-                child: Text(context.tr(\'Aceptar\')),
+                child: Text(context.tr('Aceptar')),
               ),
             ],
           );
@@ -306,7 +306,7 @@ Widget _placeholder() {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip: context.tr(\'Agregar a vinilos\'),
+                    tooltip: context.tr('Agregar a vinilos'),
                     icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
                     visualDensity: VisualDensity.compact,
                     onPressed: () async {
@@ -339,7 +339,7 @@ Widget _placeholder() {
                     },
                   ),
                   IconButton(
-                    tooltip: context.tr(\'Eliminar\'),
+                    tooltip: context.tr('Eliminar'),
                     icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
                     visualDensity: VisualDensity.compact,
                     onPressed: () => _removeItem(w),
@@ -417,7 +417,7 @@ Widget _placeholder() {
                         Expanded(child: Align(alignment: Alignment.centerLeft, child: _statusChip(context, status))),
                       Spacer(),
                       IconButton(
-                        tooltip: context.tr(\'Agregar a vinilos\'),
+                        tooltip: context.tr('Agregar a vinilos'),
                         icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 20),
                         visualDensity: VisualDensity.compact,
                         onPressed: () async {
@@ -450,7 +450,7 @@ Widget _placeholder() {
                         },
                       ),
                       IconButton(
-                        tooltip: context.tr(\'Eliminar\'),
+                        tooltip: context.tr('Eliminar'),
                         icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 20),
                         visualDensity: VisualDensity.compact,
                         onPressed: () => _removeItem(w),
@@ -530,7 +530,7 @@ Widget _placeholder() {
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         // Más aire entre el leading (logo + back) y el título.
-        title: appBarTitleTextScaled(context.tr(\'Deseos\'), padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr('Deseos'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
           IconButton(
@@ -558,7 +558,7 @@ Widget _placeholder() {
           final items = snap.data ?? const [];
 
           if (items.isEmpty) {
-            return Center(child: Text(context.tr(\'Tu lista de deseos está vacía\')));
+            return Center(child: Text(context.tr('Tu lista de deseos está vacía')));
           }
 
           return _grid

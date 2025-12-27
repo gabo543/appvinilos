@@ -56,7 +56,7 @@ Widget appBarLeadingLogoBack(
         AppLogo(size: logoSize),
         SizedBox(width: gap),
         IconButton(
-          tooltip: context.tr(\'Volver\'),
+          tooltip: context.tr('Volver'),
           icon: Icon(Icons.arrow_back, size: kBackIconSize),
           padding: EdgeInsets.zero,
           constraints: BoxConstraints(minWidth: 48, minHeight: 48),

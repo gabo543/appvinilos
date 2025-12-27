@@ -25,7 +25,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
     if (id <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(\'No puedo editar: falta ID.\'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('No puedo editar: falta ID.'))));
       return;
     }
 
@@ -47,7 +47,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
         return StatefulBuilder(
           builder: (ctx, setD) {
             return AlertDialog(
-              title: Text(context.tr(\'Editar vinilo\')),
+              title: Text(context.tr('Editar vinilo')),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -55,29 +55,29 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                     TextField(
                       controller: artistaCtrl,
                       textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(labelText: context.tr(\'Artista\')),
+                      decoration: InputDecoration(labelText: context.tr('Artista')),
                     ),
                     SizedBox(height: 12),
                     TextField(
                       controller: albumCtrl,
                       textInputAction: TextInputAction.next,
-                      decoration: InputDecoration(labelText: context.tr(\'Álbum\')),
+                      decoration: InputDecoration(labelText: context.tr('Álbum')),
                     ),
                     SizedBox(height: 12),
                     TextField(
                       controller: yearCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: InputDecoration(labelText: context.tr(\'Año (opcional)\')),
+                      decoration: InputDecoration(labelText: context.tr('Año (opcional)')),
                     ),
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: condition,
-                      decoration: InputDecoration(labelText: context.tr(\'Condición\')),
+                      decoration: InputDecoration(labelText: context.tr('Condición')),
                       items: const [
-                        DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
-                        DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
-                        DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
-                        DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
+                        DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
+                        DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
+                        DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
+                        DropdownMenuItem(value: 'VG', child: Text(context.tr('VG'))),
                         DropdownMenuItem(value: 'G', child: Text('G')),
                       ],
                       onChanged: (v) => setD(() => condition = v ?? condition),
@@ -85,12 +85,12 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: format,
-                      decoration: InputDecoration(labelText: context.tr(\'Formato\')),
+                      decoration: InputDecoration(labelText: context.tr('Formato')),
                       items: const [
-                        DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
-                        DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
-                        DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
-                        DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
+                        DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
+                        DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
+                        DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),
+                        DropdownMenuItem(value: '2xLP', child: Text(context.tr('2xLP'))),
                       ],
                       onChanged: (v) => setD(() => format = v ?? format),
                     ),
@@ -98,8 +98,8 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Guardar\'))),
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('Cancelar'))),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr('Guardar'))),
               ],
             );
           },
@@ -135,7 +135,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       widget.vinyl['format'] = format;
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(\'Actualizado ✅\'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('Actualizado ✅'))));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
@@ -296,7 +296,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
                   ),
                 ),
                 IconButton(
-                  tooltip: context.tr(\'Editar\'),
+                  tooltip: context.tr('Editar'),
                   onPressed: _editMeta,
                   icon: Icon(Icons.edit, color: fg),
                 ),
@@ -340,7 +340,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             Row(
               children: [
                 Expanded(
-                  child: Text(context.tr(\'Canciones\'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: fg)),
+                  child: Text(context.tr('Canciones'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: fg)),
                 ),
                 IconButton(onPressed: _loadTracks, icon: Icon(Icons.refresh, color: fg)),
               ],

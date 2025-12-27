@@ -488,20 +488,20 @@ Future<void> _loadViewMode() async {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(context.tr(\'Agregar vinilo\'),
+                Text(context.tr('Agregar vinilo'),
                   style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 SizedBox(height: 8),
                 ListTile(
                   leading: Icon(Icons.qr_code_scanner),
-                  title: Text(context.tr(\'Escanear\')),
-                  subtitle: Text(context.tr(\'Código, carátula o escuchar una canción.\')),
+                  title: Text(context.tr('Escanear')),
+                  subtitle: Text(context.tr('Código, carátula o escuchar una canción.')),
                   onTap: () => Navigator.pop(ctx, _AddVinylMethod.scan),
                 ),
                 ListTile(
                   leading: Icon(Icons.edit_note_outlined),
-                  title: Text(context.tr(\'Ingresar a mano\')),
-                  subtitle: Text(context.tr(\'Escribe artista y álbum (opcional: año y género).\')),
+                  title: Text(context.tr('Ingresar a mano')),
+                  subtitle: Text(context.tr('Escribe artista y álbum (opcional: año y género).')),
                   onTap: () => Navigator.pop(ctx, _AddVinylMethod.manual),
                 ),
               ],
@@ -937,7 +937,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         ),
       if (conBorrar && !_borrarPapelera)
         IconButton(
-          tooltip: context.tr(\'Enviar a papelera\'),
+          tooltip: context.tr('Enviar a papelera'),
           icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
           onPressed: () async {
             final id = _asInt(v['id']);
@@ -951,7 +951,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         ),
       if (conBorrar && _borrarPapelera) ...[
         IconButton(
-          tooltip: context.tr(\'Restaurar\'),
+          tooltip: context.tr('Restaurar'),
           icon: Icon(Icons.restore_from_trash, color: cs.onSurfaceVariant),
           onPressed: () async {
             final trashId = _asInt(v['id']);
@@ -964,7 +964,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           },
         ),
         IconButton(
-          tooltip: context.tr(\'Eliminar definitivo\'),
+          tooltip: context.tr('Eliminar definitivo'),
           icon: Icon(Icons.delete_forever, color: cs.onSurfaceVariant),
           onPressed: () async {
             final trashId = _asInt(v['id']);
@@ -1092,7 +1092,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           children: const [
             Icon(Icons.delete_outline, color: Colors.red),
             SizedBox(width: 8),
-            Text(context.tr(\'Papelera\'), style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900)),
+            Text(context.tr('Papelera'), style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900)),
           ],
         ),
       ),
@@ -1107,11 +1107,11 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
           context: context,
           builder: (ctx) {
             return AlertDialog(
-              title: Text(context.tr(\'¿Enviar a papelera?\')),
+              title: Text(context.tr('¿Enviar a papelera?')),
               content: Text('"$artista" — "$album"'),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Enviar\'))),
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('Cancelar'))),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr('Enviar'))),
               ],
             );
           },
@@ -1178,7 +1178,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       }
       if (!_borrarPapelera) {
         return IconButton(
-          tooltip: context.tr(\'Enviar a papelera\'),
+          tooltip: context.tr('Enviar a papelera'),
           onPressed: () async {
             final id = _asInt(v['id']);
             if (id == 0) return;
@@ -1196,7 +1196,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            tooltip: context.tr(\'Restaurar\'),
+            tooltip: context.tr('Restaurar'),
             onPressed: () async {
               final trashId = _asInt(v['id']);
               if (trashId == 0) return;
@@ -1210,7 +1210,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             visualDensity: VisualDensity.compact,
           ),
           IconButton(
-            tooltip: context.tr(\'Eliminar definitivo\'),
+            tooltip: context.tr('Eliminar definitivo'),
             onPressed: () async {
               final trashId = _asInt(v['id']);
               if (trashId == 0) return;
@@ -1666,7 +1666,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
       right: 10,
       bottom: 8,
       child: IgnorePointer(
-        child: Text(context.tr(\'GaBoLP\'),
+        child: Text(context.tr('GaBoLP'),
           style: TextStyle(
             fontSize: 14,
             color: Colors.white70,
@@ -1851,12 +1851,12 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       _reloadAllData();
                     },
                     icon: Icon(Icons.delete_outline),
-                    label: Text(context.tr(\'Para borrar\')),
+                    label: Text(context.tr('Para borrar')),
                   )
                 : ElevatedButton.icon(
                     onPressed: () {},
                     icon: Icon(Icons.delete_outline),
-                    label: Text(context.tr(\'Para borrar\')),
+                    label: Text(context.tr('Para borrar')),
                   ),
           ),
           SizedBox(width: 10),
@@ -1865,7 +1865,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                 ? ElevatedButton.icon(
                     onPressed: () {},
                     icon: Icon(Icons.restore),
-                    label: Text(context.tr(\'Papelera\')),
+                    label: Text(context.tr('Papelera')),
                   )
                 : OutlinedButton.icon(
                     onPressed: () async {
@@ -1876,7 +1876,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       });
                     },
                     icon: Icon(Icons.restore),
-                    label: Text(context.tr(\'Papelera\')),
+                    label: Text(context.tr('Papelera')),
                   ),
           ),
         ],
@@ -1929,10 +1929,10 @@ Widget vistaBorrar({bool embedInScroll = true}) {
           focusNode: _artistFocus,
           onChanged: _onArtistChanged,
           decoration: InputDecoration(
-            labelText: context.tr(\'Artista\'),
+            labelText: context.tr('Artista'),
             suffixIcon: showXArtist
                 ? IconButton(
-                    tooltip: context.tr(\'Limpiar\'),
+                    tooltip: context.tr('Limpiar'),
                     icon: Icon(Icons.close, size: 18),
                     onPressed: _limpiarArtista,
                   )
@@ -1964,10 +1964,10 @@ Widget vistaBorrar({bool embedInScroll = true}) {
           controller: albumCtrl,
           onChanged: _onAlbumChanged,
           decoration: InputDecoration(
-            labelText: context.tr(\'Álbum\'),
+            labelText: context.tr('Álbum'),
             suffixIcon: showXAlbum
                 ? IconButton(
-                    tooltip: context.tr(\'Limpiar\'),
+                    tooltip: context.tr('Limpiar'),
                     icon: Icon(Icons.close, size: 18),
                     onPressed: _limpiarAlbum,
                   )
@@ -1996,13 +1996,13 @@ Widget vistaBorrar({bool embedInScroll = true}) {
         SizedBox(height: 10),
         ElevatedButton(
           onPressed: buscar,
-          child: Text(context.tr(\'Buscar\')),
+          child: Text(context.tr('Buscar')),
         ),
 
         SizedBox(height: 8),
         OutlinedButton(
           onPressed: _cancelarBusqueda,
-          child: Text(context.tr(\'Limpiar\')),
+          child: Text(context.tr('Limpiar')),
         ),
 
         // ✅ Si lo tienes en la colección
@@ -2018,7 +2018,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.tr(\'Ya lo tienes en tu colección:\'),
+                Text(context.tr('Ya lo tienes en tu colección:'),
                   style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface),
                 ),
                 SizedBox(height: 8),
@@ -2059,7 +2059,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.tr(\'Agregar este vinilo\'), style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
+                Text(context.tr('Agregar este vinilo'), style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
                 SizedBox(height: 8),
                 if (autocompletando) LinearProgressIndicator(),
                 if (!autocompletando && p != null) ...[
@@ -2155,7 +2155,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                     controller: yearCtrl,
                     keyboardType: TextInputType.number,
                     decoration: InputDecoration(
-                      labelText: context.tr(\'Año (opcional: corregir)\'),
+                      labelText: context.tr('Año (opcional: corregir)'),
                       filled: true,
                       fillColor: cs.surfaceContainerHighest.withOpacity(isDark ? 0.14 : 0.65),
                     ),
@@ -2167,12 +2167,12 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           value: _addCondition,
-                          decoration: InputDecoration(labelText: context.tr(\'Condición\')),
+                          decoration: InputDecoration(labelText: context.tr('Condición')),
                           items: const [
-                            DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
-                            DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
-                            DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
-                            DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
+                            DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
+                            DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
+                            DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
+                            DropdownMenuItem(value: 'VG', child: Text(context.tr('VG'))),
                             DropdownMenuItem(value: 'G', child: Text('G')),
                           ],
                           onChanged: (v) => setState(() => _addCondition = v ?? _addCondition),
@@ -2182,12 +2182,12 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           value: _addFormat,
-                          decoration: InputDecoration(labelText: context.tr(\'Formato\')),
+                          decoration: InputDecoration(labelText: context.tr('Formato')),
                           items: const [
-                            DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
-                            DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
-                            DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
-                            DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
+                            DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
+                            DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
+                            DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),
+                            DropdownMenuItem(value: '2xLP', child: Text(context.tr('2xLP'))),
                           ],
                           onChanged: (v) => setState(() => _addFormat = v ?? _addFormat),
                         ),
@@ -2197,7 +2197,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                   SizedBox(height: 10),
                   ElevatedButton(
                     onPressed: agregar,
-                    child: Text(context.tr(\'Agregar vinilo\')),
+                    child: Text(context.tr('Agregar vinilo')),
                   ),
                 ],
               ],
@@ -2394,7 +2394,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       children: [
                         Icon(Icons.tune),
                         SizedBox(width: 10),
-                        Expanded(child: Text(context.tr(\'Filtros\'))),
+                        Expanded(child: Text(context.tr('Filtros'))),
                         TextButton(
                           onPressed: () {
                             setLocal(() {
@@ -2405,13 +2405,13 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                               tTo = '';
                             });
                           },
-                          child: Text(context.tr(\'Limpiar\')),
+                          child: Text(context.tr('Limpiar')),
                         )
                       ],
                     ),
                     SizedBox(height: 10),
                     TextField(
-                      decoration: InputDecoration(labelText: context.tr(\'Artista o álbum\')),
+                      decoration: InputDecoration(labelText: context.tr('Artista o álbum')),
                       controller: TextEditingController(text: tArtist),
                       onChanged: (v) => setLocal(() => tArtist = v),
                     ),
@@ -2421,7 +2421,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                         Expanded(
                           child: TextField(
                             keyboardType: TextInputType.number,
-                            decoration: InputDecoration(labelText: context.tr(\'Año desde\')),
+                            decoration: InputDecoration(labelText: context.tr('Año desde')),
                             controller: TextEditingController(text: tFrom),
                             onChanged: (v) => setLocal(() => tFrom = v),
                           ),
@@ -2430,7 +2430,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                         Expanded(
                           child: TextField(
                             keyboardType: TextInputType.number,
-                            decoration: InputDecoration(labelText: context.tr(\'Año hasta\')),
+                            decoration: InputDecoration(labelText: context.tr('Año hasta')),
                             controller: TextEditingController(text: tTo),
                             onChanged: (v) => setLocal(() => tTo = v),
                           ),
@@ -2439,13 +2439,13 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                     ),
                     SizedBox(height: 10),
                     TextField(
-                      decoration: InputDecoration(labelText: context.tr(\'Género (contiene)\')),
+                      decoration: InputDecoration(labelText: context.tr('Género (contiene)')),
                       controller: TextEditingController(text: tGenre),
                       onChanged: (v) => setLocal(() => tGenre = v),
                     ),
                     SizedBox(height: 10),
                     TextField(
-                      decoration: InputDecoration(labelText: context.tr(\'País (contiene)\')),
+                      decoration: InputDecoration(labelText: context.tr('País (contiene)')),
                       controller: TextEditingController(text: tCountry),
                       onChanged: (v) => setLocal(() => tCountry = v),
                     ),
@@ -2455,7 +2455,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(ctx),
-                            child: Text(context.tr(\'Cancelar\')),
+                            child: Text(context.tr('Cancelar')),
                           ),
                         ),
                         SizedBox(width: 10),
@@ -2471,7 +2471,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                               });
                               Navigator.pop(ctx);
                             },
-                            child: Text(context.tr(\'Aplicar\')),
+                            child: Text(context.tr('Aplicar')),
                           ),
                         ),
                       ],
@@ -2546,7 +2546,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
           ),
           if (_hasAnyFilter)
             IconButton(
-              tooltip: context.tr(\'Quitar filtros\'),
+              tooltip: context.tr('Quitar filtros'),
               onPressed: () => setState(() {
                 _filterArtistQ = '';
                 _filterGenreQ = '';
@@ -2557,22 +2557,22 @@ Widget vistaBorrar({bool embedInScroll = true}) {
               icon: Icon(Icons.filter_alt_off),
             ),
           IconButton(
-            tooltip: context.tr(\'Filtros\'),
+            tooltip: context.tr('Filtros'),
             onPressed: _openVinylFiltersSheet,
             icon: Icon(_hasAnyFilter ? Icons.filter_alt : Icons.filter_alt_outlined),
           ),
           PopupMenuButton<VinylSortMode>(
-            tooltip: context.tr(\'Ordenar\'),
+            tooltip: context.tr('Ordenar'),
             initialValue: _sortMode,
             onSelected: (m) {
                 setState(() => _sortMode = m);
                 _persistSortMode(m);
               },
             itemBuilder: (_) => [
-              PopupMenuItem(value: VinylSortMode.code, child: Text(context.tr(\'Código\'))),
-              PopupMenuItem(value: VinylSortMode.recent, child: Text(context.tr(\'Recientes\'))),
-              PopupMenuItem(value: VinylSortMode.az, child: Text(context.tr(\'A–Z\'))),
-              PopupMenuItem(value: VinylSortMode.yearDesc, child: Text(context.tr(\'Año\'))),
+              PopupMenuItem(value: VinylSortMode.code, child: Text(context.tr('Código'))),
+              PopupMenuItem(value: VinylSortMode.recent, child: Text(context.tr('Recientes'))),
+              PopupMenuItem(value: VinylSortMode.az, child: Text(context.tr('A–Z'))),
+              PopupMenuItem(value: VinylSortMode.yearDesc, child: Text(context.tr('Año'))),
             ],
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -2852,7 +2852,7 @@ Widget listaCompleta({
       actions: [
         if (vista == Vista.lista && _vinylScope == VinylScope.vinilos)
           IconButton(
-            tooltip: context.tr(\'Agregar vinilo\'),
+            tooltip: context.tr('Agregar vinilo'),
             icon: Icon(Icons.add_circle_outline),
             onPressed: _openAddVinylMenu,
           ),
@@ -2906,7 +2906,7 @@ Widget listaCompleta({
             textAlignVertical: TextAlignVertical.center,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: context.tr(\'Buscar en tu colección…\'),
+              hintText: context.tr('Buscar en tu colección…'),
               filled: true,
               fillColor: cs.surface,
               border: OutlineInputBorder(
@@ -2931,7 +2931,7 @@ Widget listaCompleta({
               prefixIconConstraints: BoxConstraints(minWidth: 44, minHeight: 44),
               suffixIcon: (ctrl.text.trim().isNotEmpty)
                   ? IconButton(
-                      tooltip: context.tr(\'Limpiar texto\'),
+                      tooltip: context.tr('Limpiar texto'),
                       icon: Icon(Icons.close, size: 18),
                       onPressed: () {
                         ctrl.clear();
@@ -2982,12 +2982,12 @@ Widget listaCompleta({
         segments: const <ButtonSegment<VinylScope>>[
           ButtonSegment(
             value: VinylScope.vinilos,
-            label: Text(context.tr(\'Vinilos\')),
+            label: Text(context.tr('Vinilos')),
             icon: Icon(Icons.library_music_outlined),
           ),
           ButtonSegment(
             value: VinylScope.artistas,
-            label: Text(context.tr(\'Artistas\')),
+            label: Text(context.tr('Artistas')),
             icon: Icon(Icons.groups_outlined),
           ),
         ],
@@ -3171,7 +3171,7 @@ Widget listaCompleta({
       // Solo icono (sin texto "Inicio")
       return FloatingActionButton(
         onPressed: () => _setVista(Vista.inicio),
-        tooltip: context.tr(\'Inicio\'),
+        tooltip: context.tr('Inicio'),
         child: Icon(Icons.home),
       );
     }

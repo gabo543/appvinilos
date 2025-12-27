@@ -221,9 +221,9 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(context.tr(\'Opciones de búsqueda\'), style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+                Text(context.tr('Opciones de búsqueda'), style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
                 SizedBox(height: 6),
-                Text(context.tr(\'Elige la opción que mejor coincida con el texto de la carátula.\'), style: t.textTheme.bodySmall),
+                Text(context.tr('Elige la opción que mejor coincida con el texto de la carátula.'), style: t.textTheme.bodySmall),
                 SizedBox(height: 10),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: maxH),
@@ -246,7 +246,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                   ),
                 ),
                 SizedBox(height: 10),
-                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cerrar\'))),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cerrar'))),
               ],
             ),
           ),
@@ -312,16 +312,16 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(context.tr(\'Editar búsqueda\')),
+          title: Text(context.tr('Editar búsqueda')),
           content: TextField(
             controller: ctrl,
             autofocus: true,
-            decoration: InputDecoration(hintText: context.tr(\'Ej: Pink Floyd Animals\')),
+            decoration: InputDecoration(hintText: context.tr('Ej: Pink Floyd Animals')),
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr(\'Cancelar\'))),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr(\'Buscar\'))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cancelar'))),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(context.tr('Buscar'))),
           ],
         );
       },
@@ -408,11 +408,11 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(context.tr(\'Abrir ficha del disco\')),
+          title: Text(context.tr('Abrir ficha del disco')),
           content: Text('${best.artist}\n${best.album}'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr(\'Cancelar\'))),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr(\'Continuar\'))),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('Cancelar'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr('Continuar'))),
           ],
         );
       },
@@ -434,34 +434,34 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: appBarTitleTextScaled(context.tr(\'Carátula\'), padding: const EdgeInsets.only(left: 8)),
+        title: appBarTitleTextScaled(context.tr('Carátula'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
           IconButton(
-            tooltip: context.tr(\'Tomar foto\'),
+            tooltip: context.tr('Tomar foto'),
             onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: true)),
             icon: Icon(Icons.photo_camera),
           ),
           IconButton(
-            tooltip: context.tr(\'Galería\'),
+            tooltip: context.tr('Galería'),
             onPressed: _coverSearching ? null : () => unawaited(_pickCover(fromCamera: false)),
             icon: Icon(Icons.photo_library),
           ),
           if (_coverSuggestions.isNotEmpty)
             IconButton(
-              tooltip: context.tr(\'Opciones de búsqueda\'),
+              tooltip: context.tr('Opciones de búsqueda'),
               onPressed: _coverSearching ? null : () => unawaited(_openCoverSearchOptions()),
               icon: Icon(Icons.tune),
             ),
           if ((_coverQuery ?? '').trim().isNotEmpty)
             IconButton(
-              tooltip: context.tr(\'Editar búsqueda\'),
+              tooltip: context.tr('Editar búsqueda'),
               onPressed: _coverSearching ? null : () => unawaited(_editCoverQuery()),
               icon: Icon(Icons.edit),
             ),
           if (f != null)
             IconButton(
-              tooltip: context.tr(\'Limpiar\'),
+              tooltip: context.tr('Limpiar'),
               onPressed: _coverSearching ? null : _clear,
               icon: Icon(Icons.clear),
             ),
@@ -498,7 +498,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(context.tr(\'Lee la carátula (foto)\'), style: TextStyle(fontWeight: FontWeight.w900)),
+                          child: Text(context.tr('Lee la carátula (foto)'), style: TextStyle(fontWeight: FontWeight.w900)),
                         ),
                         if (_coverSearching)
                           SizedBox(
@@ -546,7 +546,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                       SizedBox(height: 8),
                       ExpansionTile(
                         tilePadding: EdgeInsets.zero,
-                        title: Text(context.tr(\'Texto detectado\')),
+                        title: Text(context.tr('Texto detectado')),
                         children: [
                           Container(
                             width: double.infinity,
@@ -584,7 +584,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
 
   Widget _buildCoverResults() {
     if (_coverSearching) {
-      return Center(child: Text(context.tr(\'Leyendo carátula y buscando…\')));
+      return Center(child: Text(context.tr('Leyendo carátula y buscando…')));
     }
     if (_coverHits.isEmpty) {
       return Center(

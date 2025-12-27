@@ -111,7 +111,7 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.tr(\'Agregar a mano\')),
+        title: Text(context.tr('Agregar a mano')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -121,7 +121,7 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(context.tr(\'Escribe los datos básicos. Luego podrás revisar la ficha y agregar a tu lista o a deseos.\'),
+                Text(context.tr('Escribe los datos básicos. Luego podrás revisar la ficha y agregar a tu lista o a deseos.'),
                   style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 SizedBox(height: 14),
@@ -129,8 +129,8 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
                   controller: _artistCtrl,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: context.tr(\'Artista / Banda\'),
-                    hintText: context.tr(\'Ej: Pink Floyd\'),
+                    labelText: context.tr('Artista / Banda'),
+                    hintText: context.tr('Ej: Pink Floyd'),
                   ),
                   validator: (v) => (v ?? '').trim().isEmpty ? 'El artista es obligatorio.' : null,
                 ),
@@ -139,8 +139,8 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
                   controller: _albumCtrl,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: context.tr(\'Álbum\'),
-                    hintText: context.tr(\'Ej: The Dark Side of the Moon\'),
+                    labelText: context.tr('Álbum'),
+                    hintText: context.tr('Ej: The Dark Side of the Moon'),
                   ),
                   validator: (v) => (v ?? '').trim().isEmpty ? 'El álbum es obligatorio.' : null,
                 ),
@@ -153,8 +153,8 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
                         keyboardType: TextInputType.number,
                         textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
-                          labelText: context.tr(\'Año (opcional)\'),
-                          hintText: context.tr(\'Ej: 1973\'),
+                          labelText: context.tr('Año (opcional)'),
+                          hintText: context.tr('Ej: 1973'),
                         ),
                       ),
                     ),
@@ -164,8 +164,8 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
                         controller: _genreCtrl,
                         textInputAction: TextInputAction.done,
                         decoration: InputDecoration(
-                          labelText: context.tr(\'Género (opcional)\'),
-                          hintText: context.tr(\'Ej: Rock\'),
+                          labelText: context.tr('Género (opcional)'),
+                          hintText: context.tr('Ej: Rock'),
                         ),
                       ),
                     ),

@@ -195,21 +195,21 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(context.tr(\'¿Dónde quieres agregarlo?\'),
+                    Text(context.tr('¿Dónde quieres agregarlo?'),
                       style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                     ),
                     SizedBox(height: 10),
                     RadioListTile<_AddDestination>(
                       value: _AddDestination.collection,
                       groupValue: selected,
-                      title: Text(context.tr(\'Lista (mi colección)\')),
+                      title: Text(context.tr('Lista (mi colección)')),
                       secondary: Icon(Icons.library_music_outlined),
                       onChanged: (v) => setStateDialog(() => selected = v ?? selected),
                     ),
                     RadioListTile<_AddDestination>(
                       value: _AddDestination.wishlist,
                       groupValue: selected,
-                      title: Text(context.tr(\'Deseos (wishlist)\')),
+                      title: Text(context.tr('Deseos (wishlist)')),
                       secondary: Icon(Icons.favorite_border),
                       onChanged: (v) => setStateDialog(() => selected = v ?? selected),
                     ),
@@ -219,13 +219,13 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.pop(ctx),
-                            child: Text(context.tr(\'Cancelar\')),
+                            child: Text(context.tr('Cancelar')),
                           ),
                         ),
                         Expanded(
                           child: FilledButton(
                             onPressed: () => Navigator.pop(ctx, selected),
-                            child: Text(context.tr(\'Continuar\')),
+                            child: Text(context.tr('Continuar')),
                           ),
                         ),
                       ],
@@ -255,15 +255,15 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Text(context.tr(\'Disco\')),
+        title: Text(context.tr('Disco')),
         actions: [
           IconButton(
-            tooltip: context.tr(\'Recargar canciones\'),
+            tooltip: context.tr('Recargar canciones'),
             onPressed: _loadTracks,
             icon: Icon(Icons.refresh),
           ),
           IconButton(
-            tooltip: context.tr(\'Actualizar precio\'),
+            tooltip: context.tr('Actualizar precio'),
             onPressed: _loadPrice,
             icon: Icon(Icons.euro),
           ),
@@ -274,7 +274,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
         child: FilledButton.icon(
           onPressed: _onAddPressed,
           icon: Icon(Icons.add),
-          label: Text(context.tr(\'Agregar\')),
+          label: Text(context.tr('Agregar')),
         ),
       ),
       body: CustomScrollView(
@@ -356,7 +356,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
 
                   // Selector de carátula (si hay más de una opción)
                   if (p.coverCandidates.length > 1) ...[
-                    Text(context.tr(\'Carátulas\'), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                    Text(context.tr('Carátulas'), style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
                     SizedBox(height: 8),
                     SizedBox(
                       height: 58,
@@ -417,7 +417,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                               Icon(Icons.article_outlined, size: 18),
                               SizedBox(width: 8),
                               Expanded(
-                                child: Text(context.tr(\'Reseña\'),
+                                child: Text(context.tr('Reseña'),
                                   style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
                                 ),
                               ),
@@ -451,7 +451,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(context.tr(\'Canciones\'),
+                    child: Text(context.tr('Canciones'),
                       style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                     ),
                   ),
@@ -584,7 +584,7 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
           Row(
             children: [
               Expanded(
-                child: Text(context.tr(\'Condición y formato\'),
+                child: Text(context.tr('Condición y formato'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
@@ -622,7 +622,7 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
                     TextField(
                       controller: _yearCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: InputDecoration(labelText: context.tr(\'Año\'), isDense: true),
+                      decoration: InputDecoration(labelText: context.tr('Año'), isDense: true),
                     ),
                   ],
                 ),
@@ -635,12 +635,12 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _condition,
-                  decoration: InputDecoration(labelText: context.tr(\'Condición\'), isDense: true),
+                  decoration: InputDecoration(labelText: context.tr('Condición'), isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'M', child: Text(context.tr(\'M (Mint)\'))),
-                    DropdownMenuItem(value: 'NM', child: Text(context.tr(\'NM (Near Mint)\'))),
-                    DropdownMenuItem(value: 'VG+', child: Text(context.tr(\'VG+\'))),
-                    DropdownMenuItem(value: 'VG', child: Text(context.tr(\'VG\'))),
+                    DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
+                    DropdownMenuItem(value: 'NM', child: Text(context.tr('NM (Near Mint)'))),
+                    DropdownMenuItem(value: 'VG+', child: Text(context.tr('VG+'))),
+                    DropdownMenuItem(value: 'VG', child: Text(context.tr('VG'))),
                     DropdownMenuItem(value: 'G', child: Text('G')),
                   ],
                   onChanged: (v) => setState(() => _condition = v ?? _condition),
@@ -650,12 +650,12 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _format,
-                  decoration: InputDecoration(labelText: context.tr(\'Formato\'), isDense: true),
+                  decoration: InputDecoration(labelText: context.tr('Formato'), isDense: true),
                   items: const [
-                    DropdownMenuItem(value: 'LP', child: Text(context.tr(\'LP\'))),
-                    DropdownMenuItem(value: 'EP', child: Text(context.tr(\'EP\'))),
-                    DropdownMenuItem(value: 'Single', child: Text(context.tr(\'Single\'))),
-                    DropdownMenuItem(value: '2xLP', child: Text(context.tr(\'2xLP\'))),
+                    DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
+                    DropdownMenuItem(value: 'EP', child: Text(context.tr('EP'))),
+                    DropdownMenuItem(value: 'Single', child: Text(context.tr('Single'))),
+                    DropdownMenuItem(value: '2xLP', child: Text(context.tr('2xLP'))),
                   ],
                   onChanged: (v) => setState(() => _format = v ?? _format),
                 ),
@@ -666,12 +666,12 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
           FilledButton.icon(
             onPressed: _saving ? null : _add,
             icon: Icon(Icons.check),
-            label: Text(context.tr(\'Agregar a Lista\')),
+            label: Text(context.tr('Agregar a Lista')),
           ),
           SizedBox(height: 8),
           TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context, false),
-            child: Text(context.tr(\'Atrás\')),
+            child: Text(context.tr('Atrás')),
           ),
         ],
       ),
@@ -746,7 +746,7 @@ class _WishlistAddSheetState extends State<_WishlistAddSheet> {
           Row(
             children: [
               Expanded(
-                child: Text(context.tr(\'Estado en Deseos\'),
+                child: Text(context.tr('Estado en Deseos'),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
@@ -791,31 +791,31 @@ class _WishlistAddSheetState extends State<_WishlistAddSheet> {
           RadioListTile<String>(
             value: 'Por comprar',
             groupValue: _status,
-            title: Text(context.tr(\'Por comprar\')),
+            title: Text(context.tr('Por comprar')),
             onChanged: _saving ? null : (v) => setState(() => _status = v ?? _status),
           ),
           RadioListTile<String>(
             value: 'Buscando',
             groupValue: _status,
-            title: Text(context.tr(\'Buscando\')),
+            title: Text(context.tr('Buscando')),
             onChanged: _saving ? null : (v) => setState(() => _status = v ?? _status),
           ),
           RadioListTile<String>(
             value: 'Comprado',
             groupValue: _status,
-            title: Text(context.tr(\'Comprado\')),
+            title: Text(context.tr('Comprado')),
             onChanged: _saving ? null : (v) => setState(() => _status = v ?? _status),
           ),
           SizedBox(height: 10),
           FilledButton.icon(
             onPressed: _saving ? null : _add,
             icon: Icon(Icons.check),
-            label: Text(context.tr(\'Agregar a Deseos\')),
+            label: Text(context.tr('Agregar a Deseos')),
           ),
           SizedBox(height: 8),
           TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context, false),
-            child: Text(context.tr(\'Atrás\')),
+            child: Text(context.tr('Atrás')),
           ),
         ],
       ),
