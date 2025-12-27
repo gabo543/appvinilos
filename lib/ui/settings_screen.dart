@@ -440,51 +440,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 sectionTitle(Icons.tune, 'General', subtitle: 'Opciones básicas y respaldo automático.'),
                 Card(
-  child: Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      ValueListenableBuilder<Locale>(
-        valueListenable: LocaleService.localeNotifier,
-        builder: (_, locale, __) {
-          final isEn = locale.languageCode == 'en';
-          return SwitchListTile(
-            value: isEn,
-            onChanged: (v) async {
-              await LocaleService.setCode(v ? 'en' : 'es');
-              if (!mounted) return;
-              setState(() {});
-            },
-            title: Text(context.tr('Idioma')),
-            subtitle: Text(context.tr('Cambiar idioma entre Español e Inglés.')),
-            secondary: const Icon(Icons.language),
-          );
-        },
-      ),
-      const Divider(height: 1),
-      SwitchListTile(
-    value: _auto,
-    onChanged: (v) async {
-      setState(() => _auto = v);
-      await BackupService.setAutoEnabled(v);
-      if (v) {
-        await BackupService.saveListNow();
-        _snack('Guardado automático: ACTIVADO ☁️');
-      } else {
-        _snack('Guardado automático: MANUAL ☁️');
-      }
-    },
-    secondary: Icon(_auto ? Icons.cloud_done : Icons.cloud_off),
-    title: Text(context.tr('Guardado automático')),
-    subtitle: Text(
-      _auto
-          ? 'Respalda solo cuando agregas o borras vinilos.'
-          : 'Debes usar “Guardar backup” manualmente.',
-    ),
-  ),
-)
-    ],
-  ),
-),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ValueListenableBuilder<Locale>(
+                        valueListenable: LocaleService.localeNotifier,
+                        builder: (_, locale, __) {
+                          final isEn = locale.languageCode == 'en';
+                          return SwitchListTile(
+                            value: isEn,
+                            onChanged: (v) async {
+                              await LocaleService.setCode(v ? 'en' : 'es');
+                              if (!mounted) return;
+                              setState(() {});
+                            },
+                            title: Text(context.tr('Idioma')),
+                            subtitle: Text(context.tr('Cambiar idioma entre Español e Inglés.')),
+                            secondary: const Icon(Icons.language),
+                          );
+                        },
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
+                        value: _auto,
+                        onChanged: (v) async {
+                          setState(() => _auto = v);
+                          await BackupService.setAutoEnabled(v);
+                          if (v) {
+                            await BackupService.saveListNow();
+                            _snack('Guardado automático: ACTIVADO ☁️');
+                          } else {
+                            _snack('Guardado automático: MANUAL ☁️');
+                          }
+                        },
+                        secondary: Icon(_auto ? Icons.cloud_done : Icons.cloud_off),
+                        title: Text(context.tr('Guardado automático')),
+                        subtitle: Text(
+                          _auto
+                              ? context.tr('Respalda solo cuando agregas o borras vinilos.')
+                              : context.tr('Debes usar “Guardar backup” manualmente.'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 SizedBox(height: 14),
 
                 sectionTitle(Icons.backup_outlined, 'Backup y exportación', subtitle: 'Guardar, importar y compartir tu colección.'),
