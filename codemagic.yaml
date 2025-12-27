@@ -147,6 +147,46 @@ workflows:
         script: |
           flutter pub get
 
+      - name: Fix plugin record (AGP 8+) - agregar namespace
+        script: |
+          set -e
+          echo "Buscando 'record-*' en pub-cache..."
+
+          # En AGP 8+ todos los módulos Android necesitan 'namespace' en build.gradle.
+          # La versión record 4.4.4 no lo trae y rompe builds release.
+          # Parcheamos el build.gradle del plugin en pub-cache usando el 'package' del AndroidManifest.xml.
+          REC_DIR="$(find "$HOME/.pub-cache/hosted" -maxdepth 2 -type d -name "record-*" 2>/dev/null | head -n 1)"
+
+          if [ -z "$REC_DIR" ]; then
+            echo "WARN: No encontré record-* en pub-cache (¿se instaló record?)."
+            exit 0
+          fi
+
+          GRADLE_FILE="$REC_DIR/android/build.gradle"
+          MANIFEST_FILE="$REC_DIR/android/src/main/AndroidManifest.xml"
+
+          if [ ! -f "$GRADLE_FILE" ]; then
+            echo "WARN: No existe $GRADLE_FILE"
+            exit 0
+          fi
+
+          if grep -q "namespace" "$GRADLE_FILE"; then
+            echo "OK: record ya tiene namespace."
+            exit 0
+          fi
+
+          NS=""
+          if [ -f "$MANIFEST_FILE" ]; then
+            NS="$(grep -oE 'package="[^"]+"' "$MANIFEST_FILE" | head -n 1 | sed 's/package="//;s/"//')"
+          fi
+
+          if [ -z "$NS" ]; then
+            NS="com.llfbandit.record"
+          fi
+
+          echo "Parchando record namespace=$NS en $GRADLE_FILE"
+          perl -0777 -i -pe "s/android\s*\{/android {\n    namespace \\\"$NS\\\"/s" "$GRADLE_FILE"
+
       - name: Generar ícono de la app
         script: |
           set -e
