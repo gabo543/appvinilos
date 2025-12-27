@@ -104,10 +104,12 @@ class HomeHeader extends StatelessWidget {
                     children: [
                       // Logo con “marco” para que resalte sobre cualquier tema.
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        // ✅ Pedido: el "card" del logo más pequeño, pero manteniendo el logo grande.
+                        // Menos padding alrededor = marco más compacto y se ve más pro.
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           color: cs.surface.withOpacity(isDark ? 0.75 : 0.95),
-                          borderRadius: BorderRadius.circular(22),
+                          borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: border),
                         ),
                         child: const AppLogo(size: kHomeHeaderLogoSize),
@@ -410,7 +412,7 @@ class _StatCard extends StatelessWidget {
     // Diseño más “vertical” para que el texto siempre tenga espacio.
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
+                          borderRadius: BorderRadius.circular(18),
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
         decoration: BoxDecoration(

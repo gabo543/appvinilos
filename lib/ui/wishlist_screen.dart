@@ -528,8 +528,12 @@ Widget _placeholder() {
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: const Text('Deseos'),
-        titleSpacing: 0,
+        // Más aire entre el leading (logo + back) y el título.
+        title: const Padding(
+          padding: EdgeInsets.only(left: 8),
+          child: Text('Deseos', maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        titleSpacing: 12,
         actions: [
           IconButton(
             tooltip: _grid ? 'Vista lista' : 'Vista grid',

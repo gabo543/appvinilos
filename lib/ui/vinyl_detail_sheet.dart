@@ -164,13 +164,14 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   Future<void> _loadPrice() async {
     final artista = (widget.vinyl['artista'] as String?)?.trim() ?? '';
     final album = (widget.vinyl['album'] as String?)?.trim() ?? '';
+    final mbid = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
     if (artista.isEmpty || album.isEmpty) return;
     setState(() {
       loadingPrice = true;
       priceRange = null;
     });
     try {
-      final pr = await PriceRangeService.getRange(artist: artista, album: album);
+      final pr = await PriceRangeService.getRange(artist: artista, album: album, mbid: mbid.isEmpty ? null : mbid);
       if (!mounted) return;
       setState(() {
         priceRange = pr;

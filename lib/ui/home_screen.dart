@@ -18,6 +18,7 @@ import 'vinyl_detail_sheet.dart';
 import 'wishlist_screen.dart';
 import 'app_logo.dart';
 import 'home/home_header.dart';
+import 'manual_vinyl_entry_screen.dart';
 
 enum Vista { inicio, lista, favoritos, borrar }
 
@@ -28,6 +29,8 @@ enum Vista { inicio, lista, favoritos, borrar }
 enum VinylScope { vinilos, artistas }
 
 enum VinylSortMode { az, yearDesc, recent, code }
+
+enum _AddVinylMethod { scan, manual }
 
 String vinylSortLabel(VinylSortMode m) {
   switch (m) {
@@ -453,6 +456,59 @@ Future<void> _loadViewMode() async {
     } else {
       FocusScope.of(context).unfocus();
     }
+  }
+
+  Future<void> _openAddVinylMenu() async {
+    // ✅ Entrada rápida para agregar desde la vista "Vinilos"
+    final pick = await showModalBottomSheet<_AddVinylMethod>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final t = Theme.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Agregar vinilo',
+                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: const Icon(Icons.qr_code_scanner),
+                  title: const Text('Escanear'),
+                  subtitle: const Text('Código, carátula o escuchar una canción.'),
+                  onTap: () => Navigator.pop(ctx, _AddVinylMethod.scan),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit_note_outlined),
+                  title: const Text('Ingresar a mano'),
+                  subtitle: const Text('Escribe artista y álbum (opcional: año y género).'),
+                  onTap: () => Navigator.pop(ctx, _AddVinylMethod.manual),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || pick == null) return;
+
+    switch (pick) {
+      case _AddVinylMethod.scan:
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen()));
+        break;
+      case _AddVinylMethod.manual:
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => const ManualVinylEntryScreen()));
+        break;
+    }
+
+    if (!mounted) return;
+    _reloadAllData();
   }
 
   void _onLocalSearchChanged(String _) {
@@ -2662,12 +2718,17 @@ Widget listaCompleta({
     // Si lo metemos ahí, queda apretado por el logo/leading y se “corta”.
     // El AppBar queda solo con título; el input se dibuja debajo (en el body)
     // cuando el usuario activa la búsqueda.
-    final titleWidget = Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+    // Un poquito más de aire entre el leading (logo + back) y el título,
+    // para que la flecha no quede “pegada” (por ejemplo en “Borrar”).
+    final titleWidget = Padding(
+      padding: const EdgeInsets.only(left: 10),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     );
 
@@ -2689,8 +2750,14 @@ Widget listaCompleta({
         ),
       ),
       title: titleWidget,
-      titleSpacing: 0,
+      titleSpacing: 12,
       actions: [
+        if (vista == Vista.lista && _vinylScope == VinylScope.vinilos)
+          IconButton(
+            tooltip: 'Agregar vinilo',
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: _openAddVinylMenu,
+          ),
         if (localSearchAllowed && !(vista == Vista.lista && _vinylScope == VinylScope.artistas))
           IconButton(
             tooltip: 'Vista: ${_viewModeLabel(_viewMode)} · tocar para ${_viewModeLabel(_nextViewMode(_viewMode))}',

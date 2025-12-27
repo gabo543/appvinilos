@@ -378,317 +378,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+
     final themeName = _themeLabels[_theme] ?? 'Obsidiana';
     final intensityName = _labelIntensity(_textIntensity);
     final borderName = _borderName(_borderStyle);
     final borderBase = AppThemeService.borderBaseColor(_borderStyle);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = t.brightness == Brightness.dark;
     final previewBorder = borderBase.withOpacity(isDark ? 0.90 : 0.70);
+
+    Widget sectionTitle(IconData icon, String title, {String? subtitle}) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(6, 12, 6, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Icon(icon, size: 18, color: cs.onSurface.withOpacity(0.82)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.2)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    const div = Divider(height: 1);
 
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: const Text('Ajustes'),
-        titleSpacing: 0,
+        // Más aire entre el leading (logo + back) y el título.
+        title: const Padding(
+          padding: EdgeInsets.only(left: 8),
+          child: Text('Ajustes', maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        titleSpacing: 12,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.save_alt),
-                        title: Text('Guardar backup'),
-                        subtitle: Text('Crea/actualiza un backup completo (vinilos + wishlist + ajustes).'),
-                        onTap: _guardar,
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.download_for_offline_outlined),
-                        title: Text('Exportar a Descargas'),
-                        subtitle: Text('Abre “Guardar como…” para elegir Descargas (no requiere permisos especiales).'),
-                        onTap: _exportarDescargas,
-                      ),
-                      const Divider(height: 1),
-
-                      ListTile(
-                        leading: const Icon(Icons.table_chart_outlined),
-                        title: Text('Exportar inventario (CSV)'),
-                        subtitle: Text('Planilla simple (Excel/Sheets). Incluye códigos 1.1, 1.2, …'),
-                        onTap: _exportarCsvInventario,
-                      ),
-                      const Divider(height: 1),
-
-                      ListTile(
-                        leading: const Icon(Icons.picture_as_pdf_outlined),
-                        title: Text('Exportar inventario (PDF)'),
-                        subtitle: Text('Lista imprimible en PDF.'),
-                        onTap: _exportarPdfInventario,
-                      ),
-                      const Divider(height: 1),
-
-                      ListTile(
-                        leading: const Icon(Icons.file_download_outlined),
-                        title: Text('Importar desde Descargas'),
-                        subtitle: Text('Elige el archivo backup (vinyl_backup.json / GaBoLP_backup_*.json) desde Descargas/Archivos. Permite fusionar, solo faltantes o reemplazar.'),
-                        onTap: _importarDescargas,
-                      ),
-                      const Divider(height: 1),
-
-                      ListTile(
-                        leading: const Icon(Icons.share_outlined),
-                        title: Text('Compartir backup'),
-                        subtitle: Text('Enviar a Google Drive / WhatsApp / correo.'),
-                        onTap: _compartirBackup,
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.hearing_outlined),
-                        title: const Text('Reconocimiento (Escuchar)'),
-                        subtitle: Text(
-                          _audioConfigured
-                              ? 'Token configurado ✅'
-                              : 'Configura token (AudD) para reconocer canciones con el micrófono.',
-                        ),
-                        onTap: _configAudio,
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.upload_file),
-                        title: Text('Cargar backup local'),
-                        subtitle: Text('Reemplaza TODO (vinilos + wishlist + papelera + ajustes) por el último backup local.'),
-                        onTap: _cargar,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // 🧰 Mantenimiento
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.cloud_download_outlined),
-                        title: Text('Descargar carátulas faltantes'),
-                        subtitle: Text('Deja carátulas guardadas para ver offline (recomendado después de importar).'),
-                        onTap: _downloadingCovers ? null : _descargarCaratulas,
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(Icons.content_copy_outlined),
-                        title: Text('Detectar / fusionar duplicados'),
-                        subtitle: Text('Encuentra LPs repetidos por artista+álbum y fusiona conservando el mejor registro.'),
-                        onTap: _duplicados,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // 🎨 Temas
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Diseño de la app', style: TextStyle(fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Text('Estilo:', style: TextStyle(fontWeight: FontWeight.w800)),
-                            const SizedBox(width: 8),
-                            Text(themeName, style: const TextStyle(fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        SegmentedButton<int>(
-                          segments: const [
-                            ButtonSegment(value: 1, icon: Icon(Icons.graphic_eq)),
-                            ButtonSegment(value: 2, icon: Icon(Icons.dashboard_customize_outlined)),
-                            ButtonSegment(value: 3, icon: Icon(Icons.nightlight_round)),
-                            ButtonSegment(value: 4, icon: Icon(Icons.palette_outlined)),
-                            ButtonSegment(value: 5, icon: Icon(Icons.bubble_chart_outlined)),
-                            ButtonSegment(value: 6, icon: Icon(Icons.flag_outlined)),
-                          ],
-                          selected: <int>{_theme},
-                          showSelectedIcon: false,
-                          onSelectionChanged: (s) {
-                            final v = s.first;
-                            setState(() => _theme = v);
-                            AppThemeService.setTheme(v);
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Cambia el estilo visual sin afectar la lógica ni tus datos.',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // 🔤 Intensidad del texto
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Texto', style: TextStyle(fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Text('Intensidad:', style: TextStyle(fontWeight: FontWeight.w800)),
-                            const SizedBox(width: 8),
-                            Text(intensityName, style: const TextStyle(fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Slider(
-                          value: _textIntensity.toDouble(),
-                          min: 1,
-                          max: 10,
-                          divisions: 9,
-                          label: '$_textIntensity',
-                          onChanged: (v) {
-                            final iv = v.round();
-                            setState(() => _textIntensity = iv);
-                            AppThemeService.setTextIntensity(iv);
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Ajusta el contraste del texto en toda la app.',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // 🧱 Fondo y cuadros
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Niveles visuales', style: TextStyle(fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Text('Fondo', style: TextStyle(fontWeight: FontWeight.w800)),
-                            const Spacer(),
-                            Text('Nivel $_bgLevel', style: const TextStyle(fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        Slider(
-                          value: _bgLevel.toDouble(),
-                          min: 1,
-                          max: 10,
-                          divisions: 9,
-                          label: '$_bgLevel',
-                          onChanged: (v) {
-                            final iv = v.round();
-                            setState(() => _bgLevel = iv);
-                            AppThemeService.setBgLevel(iv);
-                          },
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Text('Cuadros', style: TextStyle(fontWeight: FontWeight.w800)),
-                            const Spacer(),
-                            Text('Nivel $_cardLevel', style: const TextStyle(fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        Slider(
-                          value: _cardLevel.toDouble(),
-                          min: 1,
-                          max: 10,
-                          divisions: 9,
-                          label: '$_cardLevel',
-                          onChanged: (v) {
-                            final iv = v.round();
-                            setState(() => _cardLevel = iv);
-                            AppThemeService.setCardLevel(iv);
-                          },
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Ajusta el fondo y el estilo de los cuadros (cards) sin cambiar la lógica.',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // 🧩 Contorno de cards
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Borde de tarjetas', style: TextStyle(fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Text('Color:', style: TextStyle(fontWeight: FontWeight.w800)),
-                            const SizedBox(width: 8),
-                            Text('$_borderStyle · $borderName', style: const TextStyle(fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Slider(
-                          value: _borderStyle.toDouble(),
-                          min: 1,
-                          max: 10,
-                          divisions: 9,
-                          label: '$_borderStyle',
-                          onChanged: (v) {
-                            final iv = v.round();
-                            setState(() => _borderStyle = iv);
-                            AppThemeService.setCardBorderStyle(iv);
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          height: 56,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: previewBorder, width: 1.2),
-                            color: Theme.of(context).colorScheme.surface,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            'Vista previa',
-                            style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Ajusta el color del contorno de los cuadros (cards) en toda la app.',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
+                sectionTitle(Icons.tune, 'General', subtitle: 'Opciones básicas y respaldo automático.'),
                 Card(
                   child: SwitchListTile(
                     value: _auto,
@@ -703,16 +450,262 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       }
                     },
                     secondary: Icon(_auto ? Icons.cloud_done : Icons.cloud_off),
-                    title: Text('Guardado automático'),
+                    title: const Text('Guardado automático'),
                     subtitle: Text(
                       _auto
-                          ? 'Se respalda solo cuando agregas o borras vinilos.'
-                          : 'Debes usar “Guardar lista” manualmente.',
+                          ? 'Respalda solo cuando agregas o borras vinilos.'
+                          : 'Debes usar “Guardar backup” manualmente.',
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-],
+                const SizedBox(height: 14),
+
+                sectionTitle(Icons.backup_outlined, 'Backup y exportación', subtitle: 'Guardar, importar y compartir tu colección.'),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.save_alt),
+                        title: const Text('Guardar backup'),
+                        subtitle: const Text('Crea un respaldo completo (colección + deseos + ajustes).'),
+                        onTap: _guardar,
+                      ),
+                      div,
+                      ListTile(
+                        leading: const Icon(Icons.download_for_offline_outlined),
+                        title: const Text('Exportar backup (Descargas)'),
+                        subtitle: const Text('Guárdalo en Descargas para copiarlo o enviarlo.'),
+                        onTap: _exportarDescargas,
+                      ),
+                      div,
+                      ListTile(
+                        leading: const Icon(Icons.file_download_outlined),
+                        title: const Text('Importar backup'),
+                        subtitle: const Text('Selecciona un archivo para fusionar o reemplazar datos.'),
+                        onTap: _importarDescargas,
+                      ),
+                      div,
+                      ListTile(
+                        leading: const Icon(Icons.share_outlined),
+                        title: const Text('Compartir backup'),
+                        subtitle: const Text('Enviar a Drive / WhatsApp / correo.'),
+                        onTap: _compartirBackup,
+                      ),
+                      div,
+                      ListTile(
+                        leading: const Icon(Icons.table_chart_outlined),
+                        title: const Text('Exportar inventario (CSV)'),
+                        subtitle: const Text('Planilla para Excel / Google Sheets.'),
+                        onTap: _exportarCsvInventario,
+                      ),
+                      div,
+                      ListTile(
+                        leading: const Icon(Icons.picture_as_pdf_outlined),
+                        title: const Text('Exportar inventario (PDF)'),
+                        subtitle: const Text('Inventario listo para imprimir.'),
+                        onTap: _exportarPdfInventario,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                sectionTitle(Icons.hearing_outlined, 'Escáner y audio', subtitle: 'Reconocimiento por micrófono y carátulas offline.'),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.hearing_outlined),
+                        title: const Text('Reconocimiento (Escuchar)'),
+                        subtitle: Text(
+                          _audioConfigured
+                              ? 'Token configurado ✅'
+                              : 'Configura token AudD para reconocer canciones.',
+                        ),
+                        onTap: _configAudio,
+                      ),
+                      div,
+                      ListTile(
+                        leading: const Icon(Icons.cloud_download_outlined),
+                        title: const Text('Descargar carátulas faltantes'),
+                        subtitle: const Text('Guarda portadas para ver offline.'),
+                        onTap: _downloadingCovers ? null : _descargarCaratulas,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                sectionTitle(Icons.library_music, 'Colección', subtitle: 'Mantenimiento y limpieza de tu lista.'),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.content_copy_outlined),
+                        title: const Text('Detectar / fusionar duplicados'),
+                        subtitle: const Text('Encuentra repetidos por artista+álbum y los fusiona.'),
+                        onTap: _duplicados,
+                      ),
+                      div,
+                      ExpansionTile(
+                        leading: const Icon(Icons.warning_amber_outlined),
+                        title: const Text('Avanzado'),
+                        subtitle: const Text('Opciones que pueden reemplazar datos.'),
+                        childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.upload_file),
+                            title: const Text('Cargar backup local'),
+                            subtitle: const Text('Reemplaza TODO por el último backup local.'),
+                            onTap: _cargar,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                sectionTitle(Icons.palette_outlined, 'Apariencia', subtitle: 'Tema, contraste y bordes.'),
+                Card(
+                  child: ExpansionTile(
+                    leading: const Icon(Icons.palette_outlined),
+                    title: const Text('Personalizar diseño'),
+                    subtitle: Text('Tema: $themeName · Texto: $intensityName'),
+                    childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    children: [
+                      const SizedBox(height: 10),
+                      Text('Tema', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      SegmentedButton<int>(
+                        segments: const [
+                          ButtonSegment(value: 1, icon: Icon(Icons.graphic_eq)),
+                          ButtonSegment(value: 2, icon: Icon(Icons.dashboard_customize_outlined)),
+                          ButtonSegment(value: 3, icon: Icon(Icons.nightlight_round)),
+                          ButtonSegment(value: 4, icon: Icon(Icons.palette_outlined)),
+                          ButtonSegment(value: 5, icon: Icon(Icons.bubble_chart_outlined)),
+                          ButtonSegment(value: 6, icon: Icon(Icons.flag_outlined)),
+                        ],
+                        selected: <int>{_theme},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (s) {
+                          final v = s.first;
+                          setState(() => _theme = v);
+                          AppThemeService.setTheme(v);
+                        },
+                      ),
+                      const SizedBox(height: 6),
+                      Text('Cambia el estilo visual de la app.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 16),
+
+                      Text('Texto', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text('Intensidad:', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(width: 8),
+                          Text(intensityName, style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                      Slider(
+                        value: _textIntensity.toDouble(),
+                        min: 1,
+                        max: 10,
+                        divisions: 9,
+                        label: '$_textIntensity',
+                        onChanged: (v) {
+                          final iv = v.round();
+                          setState(() => _textIntensity = iv);
+                          AppThemeService.setTextIntensity(iv);
+                        },
+                      ),
+                      Text('Ajusta el contraste del texto.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 14),
+
+                      Text('Niveles visuales', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text('Fondo', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          const Spacer(),
+                          Text('Nivel $_bgLevel', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                      Slider(
+                        value: _bgLevel.toDouble(),
+                        min: 1,
+                        max: 10,
+                        divisions: 9,
+                        label: '$_bgLevel',
+                        onChanged: (v) {
+                          final iv = v.round();
+                          setState(() => _bgLevel = iv);
+                          AppThemeService.setBgLevel(iv);
+                        },
+                      ),
+                      Row(
+                        children: [
+                          Text('Cuadros', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          const Spacer(),
+                          Text('Nivel $_cardLevel', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                      Slider(
+                        value: _cardLevel.toDouble(),
+                        min: 1,
+                        max: 10,
+                        divisions: 9,
+                        label: '$_cardLevel',
+                        onChanged: (v) {
+                          final iv = v.round();
+                          setState(() => _cardLevel = iv);
+                          AppThemeService.setCardLevel(iv);
+                        },
+                      ),
+                      Text('Ajusta fondo y estilo de cards.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 14),
+
+                      Text('Borde de tarjetas', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text('Color:', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(width: 8),
+                          Text('$_borderStyle · $borderName', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                      Slider(
+                        value: _borderStyle.toDouble(),
+                        min: 1,
+                        max: 10,
+                        divisions: 9,
+                        label: '$_borderStyle',
+                        onChanged: (v) {
+                          final iv = v.round();
+                          setState(() => _borderStyle = iv);
+                          AppThemeService.setCardBorderStyle(iv);
+                        },
+                      ),
+                      Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: previewBorder, width: 1.2),
+                          color: cs.surface,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Vista previa',
+                          style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text('Cambia el contorno de los cuadros.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+              ],
             ),
     );
   }

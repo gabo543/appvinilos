@@ -7,6 +7,7 @@ import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import '../services/vinyl_add_service.dart';
 import '../services/add_defaults_service.dart';
+import '../services/price_range_service.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
 
@@ -54,6 +55,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     _fav.clear();
     _wish.clear();
     _busy.clear();
+    _priceByReleaseGroup.clear();
+    _priceInFlight.clear();
 
     if (keepFocus) {
       // Mantener el foco en el TextField para seguir escribiendo.
@@ -75,7 +78,43 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   final Map<String, bool> _wish = {};
   final Map<String, bool> _busy = {};
 
+  // 💶 Precios en lista (discografía)
+  bool _showPrices = false;
+  final Map<String, PriceRange?> _priceByReleaseGroup = {};
+  final Map<String, Future<PriceRange?>?> _priceInFlight = {};
+
   String _k(String artist, String album) => '${artist.trim()}||${album.trim()}';
+
+  String _priceLabelFor(PriceRange pr) {
+    // Formato pedido: "€ A - B". Usamos enteros para que se vea limpio.
+    final a = pr.min.round();
+    final b = pr.max.round();
+    return '€ $a - $b';
+  }
+
+  void _ensurePriceLoaded(String artistName, AlbumItem al) {
+    if (!_showPrices) return;
+    final rgid = al.releaseGroupId.trim();
+    if (rgid.isEmpty) return;
+    if (_priceByReleaseGroup.containsKey(rgid)) return;
+    if (_priceInFlight[rgid] != null) return;
+
+    _priceInFlight[rgid] = PriceRangeService.getRange(
+      artist: artistName,
+      album: al.title,
+      mbid: rgid,
+    ).then((pr) {
+      _priceByReleaseGroup[rgid] = pr;
+      _priceInFlight[rgid] = null;
+      if (mounted) setState(() {});
+      return pr;
+    }).catchError((_) {
+      _priceByReleaseGroup[rgid] = null;
+      _priceInFlight[rgid] = null;
+      if (mounted) setState(() {});
+      return null;
+    });
+  }
 
   // 🔎 Auto-selección (modo A): si el mejor resultado es claramente superior,
   // entramos directo a la discografía. Si hay duda, mostramos la lista.
@@ -145,6 +184,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       _fav.clear();
       _wish.clear();
       _busy.clear();
+      _priceByReleaseGroup.clear();
+      _priceInFlight.clear();
     }
     if (q.isEmpty) {
       setState(() {
@@ -155,6 +196,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         loadingAlbums = false;
       });
       _lastAutoPickedQuery = '';
+      _exists.clear();
+      _vinylId.clear();
+      _fav.clear();
+      _wish.clear();
+      _busy.clear();
+      _priceByReleaseGroup.clear();
+      _priceInFlight.clear();
       return;
     }
 
@@ -210,6 +258,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       _fav.clear();
       _wish.clear();
       _busy.clear();
+      _priceByReleaseGroup.clear();
+      _priceInFlight.clear();
     });
 
     try {
@@ -560,6 +610,16 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         title: const Text('Discografías'),
         titleSpacing: 0,
+        actions: [
+          if ((pickedArtist != null || albums.isNotEmpty) && artistName.trim().isNotEmpty)
+            IconButton(
+              tooltip: _showPrices ? 'Ocultar precios' : 'Mostrar precios',
+              icon: const Icon(Icons.euro_symbol),
+              onPressed: () {
+                setState(() => _showPrices = !_showPrices);
+              },
+            ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(12),
@@ -633,81 +693,164 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                               IconData favIcon = fav ? Icons.star : Icons.star_border;
                               IconData wishIcon = inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined;
 
-                              return Card(
-                                child: ListTile(
-                                  leading: ClipRRect(
+                              // 💶 Precios (lazy): solo si el usuario activó el icono €
+                              if (_showPrices) {
+                                _ensurePriceLoaded(artistName, al);
+                              }
+
+                              final rgid = al.releaseGroupId.trim();
+                              final hasPrice = rgid.isNotEmpty && _priceByReleaseGroup.containsKey(rgid);
+                              final pr = rgid.isEmpty ? null : _priceByReleaseGroup[rgid];
+                              final priceLabel = !_showPrices
+                                  ? null
+                                  : (!hasPrice
+                                      ? '€ …'
+                                      : (pr == null ? '€ —' : _priceLabelFor(pr)));
+
+                              Widget actionItem({
+                                required IconData icon,
+                                required String label,
+                                required VoidCallback? onTap,
+                                required bool disabled,
+                                required String tooltip,
+                              }) {
+                                final color = disabled ? Theme.of(context).colorScheme.onSurfaceVariant : null;
+                                return Tooltip(
+                                  message: tooltip,
+                                  child: InkWell(
+                                    onTap: disabled ? null : onTap,
                                     borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(
-                                      al.cover250,
-                                      width: 56,
-                                      height: 56,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 34),
-                                      loadingBuilder: (ctx, child, prog) {
-                                        if (prog == null) return child;
-                                        return const SizedBox(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(icon, color: color),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            label,
+                                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              return Card(
+                                child: Column(
+                                  children: [
+                                    ListTile(
+                                      leading: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Image.network(
+                                          al.cover250,
                                           width: 56,
                                           height: 56,
-                                          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => const Icon(Icons.album, size: 34),
+                                          loadingBuilder: (ctx, child, prog) {
+                                            if (prog == null) return child;
+                                            return const SizedBox(
+                                              width: 56,
+                                              height: 56,
+                                              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      title: Text(
+                                        al.title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              'Año: ${((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')}',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (priceLabel != null)
+                                            Text(
+                                              priceLabel,
+                                              style: Theme.of(context).textTheme.labelMedium,
+                                            ),
+                                        ],
+                                      ),
+                                      onTap: () {
+                                        if (artistName.trim().isEmpty) return;
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => AlbumTracksScreen(
+                                              album: al,
+                                              artistName: artistName,
+                                              artistId: pickedArtist?.id,
+                                            ),
+                                          ),
                                         );
                                       },
                                     ),
-                                  ),
-                                  title: Text(al.title),
-                                  subtitle: Text('Año: ${((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')}'),
-                                  onTap: () {
-                                    if (artistName.trim().isEmpty) return;
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => AlbumTracksScreen(
-                                          album: al,
-                                          artistName: artistName,
-                                          artistId: pickedArtist?.id,
-                                        ),
+                                    const Divider(height: 1),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          actionItem(
+                                            icon: addIcon,
+                                            label: 'Lista',
+                                            tooltip: addDisabled ? 'Ya está en tu lista' : 'Agregar a tu lista',
+                                            disabled: addDisabled,
+                                            onTap: () async {
+                                              _dismissKeyboard();
+                                              final opts = await _askConditionAndFormat();
+                                              if (!mounted || opts == null) return;
+                                              await _addAlbumOptimistic(
+                                                artistName: artistName,
+                                                album: al,
+                                                condition: opts['condition'] ?? 'VG+',
+                                                format: opts['format'] ?? 'LP',
+                                              );
+                                            },
+                                          ),
+                                          actionItem(
+                                            icon: favIcon,
+                                            label: 'Fav',
+                                            tooltip: favDisabled
+                                                ? (exists ? 'Cargando...' : 'Primero agrega a tu lista')
+                                                : (fav ? 'Quitar favorito' : 'Marcar favorito'),
+                                            disabled: favDisabled,
+                                            onTap: () => _toggleFavorite(artistName, al),
+                                          ),
+                                          actionItem(
+                                            icon: wishIcon,
+                                            label: 'Deseos',
+                                            tooltip: wishDisabled ? 'No disponible' : 'Agregar a deseos',
+                                            disabled: wishDisabled,
+                                            onTap: () async {
+                                              final st = await _askWishlistStatus();
+                                              if (!mounted || st == null) return;
+                                              await _addWishlist(artistName, al, st);
+                                            },
+                                          ),
+                                          if (busy)
+                                            const Padding(
+                                              padding: EdgeInsets.only(left: 8),
+                                              child: SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                              ),
+                                            ),
+                                        ],
                                       ),
-                                    );
-                                  },
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        tooltip: addDisabled ? 'Ya está en tu lista' : 'Agregar',
-                                        onPressed: addDisabled
-                                            ? null
-                                            : () async {
-                                                _dismissKeyboard();
-                                                final opts = await _askConditionAndFormat();
-                                                if (!mounted || opts == null) return;
-                                                await _addAlbumOptimistic(
-                                                  artistName: artistName,
-                                                  album: al,
-                                                  condition: opts['condition'] ?? 'VG+',
-                                                  format: opts['format'] ?? 'LP',
-                                                );
-                                              },
-                                        icon: Icon(addIcon, color: addDisabled ? Theme.of(context).colorScheme.onSurfaceVariant : null),
-                                      ),
-                                      IconButton(
-                                        tooltip: favDisabled
-                                            ? (exists ? 'Cargando...' : 'Primero agrega a tu lista')
-                                            : (fav ? 'Quitar favorito' : 'Marcar favorito'),
-                                        onPressed: favDisabled ? null : () => _toggleFavorite(artistName, al),
-                                        icon: Icon(favIcon, color: favDisabled ? Theme.of(context).colorScheme.onSurfaceVariant : null),
-                                      ),
-                                      IconButton(
-                                        tooltip: wishDisabled ? 'No disponible' : 'Wishlist',
-                                        onPressed: wishDisabled
-                                            ? null
-                                            : () async {
-                                                final st = await _askWishlistStatus();
-                                                if (!mounted || st == null) return;
-                                                await _addWishlist(artistName, al, st);
-                                              },
-                                        icon: Icon(wishIcon, color: wishDisabled ? Theme.of(context).colorScheme.onSurfaceVariant : null),
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               );
                             },

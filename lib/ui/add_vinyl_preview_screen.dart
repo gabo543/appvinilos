@@ -63,7 +63,11 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     });
 
     try {
-      final pr = await PriceRangeService.getRange(artist: widget.prepared.artist, album: widget.prepared.album);
+      final pr = await PriceRangeService.getRange(
+        artist: widget.prepared.artist,
+        album: widget.prepared.album,
+        mbid: (widget.prepared.releaseGroupId ?? '').trim().isEmpty ? null : widget.prepared.releaseGroupId,
+      );
       if (!mounted) return;
       setState(() {
         _priceRange = pr;
@@ -171,7 +175,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     if (!mounted) return;
     if (added) {
       _snack('Listo ✅');
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     }
   }
 

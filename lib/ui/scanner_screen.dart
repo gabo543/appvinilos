@@ -71,6 +71,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   List<_CoverQueryOption> _coverSuggestions = const [];
   int _coverSuggestionIndex = 0;
   List<BarcodeReleaseHit> _coverHits = [];
+  bool _coverAutoPrompted = false;
 
   // --- Modo escuchar ---
   final Record _recorder = Record();
@@ -306,6 +307,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       _coverHits = [];
       _coverSearching = false;
       _coverFile = null;
+      _coverAutoPrompted = false;
 
       _listening = false;
       _listenIdentifying = false;
@@ -335,8 +337,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     try {
       final XFile? x = await _picker.pickImage(
         source: fromCamera ? ImageSource.camera : ImageSource.gallery,
-        imageQuality: 90,
-        maxWidth: 1600,
+        // Mejor OCR: más resolución (sin pasarnos para evitar OOM).
+        imageQuality: 100,
+        maxWidth: 2200,
       );
       if (x == null) return;
       final f = File(x.path);
@@ -352,6 +355,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         _coverSuggestions = const [];
         _coverSuggestionIndex = 0;
         _coverHits = [];
+        _coverAutoPrompted = false;
       });
       await _runOcrAndSearch(f);
     } catch (_) {
@@ -370,26 +374,63 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       final recognized = await recognizer.processImage(input);
       final raw = recognized.text.trim();
 
-      // 1) Extraemos líneas "buenas" usando geometría (tamaño/posición), y si no sale nada,
-      //    caemos al método antiguo (texto plano).
+      bool sameCandidates(List<String> a, List<String> b) {
+        if (a.length != b.length) return false;
+        for (int i = 0; i < a.length; i++) {
+          if (a[i].trim().toLowerCase() != b[i].trim().toLowerCase()) return false;
+        }
+        return true;
+      }
+
+      // 1) Extraemos líneas "buenas" usando geometría (tamaño/posición), pero si no encontramos
+      //    hits reintentamos con el OCR "crudo" (texto completo). En muchos covers el OCR
+      //    grande puede tomar ruido (sellos/"STEREO") y dejar fuera artista/álbum.
       final geomLines = _extractOcrCandidatesFromRecognized(recognized);
-      final candidates = geomLines.isNotEmpty ? geomLines : _extractOcrCandidates(raw);
-      final term = candidates.join(' ').trim();
+      final rawCandidates = _extractOcrCandidates(raw);
+
+      final primaryCandidates = geomLines.isNotEmpty ? geomLines : rawCandidates;
+      final primaryTerm = primaryCandidates.join(' ').trim();
+      final fallbackCandidates = (geomLines.isNotEmpty && rawCandidates.isNotEmpty && !sameCandidates(geomLines, rawCandidates))
+          ? rawCandidates
+          : const <String>[];
+      final fallbackTerm = fallbackCandidates.join(' ').trim();
+
+      // Termino "de respaldo" para iTunes: si el primario queda vacío, usamos el crudo.
+      final itunesTerm0 = (primaryTerm.isNotEmpty ? primaryTerm : fallbackTerm).trim();
 
       if (!mounted) return;
-      final suggestions = _buildCoverSuggestionsSmart(candidates);
+      final suggestions = _buildCoverSuggestionsSmart(primaryCandidates);
       if (!mounted) return;
       setState(() {
         _coverOcr = raw;
         _coverSuggestions = suggestions;
         _coverSuggestionIndex = 0;
-        _coverFallbackTerm = term;
-        _coverQuery = (suggestions.isNotEmpty ? suggestions.first.query : term).trim().isEmpty
+        _coverFallbackTerm = itunesTerm0;
+        _coverQuery = (suggestions.isNotEmpty ? suggestions.first.query : itunesTerm0).trim().isEmpty
             ? null
-            : (suggestions.isNotEmpty ? suggestions.first.query : term);
+            : (suggestions.isNotEmpty ? suggestions.first.query : itunesTerm0);
       });
 
-      if (term.isEmpty) {
+      // ✅ En algunos teléfonos, mostrar todas las opciones debajo de la foto deja el "menú" fuera
+      // de pantalla. En vez de eso, ofrecemos las opciones en un Bottom Sheet.
+      int startIndex = 0;
+      if (!_coverAutoPrompted && suggestions.length > 1) {
+        _coverAutoPrompted = true;
+        final picked = await _showCoverSearchOptionsSheet(
+          options: suggestions,
+          selectedIndex: 0,
+        );
+        if (!mounted) return;
+        if (picked != null && picked >= 0 && picked < suggestions.length) {
+          startIndex = picked;
+          setState(() {
+            _coverSuggestionIndex = startIndex;
+            _coverQuery = suggestions[startIndex].query;
+          });
+        }
+      }
+
+      if (itunesTerm0.isEmpty) {
         if (!mounted) return;
         setState(() {
           _coverSearching = false;
@@ -400,20 +441,65 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
 
       // 2) Pipeline automático (Exacto → Simple → Álbum → Amplio). Si no hay hits o MB falla,
       //    hacemos fallback a iTunes (sin API key).
-      final outcome = await _searchCoverPipeline(
-        options: suggestions.isNotEmpty ? suggestions : [
-          _CoverQueryOption(label: 'Buscar', query: term),
-        ],
-        itunesTerm: term,
+      final opts = (suggestions.isNotEmpty)
+          ? [
+              ...suggestions.sublist(startIndex),
+              ...suggestions.sublist(0, startIndex),
+            ]
+          : [
+              _CoverQueryOption(label: 'Buscar', query: itunesTerm0),
+            ];
+
+      var outcome = await _searchCoverPipeline(
+        options: opts,
+        itunesTerm: itunesTerm0,
       );
+
+      // 3) Si no hubo resultados con la lectura por geometría, reintentamos con el OCR crudo.
+      if (outcome.hits.isEmpty && fallbackCandidates.isNotEmpty && fallbackTerm.isNotEmpty) {
+        if (!mounted) return;
+        final suggestions2 = _buildCoverSuggestionsSmart(fallbackCandidates);
+        setState(() {
+          _coverNote = 'Reintentando con texto completo…';
+          _coverSuggestions = suggestions2;
+          _coverSuggestionIndex = 0;
+          _coverFallbackTerm = fallbackTerm;
+          _coverQuery = (suggestions2.isNotEmpty ? suggestions2.first.query : fallbackTerm).trim().isEmpty
+              ? null
+              : (suggestions2.isNotEmpty ? suggestions2.first.query : fallbackTerm);
+        });
+
+        final opts2 = (suggestions2.isNotEmpty)
+            ? suggestions2
+            : [
+                _CoverQueryOption(label: 'Buscar', query: fallbackTerm),
+              ];
+
+        outcome = await _searchCoverPipeline(
+          options: opts2,
+          itunesTerm: fallbackTerm,
+        );
+
+        // Si igual no hay hits, mantenemos la nota del reintento + nota del outcome si existe.
+        if (!mounted) return;
+        setState(() {
+          if ((outcome.note ?? '').trim().isNotEmpty) {
+            _coverNote = 'Reintento OCR: texto completo. ${outcome.note}'.trim();
+          } else {
+            _coverNote = 'Reintento OCR: texto completo.';
+          }
+        });
+      }
+
       if (!mounted) return;
+      final usedIdx = _matchCoverSuggestionIndex(outcome.usedQuery);
       setState(() {
         _coverHits = _rankHits(outcome.hits);
         _coverSearching = false;
         _coverError = outcome.error;
-        _coverNote = outcome.note;
+        _coverNote = outcome.note ?? _coverNote;
         _coverQuery = outcome.usedQuery;
-        _coverSuggestionIndex = outcome.usedSuggestionIndex ?? 0;
+        _coverSuggestionIndex = usedIdx;
       });
     } catch (_) {
       if (!mounted) return;
@@ -987,23 +1073,40 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   }
 
   Future<void> _searchCoverFromSuggestion(int suggestionIndex) async {
-    if (suggestionIndex < 0 || suggestionIndex >= _coverSuggestions.length) return;
-    final opt = _coverSuggestions[suggestionIndex];
-    final term = (_coverFallbackTerm ?? opt.query).trim();
+    await _runCoverSearchFromSuggestions(startIndex: suggestionIndex);
+  }
+
+  int _matchCoverSuggestionIndex(String usedQuery) {
+    final uq = usedQuery.trim().toLowerCase();
+    if (uq.isEmpty) return _coverSuggestionIndex;
+    for (int i = 0; i < _coverSuggestions.length; i++) {
+      if (_coverSuggestions[i].query.trim().toLowerCase() == uq) return i;
+    }
+    return _coverSuggestionIndex;
+  }
+
+  Future<void> _runCoverSearchFromSuggestions({required int startIndex}) async {
+    if (_coverSuggestions.isEmpty) return;
+    if (startIndex < 0 || startIndex >= _coverSuggestions.length) return;
+
+    final term = (_coverFallbackTerm ?? _coverSuggestions[startIndex].query).trim();
+    final rotated = [
+      ..._coverSuggestions.sublist(startIndex),
+      ..._coverSuggestions.sublist(0, startIndex),
+    ];
 
     setState(() {
-      _coverSuggestionIndex = suggestionIndex;
+      _coverSuggestionIndex = startIndex;
       _coverSearching = true;
       _coverError = null;
       _coverNote = null;
       _coverHits = [];
-      _coverQuery = opt.query;
+      _coverQuery = _coverSuggestions[startIndex].query;
     });
 
     final outcome = await _searchCoverPipeline(
-      options: [opt],
-      itunesTerm: term.isEmpty ? opt.query : term,
-      suggestionIndexBase: suggestionIndex,
+      options: rotated,
+      itunesTerm: term.isEmpty ? rotated.first.query : term,
     );
     if (!mounted) return;
     setState(() {
@@ -1012,8 +1115,78 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       _coverError = outcome.error;
       _coverNote = outcome.note;
       _coverQuery = outcome.usedQuery;
-      _coverSuggestionIndex = outcome.usedSuggestionIndex ?? _coverSuggestionIndex;
+      _coverSuggestionIndex = _matchCoverSuggestionIndex(outcome.usedQuery);
     });
+  }
+
+  Future<int?> _showCoverSearchOptionsSheet({
+    required List<_CoverQueryOption> options,
+    required int selectedIndex,
+  }) async {
+    if (!mounted) return null;
+    return showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final t = Theme.of(ctx);
+        final cs = t.colorScheme;
+        final maxH = MediaQuery.of(ctx).size.height * 0.62;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Opciones de búsqueda',
+                  style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Elige la opción que mejor coincida con el texto de la carátula.',
+                  style: t.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxH),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final opt = options[i];
+                      final selected = i == selectedIndex;
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(opt.label, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: Text(opt.query, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        trailing: selected ? Icon(Icons.check, color: cs.primary) : null,
+                        onTap: () => Navigator.pop(ctx, i),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openCoverSearchOptions() async {
+    if (_coverSuggestions.isEmpty) return;
+    final picked = await _showCoverSearchOptionsSheet(
+      options: _coverSuggestions,
+      selectedIndex: _coverSuggestionIndex,
+    );
+    if (!mounted) return;
+    if (picked == null) return;
+    await _runCoverSearchFromSuggestions(startIndex: picked);
   }
 
   Future<void> _editCoverQuery() async {
@@ -1297,47 +1470,109 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     final cs = t.colorScheme;
     final panelBg = cs.surface.withOpacity(0.92);
 
+    Widget modeButton({
+      required ScannerMode mode,
+      required IconData icon,
+      required String title,
+      required String subtitle,
+    }) {
+      final selected = _mode == mode;
+      final textColor = selected ? cs.onPrimary : cs.onSurface;
+      final subColor = selected ? cs.onPrimary.withOpacity(0.85) : cs.onSurface.withOpacity(0.72);
+
+      final label = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: TextStyle(fontWeight: FontWeight.w900, color: textColor)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: subColor)),
+        ],
+      );
+
+      final style = ButtonStyle(
+        alignment: Alignment.centerLeft,
+        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+        shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+      );
+
+      return selected
+          ? FilledButton.icon(
+              style: style,
+              onPressed: null,
+              icon: Icon(icon),
+              label: label,
+            )
+          : FilledButton.tonalIcon(
+              style: style,
+              onPressed: () => unawaited(_setMode(mode)),
+              icon: Icon(icon),
+              label: label,
+            );
+    }
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: const Text('Escáner'),
-        titleSpacing: 0,
+        // Más aire entre la flecha (leading) y el título.
+        title: const Padding(
+          padding: EdgeInsets.only(left: 8),
+          child: Text('Escáner', maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        titleSpacing: 12,
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
+          // Más alto: los 3 botones van vertical para que siempre se lean completos.
+          preferredSize: Size.fromHeight(_mode == ScannerMode.codigo ? 212 : 196),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: SegmentedButton<ScannerMode>(
-                    segments: const [
-                      ButtonSegment<ScannerMode>(value: ScannerMode.codigo, label: Text('Código'), icon: Icon(Icons.qr_code_2)),
-                      ButtonSegment<ScannerMode>(value: ScannerMode.caratula, label: Text('Carátula'), icon: Icon(Icons.image_search)),
-                      ButtonSegment<ScannerMode>(value: ScannerMode.escuchar, label: Text('Escuchar'), icon: Icon(Icons.hearing_outlined)),
+                // Acciones de cámara solo en modo código.
+                if (_mode == ScannerMode.codigo)
+                  Row(
+                    children: [
+                      const Spacer(),
+                      ValueListenableBuilder<MobileScannerState>(
+                        valueListenable: _controller,
+                        builder: (context, state, _) {
+                          final torchOn = state.torchState == TorchState.on;
+                          return IconButton(
+                            tooltip: torchOn ? 'Apagar luz' : 'Encender luz',
+                            icon: Icon(torchOn ? Icons.flash_on : Icons.flash_off),
+                            onPressed: () => unawaited(_controller.toggleTorch()),
+                          );
+                        },
+                      ),
+                      IconButton(
+                        tooltip: 'Cambiar cámara',
+                        icon: const Icon(Icons.cameraswitch),
+                        onPressed: () => unawaited(_controller.switchCamera()),
+                      ),
                     ],
-                    selected: <ScannerMode>{_mode},
-                    onSelectionChanged: (s) => unawaited(_setMode(s.first)),
-                    showSelectedIcon: false,
                   ),
+                if (_mode == ScannerMode.codigo) const SizedBox(height: 6) else const SizedBox(height: 2),
+                modeButton(
+                  mode: ScannerMode.codigo,
+                  icon: Icons.qr_code_2,
+                  title: 'Código de barras',
+                  subtitle: 'Busca el álbum por UPC/EAN.',
                 ),
-                const SizedBox(width: 8),
-                ValueListenableBuilder<MobileScannerState>(
-                  valueListenable: _controller,
-                  builder: (context, state, _) {
-                    final torchOn = state.torchState == TorchState.on;
-                    return IconButton(
-                      tooltip: torchOn ? 'Apagar luz' : 'Encender luz',
-                      icon: Icon(torchOn ? Icons.flash_on : Icons.flash_off),
-                      onPressed: _mode == ScannerMode.codigo ? () => unawaited(_controller.toggleTorch()) : null,
-                    );
-                  },
+                const SizedBox(height: 8),
+                modeButton(
+                  mode: ScannerMode.caratula,
+                  icon: Icons.image_search,
+                  title: 'Carátula',
+                  subtitle: 'Lee artista y álbum desde la portada.',
                 ),
-                IconButton(
-                  tooltip: 'Cambiar cámara',
-                  icon: const Icon(Icons.cameraswitch),
-                  onPressed: _mode == ScannerMode.codigo ? () => unawaited(_controller.switchCamera()) : null,
+                const SizedBox(height: 8),
+                modeButton(
+                  mode: ScannerMode.escuchar,
+                  icon: Icons.hearing_outlined,
+                  title: 'Escuchar',
+                  subtitle: 'Reconoce una canción con el micrófono.',
                 ),
               ],
             ),
@@ -1479,6 +1714,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                                     _coverSuggestionIndex = 0;
                                     _coverHits = [];
                                     _coverError = null;
+                                    _coverAutoPrompted = false;
                                   });
                                 },
                           icon: const Icon(Icons.clear),
@@ -1486,24 +1722,14 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                         ),
                     ],
                   ),
+                  // En vez de mostrar un "menú" grande debajo de la foto (que en algunos móviles queda
+                  // cortado), ofrecemos las opciones en un Bottom Sheet.
                   if (_coverSuggestions.isNotEmpty) ...[
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: List.generate(_coverSuggestions.length, (i) {
-                        final opt = _coverSuggestions[i];
-                        return ChoiceChip(
-                          label: Text(opt.label),
-                          selected: _coverSuggestionIndex == i,
-                          onSelected: _coverSearching
-                              ? null
-                              : (v) {
-                                  if (!v) return;
-                                  unawaited(_searchCoverFromSuggestion(i));
-                                },
-                        );
-                      }),
+                    OutlinedButton.icon(
+                      onPressed: _coverSearching ? null : () => unawaited(_openCoverSearchOptions()),
+                      icon: const Icon(Icons.tune),
+                      label: const Text('Opciones de búsqueda'),
                     ),
                   ],
                   if ((_coverQuery ?? '').trim().isNotEmpty) ...[
