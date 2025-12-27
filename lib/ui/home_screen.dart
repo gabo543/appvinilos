@@ -19,7 +19,13 @@ import 'wishlist_screen.dart';
 import 'app_logo.dart';
 import 'home/home_header.dart';
 
-enum Vista { inicio, buscar, lista, favoritos, borrar }
+enum Vista { inicio, lista, favoritos, borrar }
+
+/// Sub-vista dentro de "Vinilos".
+///
+/// - vinilos: listado normal (lista/grid/caratula)
+/// - artistas: listado agrupado por artista (país + total)
+enum VinylScope { vinilos, artistas }
 
 enum VinylSortMode { az, yearDesc, recent, code }
 
@@ -102,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // 🔒 Persistencia UI (última vista / orden) para que al reabrir quede igual.
   static const String _kPrefLastVista = 'ui.lastVista';
   static const String _kPrefSortMode = 'ui.sortMode';
+  static const String _kPrefVinylScope = 'ui.vinylScope';
   SharedPreferences? _prefs;
 
   // ⭐ Cache local para favoritos (cambio instantáneo)
@@ -137,11 +144,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Vista vista = Vista.inicio;
 
+  // 🔁 Dentro de "Vinilos": Vinilos | Artistas
+  VinylScope _vinylScope = VinylScope.vinilos;
+  String? _artistFilterKey;
+  String? _artistFilterName;
+
   // 🗑️ En vista borrar: false = 'Para borrar' (colección), true = 'Papelera' (recuperar/eliminar definitivo)
   bool _borrarPapelera = false;
-
-  bool _gridView = false;
-  late final VoidCallback _gridListener;
+  VinylViewMode _viewMode = VinylViewMode.list;
+  late final VoidCallback _viewModeListener;
 
   // ✅ Contadores para badges en los botones del inicio
   Future<Map<String, int>>? _homeCountsFuture;
@@ -149,6 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ✅ Cache de la lista completa (evita recargar en cada setState y permite favorito instantáneo)
   late Future<List<Map<String, dynamic>>> _futureAll;
+
+  // ✅ Cache de resumen por artistas (para la sub-vista "Artistas")
+  late Future<List<Map<String, dynamic>>> _futureArtists;
 
   // ✅ Cache de favoritos / papelera (evita recargar en cada setState)
   late Future<List<Map<String, dynamic>>> _futureFav;
@@ -266,15 +280,16 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadUiPrefs();
     _loadAddDefaults();
-    // ✅ Vista grid/list instantánea (notifier en memoria)
-    _gridView = ViewModeService.gridNotifier.value;
-    _gridListener = () {
+    // ✅ Vista (3 modos) instantánea (notifier en memoria)
+    _viewMode = ViewModeService.modeNotifier.value;
+    _viewModeListener = () {
       if (!mounted) return;
-      setState(() => _gridView = ViewModeService.gridNotifier.value);
+      setState(() => _viewMode = ViewModeService.modeNotifier.value);
     };
-    ViewModeService.gridNotifier.addListener(_gridListener);
+    ViewModeService.modeNotifier.addListener(_viewModeListener);
     _refreshHomeCounts();
     _futureAll = VinylDb.instance.getAll();
+    _futureArtists = VinylDb.instance.getArtistSummaries();
     _futureFav = VinylDb.instance.getFavorites();
     _futureTrash = VinylDb.instance.getTrash();
   }
@@ -301,6 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final vistaIdx = p.getInt(_kPrefLastVista);
       final sortIdx = p.getInt(_kPrefSortMode);
+      final scopeIdx = p.getInt(_kPrefVinylScope);
 
       setState(() {
         _prefs = p;
@@ -310,6 +326,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         if (sortIdx != null && sortIdx >= 0 && sortIdx < VinylSortMode.values.length) {
           _sortMode = VinylSortMode.values[sortIdx];
+        }
+        if (scopeIdx != null && scopeIdx >= 0 && scopeIdx < VinylScope.values.length) {
+          _vinylScope = VinylScope.values[scopeIdx];
         }
       });
     } catch (_) {
@@ -333,7 +352,16 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
+  Future<void> _persistVinylScope(VinylScope s) async {
+    try {
+      final p = _prefs ?? await SharedPreferences.getInstance();
+      _prefs ??= p;
+      await p.setInt(_kPrefVinylScope, s.index);
+    } catch (_) {}
+  }
+
   Future<void> _refreshHomeCounts() async {
+    if (!mounted) return;
 
     // ✅ Cargamos 3 contadores SIN traer listas completas (más rápido y más exacto)
     final fut = Future.wait([
@@ -364,6 +392,7 @@ void _reloadAllData() {
   setState(() {
     _favCache.clear();
     _futureAll = VinylDb.instance.getAll();
+    _futureArtists = VinylDb.instance.getArtistSummaries();
     _futureFav = VinylDb.instance.getFavorites();
     _futureTrash = VinylDb.instance.getTrash();
     });
@@ -371,11 +400,10 @@ void _reloadAllData() {
 }
 
 Future<void> _loadViewMode() async {
-
-    // Mantenemos por compatibilidad, pero hoy la app usa el notifier.
-    final g = await ViewModeService.isGridEnabled();
+    // Mantenemos por compatibilidad, pero hoy la app usa un notifier.
+    final m = await ViewModeService.getMode();
     if (!mounted) return;
-    ViewModeService.gridNotifier.value = g;
+    ViewModeService.modeNotifier.value = m;
   }
 
   // ----------------- NAVEGACIÓN / BUSCADOR LOCAL -----------------
@@ -391,6 +419,20 @@ Future<void> _loadViewMode() async {
     });
     FocusScope.of(context).unfocus();
     _persistVista(v);
+  }
+
+  void _setVinylScope(VinylScope s) {
+    if (!mounted) return;
+    setState(() {
+      _vinylScope = s;
+      // Si vuelvo a "Artistas", no tiene sentido mantener un filtro de artista
+      // (ya estoy mirando TODOS los artistas).
+      if (s == VinylScope.artistas) {
+        _artistFilterKey = null;
+        _artistFilterName = null;
+      }
+    });
+    _persistVinylScope(s);
   }
 
   void _toggleLocalSearch() {
@@ -474,7 +516,7 @@ Future<void> _loadViewMode() async {
     _debounceArtist?.cancel();
     _debounceAlbum?.cancel();
     _debounceLocalSearch?.cancel();
-    ViewModeService.gridNotifier.removeListener(_gridListener);
+    ViewModeService.modeNotifier.removeListener(_viewModeListener);
     artistaCtrl.dispose();
     albumCtrl.dispose();
     yearCtrl.dispose();
@@ -571,6 +613,9 @@ Future<void> _loadViewMode() async {
         }
       }
 
+      // Si el usuario salió de la pantalla mientras esperábamos respuestas, evitamos setState.
+      if (!mounted) return;
+
       // ✅ Mantener cache consistente con el ID real (si cambió)
       if (resolvedId > 0 && resolvedId != id0) {
         setState(() {
@@ -585,6 +630,8 @@ Future<void> _loadViewMode() async {
       });
 
       await _refreshHomeCounts();
+
+      if (!mounted) return;
 
       // 3) Backup: NO debe romper favoritos si falla
       try {
@@ -1169,6 +1216,45 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     );
   }
 
+  Widget _coverOnlyTile(Map<String, dynamic> v, {required bool conBorrar}) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final code = _vinylCode(v);
+
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _openDetail(v),
+        onLongPress: (!conBorrar) ? () => _toggleFavorite(v) : null,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
+                    child: _gridCover(v, fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              bottom: 12,
+              child: _numeroBadge(context, code, micro: true),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   Widget _gridVinylCard(Map<String, dynamic> v, {required bool conBorrar}) {
     final cs = Theme.of(context).colorScheme;
@@ -1529,11 +1615,10 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
     final fav = _homeCounts['fav'] ?? 0;
     final wish = _homeCounts['wish'] ?? 0;
 
-    void openBuscar() {
-      _setVista(Vista.buscar);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    void openDiscografias() {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
         if (!mounted) return;
-        FocusScope.of(context).requestFocus(_artistFocus);
+        _reloadAllData();
       });
     }
 
@@ -1648,15 +1733,9 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               _reloadAllData();
             });
           },
-          onSearch: openBuscar,
+          onSearch: openDiscografias,
           onScanner: () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())).then((_) {
-              if (!mounted) return;
-              _reloadAllData();
-            });
-          },
-          onDiscography: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyScreen())).then((_) {
               if (!mounted) return;
               _reloadAllData();
             });
@@ -2381,7 +2460,12 @@ Widget vistaBorrar({bool embedInScroll = true}) {
     );
   }
 
-Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool embedInScroll = true}) {
+Widget listaCompleta({
+  required bool conBorrar,
+  required bool onlyFavorites,
+  bool embedInScroll = true,
+  String? artistKeyFilter,
+}) {
   final Future<List<Map<String, dynamic>>> future;
   if (conBorrar) {
     future = _borrarPapelera ? _futureTrash : _futureAll;
@@ -2407,7 +2491,13 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
       final rawItems = snap.data ?? const <Map<String, dynamic>>[];
       // En Favoritos filtramos por el estado real (DB + cache) para que al desmarcar ⭐
       // el item desaparezca al instante, incluso si el FutureBuilder aún muestra datos antiguos.
-      final items = onlyFavorites ? rawItems.where(_isFav).toList() : rawItems;
+      final items0 = onlyFavorites ? rawItems.where(_isFav).toList() : rawItems;
+
+      // Filtro por artista (desde la sub-vista "Artistas")
+      final fKey = (artistKeyFilter ?? '').trim();
+      final items = fKey.isEmpty
+          ? items0
+          : items0.where((v) => (v['artistKey'] ?? '').toString().trim() == fKey).toList();
 
       // Cache de artistas para autocompletar en el buscador (solo local, sin web).
       // Lo actualizamos desde el snapshot actual para que sea consistente en Vinilos/Favoritos.
@@ -2458,8 +2548,7 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
         );
       }
 
-
-      if (_gridView) {
+      if (_viewMode == VinylViewMode.grid) {
         return GridView.builder(
           // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
           // Sin shrinkWrap/physics el Grid puede quedar sin altura
@@ -2482,6 +2571,28 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
         );
       }
 
+      if (_viewMode == VinylViewMode.cover) {
+        final w = MediaQuery.of(context).size.width;
+        final int cols = ((w / 140).floor()).clamp(2, 5).toInt();
+        return GridView.builder(
+          shrinkWrap: embedInScroll,
+          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(12),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.0,
+          ),
+          itemCount: visibleItems.length,
+          itemBuilder: (context, i) {
+            final v = visibleItems[i];
+            return _coverOnlyTile(v, conBorrar: conBorrar);
+          },
+        );
+      }
+
+
       return ListView.builder(
         // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
         // Sin shrinkWrap/physics el ListView puede quedar sin altura
@@ -2499,6 +2610,34 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
   );
 }
 
+  String _viewModeLabel(VinylViewMode m) {
+    switch (m) {
+      case VinylViewMode.list:
+        return 'LISTA';
+      case VinylViewMode.grid:
+        return 'GRID';
+      case VinylViewMode.cover:
+        return 'CARÁTULA';
+    }
+  }
+
+  IconData _viewModeIcon(VinylViewMode m) {
+    switch (m) {
+      case VinylViewMode.list:
+        return Icons.view_list;
+      case VinylViewMode.grid:
+        return Icons.grid_view;
+      case VinylViewMode.cover:
+        return Icons.photo;
+    }
+  }
+
+  VinylViewMode _nextViewMode(VinylViewMode m) {
+    final next = (m.index + 1) % VinylViewMode.values.length;
+    return VinylViewMode.values[next];
+  }
+
+
   PreferredSizeWidget? _buildAppBar() {
     if (vista == Vista.inicio) return null;
 
@@ -2506,9 +2645,6 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
 
     String title;
     switch (vista) {
-      case Vista.buscar:
-        title = 'Buscar vinilos';
-        break;
       case Vista.lista:
         title = 'Vinilos';
         break;
@@ -2522,108 +2658,18 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
         title = 'GaBoLP';
     }
 
-    // En Vinilos/Favoritos el buscador va en el AppBar. Con el logo grande,
-    // si no cuidamos el alto/padding, el input se ve “apretado” y choca con
-    // el título. Aquí lo dejamos con altura estable y buena legibilidad.
-    final titleWidget = (localSearchAllowed && _localSearchActive)
-        ? Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              height: 52,
-              child: RawAutocomplete<String>(
-                textEditingController: _localSearchCtrl,
-                focusNode: _localSearchFocus,
-                optionsBuilder: (TextEditingValue value) {
-                  final q = _norm(value.text);
-                  if (q.isEmpty) return const Iterable<String>.empty();
-                  // Sugerimos artistas (autocompletado) sin impedir que el usuario busque por álbum o código.
-                  return _artistSuggestions
-                      .where((a) => _norm(a).contains(q))
-                      .take(8);
-                },
-                displayStringForOption: (s) => s,
-                onSelected: (s) {
-                  _localSearchCtrl.text = s;
-                  _localSearchCtrl.selection = TextSelection.collapsed(offset: s.length);
-                  _onLocalSearchChanged(s);
-                  setState(() {});
-                },
-                fieldViewBuilder: (context, ctrl, focusNode, onFieldSubmitted) {
-                  return TextField(
-                    controller: ctrl,
-                    focusNode: focusNode,
-                    onChanged: (v) {
-                      _onLocalSearchChanged(v);
-                      // Actualiza íconos/sugerencias en el AppBar sin esperar el debounce.
-                      if (mounted) setState(() {});
-                    },
-                    autofocus: true,
-                    textAlignVertical: TextAlignVertical.center,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Buscar en tu colección…',
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                      // “Bajar” un poquito la lupa para que el campo se vea entero.
-                      prefixIcon: const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Icon(Icons.search),
-                      ),
-                      prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                      suffixIcon: (ctrl.text.trim().isNotEmpty)
-                          ? IconButton(
-                              tooltip: 'Limpiar texto',
-                              icon: const Icon(Icons.close, size: 18),
-                              onPressed: () {
-                                ctrl.clear();
-                                setState(() => _localQuery = '');
-                                FocusScope.of(context).requestFocus(_localSearchFocus);
-                              },
-                            )
-                          : null,
-                    ),
-                  );
-                },
-                optionsViewBuilder: (context, onSelected, options) {
-                  final list = options.toList(growable: false);
-                  if (list.isEmpty) return const SizedBox.shrink();
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Material(
-                      elevation: 6,
-                      borderRadius: BorderRadius.circular(12),
-                      clipBehavior: Clip.antiAlias,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
-                        child: ListView.separated(
-                          padding: EdgeInsets.zero,
-                          itemCount: list.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, i) {
-                            final s = list[i];
-                            return ListTile(
-                              dense: true,
-                              title: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis),
-                              onTap: () => onSelected(s),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          )
-        : Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
+    // Importante: el buscador local (Vinilos/Favoritos) NO va en el AppBar.
+    // Si lo metemos ahí, queda apretado por el logo/leading y se “corta”.
+    // El AppBar queda solo con título; el input se dibuja debajo (en el body)
+    // cuando el usuario activa la búsqueda.
+    final titleWidget = Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
 
     return AppBar(
       toolbarHeight: kAppBarToolbarHeight,
@@ -2645,6 +2691,14 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
       title: titleWidget,
       titleSpacing: 0,
       actions: [
+        if (localSearchAllowed && !(vista == Vista.lista && _vinylScope == VinylScope.artistas))
+          IconButton(
+            tooltip: 'Vista: ${_viewModeLabel(_viewMode)} · tocar para ${_viewModeLabel(_nextViewMode(_viewMode))}',
+            icon: Icon(_viewModeIcon(_viewMode)),
+            onPressed: () async {
+              await ViewModeService.setMode(_nextViewMode(_viewMode));
+            },
+          ),
         if (localSearchAllowed)
           IconButton(
             tooltip: _localSearchActive ? 'Cerrar búsqueda' : 'Buscar en mi lista',
@@ -2652,6 +2706,270 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
             onPressed: _toggleLocalSearch,
           ),
       ],
+    );
+  }
+
+  Widget _localSearchBar() {
+    // Buscador local con autocompletado de artistas.
+    // Se muestra debajo del AppBar (Vinilos/Favoritos) para que se abra completo.
+    return SizedBox(
+      height: 56,
+      child: RawAutocomplete<String>(
+        textEditingController: _localSearchCtrl,
+        focusNode: _localSearchFocus,
+        optionsBuilder: (TextEditingValue value) {
+          final q = _norm(value.text);
+          if (q.isEmpty) return const Iterable<String>.empty();
+          return _artistSuggestions.where((a) => _norm(a).contains(q)).take(8);
+        },
+        displayStringForOption: (s) => s,
+        onSelected: (s) {
+          _localSearchCtrl.text = s;
+          _localSearchCtrl.selection = TextSelection.collapsed(offset: s.length);
+          _onLocalSearchChanged(s);
+          setState(() {});
+        },
+        fieldViewBuilder: (context, ctrl, focusNode, onFieldSubmitted) {
+          final cs = Theme.of(context).colorScheme;
+          return TextField(
+            controller: ctrl,
+            focusNode: focusNode,
+            onChanged: (v) {
+              _onLocalSearchChanged(v);
+              if (mounted) setState(() {});
+            },
+            textAlignVertical: TextAlignVertical.center,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Buscar en tu colección…',
+              filled: true,
+              fillColor: cs.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(color: cs.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(color: cs.outlineVariant),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(color: cs.primary, width: 2),
+              ),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+              // Lupa un poquito más abajo para que el texto se vea completo.
+              prefixIcon: const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(Icons.search),
+              ),
+              prefixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              suffixIcon: (ctrl.text.trim().isNotEmpty)
+                  ? IconButton(
+                      tooltip: 'Limpiar texto',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        ctrl.clear();
+                        setState(() => _localQuery = '');
+                        FocusScope.of(context).requestFocus(_localSearchFocus);
+                      },
+                    )
+                  : null,
+            ),
+          );
+        },
+        optionsViewBuilder: (context, onSelected, options) {
+          final list = options.toList(growable: false);
+          if (list.isEmpty) return const SizedBox.shrink();
+          return Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(12),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 260, maxWidth: 420),
+                child: ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final s = list[i];
+                    return ListTile(
+                      dense: true,
+                      title: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      onTap: () => onSelected(s),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _vinylScopeSelector() {
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<VinylScope>(
+        segments: const <ButtonSegment<VinylScope>>[
+          ButtonSegment(
+            value: VinylScope.vinilos,
+            label: Text('Vinilos'),
+            icon: Icon(Icons.library_music_outlined),
+          ),
+          ButtonSegment(
+            value: VinylScope.artistas,
+            label: Text('Artistas'),
+            icon: Icon(Icons.groups_outlined),
+          ),
+        ],
+        selected: <VinylScope>{_vinylScope},
+        onSelectionChanged: (s) {
+          if (s.isEmpty) return;
+          _setVinylScope(s.first);
+        },
+        showSelectedIcon: false,
+      ),
+    );
+  }
+
+  Widget _artistFilterChipBar() {
+    final name = (_artistFilterName ?? '').trim();
+    if (_artistFilterKey == null || _artistFilterKey!.trim().isEmpty || name.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InputChip(
+        label: Text(
+          'Artista: $name',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onDeleted: () {
+          setState(() {
+            _artistFilterKey = null;
+            _artistFilterName = null;
+          });
+        },
+      ),
+    );
+  }
+
+  bool _matchesArtistSummary(Map<String, dynamic> a, String qNorm) {
+    if (qNorm.isEmpty) return true;
+    final name = _norm((a['artista'] ?? '').toString());
+    final country = _norm((a['country'] ?? '').toString());
+    final total = _norm((a['total'] ?? '').toString());
+    return name.contains(qNorm) || country.contains(qNorm) || total.contains(qNorm);
+  }
+
+  Widget _artistSummaryList({bool embedInScroll = true}) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      key: const ValueKey('artists_summary'),
+      future: _futureArtists,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return _emptyState(
+            icon: Icons.error_outline,
+            title: 'Error cargando artistas',
+            subtitle: 'No pude leer el resumen por artista. Cierra y vuelve a abrir la app.',
+          );
+        }
+        final rows = snap.data ?? const <Map<String, dynamic>>[];
+        if (rows.isEmpty) {
+          return _emptyState(
+            icon: Icons.groups_outlined,
+            title: 'Sin artistas aún',
+            subtitle: 'Cuando agregues vinilos, aquí verás tu colección agrupada por artista.',
+          );
+        }
+
+        // Autocomplete: en "Artistas" sugerimos nombres de artista.
+        final setA = <String>{};
+        for (final r in rows) {
+          final n = (r['artista'] ?? '').toString().trim();
+          if (n.isNotEmpty) setA.add(n);
+        }
+        _artistSuggestions = setA.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+        final qNorm = _norm(_localQuery);
+        final visible = qNorm.isEmpty ? rows : rows.where((a) => _matchesArtistSummary(a, qNorm)).toList();
+
+        if (visible.isEmpty) {
+          return _emptyState(
+            icon: Icons.search_off,
+            title: 'Sin resultados',
+            subtitle: 'No encontré artistas que coincidan con tu búsqueda.',
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: embedInScroll,
+          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: visible.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, i) {
+            final a = visible[i];
+            final name = (a['artista'] ?? '').toString().trim();
+            final key = (a['artistKey'] ?? '').toString().trim();
+            final country = (a['country'] ?? '').toString().trim();
+            final total = _asInt(a['total']);
+
+            return ListTile(
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name.isEmpty ? '—' : name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 54,
+                    child: Text(
+                      country.isEmpty ? '—' : country,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.70),
+                    ),
+                    child: Text(
+                      total.toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              onTap: () {
+                if (key.isEmpty) return;
+                setState(() {
+                  _artistFilterKey = key;
+                  _artistFilterName = name;
+                });
+                _setVinylScope(VinylScope.vinilos);
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -2694,6 +3012,26 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // 🔁 Sub-vista: Vinilos | Artistas (solo en "Vinilos")
+                        if (vista == Vista.lista) ...[
+                          const SizedBox(height: 8),
+                          _vinylScopeSelector(),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // 🔎 Buscador local (debajo del AppBar) para que se abra completo.
+                        if ((vista == Vista.lista || vista == Vista.favoritos) && _localSearchActive) ...[
+                          const SizedBox(height: 8),
+                          _localSearchBar(),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // 🏷️ Filtro de artista (cuando vienes desde "Artistas")
+                        if (vista == Vista.lista && _vinylScope == VinylScope.vinilos) ...[
+                          _artistFilterChipBar(),
+                          if (_artistFilterKey != null && (_artistFilterName ?? '').trim().isNotEmpty)
+                            const SizedBox(height: 12),
+                        ],
                         if (vista == Vista.borrar) ...[
                           vistaBorrar(embedInScroll: false),
                           const SizedBox(height: 12),
@@ -2707,11 +3045,14 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
                         ],
                         if (vista == Vista.lista)
                           Expanded(
-                            child: listaCompleta(
-                              conBorrar: false,
-                              onlyFavorites: false,
-                              embedInScroll: false,
-                            ),
+                            child: _vinylScope == VinylScope.artistas
+                                ? _artistSummaryList(embedInScroll: false)
+                                : listaCompleta(
+                                    conBorrar: false,
+                                    onlyFavorites: false,
+                                    embedInScroll: false,
+                                    artistKeyFilter: _artistFilterKey,
+                                  ),
                           ),
                         if (vista == Vista.favoritos)
                           Expanded(
@@ -2732,7 +3073,6 @@ Widget listaCompleta({required bool conBorrar, required bool onlyFavorites, bool
                             const SizedBox(height: 14),
                             botonesInicio(),
                           ],
-                          if (vista == Vista.buscar) vistaBuscar(),
                         ],
                       ),
                     ),

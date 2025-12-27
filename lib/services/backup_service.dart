@@ -371,7 +371,8 @@ class BackupService {
     prefsOut['app_card_level'] = prefs.getInt('app_card_level');
     prefsOut['app_card_border_style'] = prefs.getInt('app_card_border_style');
 
-    // Vista lista/grid
+    // Vista (3 modos) + compat
+    prefsOut['vinyl_view_mode'] = prefs.getInt('vinyl_view_mode');
     prefsOut['vinyl_view_grid'] = prefs.getBool('vinyl_view_grid');
 
     // Normaliza favorite -> 0/1
@@ -612,8 +613,19 @@ class BackupService {
     final auto = _asBool(prefsIn[_kAuto], fallback: null);
     if (auto != null) await prefs.setBool(_kAuto, auto);
 
+    final modeIdx = _asInt(prefsIn['vinyl_view_mode'], fallback: null);
+    if (modeIdx != null) await prefs.setInt('vinyl_view_mode', modeIdx);
+
     final grid = _asBool(prefsIn['vinyl_view_grid'], fallback: null);
     if (grid != null) await prefs.setBool('vinyl_view_grid', grid);
+
+    // Si solo viene uno de los dos, mantenlos sincronizados.
+    if (modeIdx != null && grid == null) {
+      await prefs.setBool('vinyl_view_grid', modeIdx == VinylViewMode.grid.index);
+    }
+    if (grid != null && modeIdx == null) {
+      await prefs.setInt('vinyl_view_mode', grid ? VinylViewMode.grid.index : VinylViewMode.list.index);
+    }
 
     // ints
     Future<void> setIntIf(String key) async {

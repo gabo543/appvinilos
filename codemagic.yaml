@@ -69,6 +69,7 @@ workflows:
 
           insert_perm "android.permission.INTERNET"
           insert_perm "android.permission.CAMERA"
+          insert_perm "android.permission.RECORD_AUDIO"
           insert_feature "android.hardware.camera"
 
           echo "Chequeo MAIN manifest:"

@@ -5,12 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../services/barcode_lookup_service.dart';
+import '../services/itunes_search_service.dart';
 import '../services/backup_service.dart';
+import '../services/audio_recognition_service.dart';
 import '../services/vinyl_add_service.dart';
 import '../services/add_defaults_service.dart';
+import '../db/vinyl_db.dart';
 import 'app_logo.dart';
+import 'add_vinyl_preview_screen.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -19,7 +25,7 @@ class ScannerScreen extends StatefulWidget {
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 
-enum ScannerMode { codigo, caratula }
+enum ScannerMode { codigo, caratula, escuchar }
 
 class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserver {
   static const _stopwords = <String>{
@@ -58,11 +64,27 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   File? _coverFile;
   bool _coverSearching = false;
   String? _coverError;
+  String? _coverNote;
   String? _coverOcr;
   String? _coverQuery;
+  String? _coverFallbackTerm;
   List<_CoverQueryOption> _coverSuggestions = const [];
   int _coverSuggestionIndex = 0;
   List<BarcodeReleaseHit> _coverHits = [];
+
+  // --- Modo escuchar ---
+  final Record _recorder = Record();
+  bool _listening = false;
+  bool _listenIdentifying = false;
+  String? _listenError;
+  AudioRecognitionResult? _listenResult;
+  File? _listenFile;
+  List<_ListenQueryOption> _listenSuggestions = const [];
+  int _listenSuggestionIndex = 0;
+  String? _listenQuery;
+  String? _listenNote;
+  List<BarcodeReleaseHit> _listenHits = [];
+  bool _listenAutoPrompted = false;
 
   int _scoreHit(BarcodeReleaseHit h) {
     int s = 0;
@@ -102,11 +124,29 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     if (sub != null) unawaited(sub.cancel());
     _subscription = null;
     unawaited(_controller.dispose());
+    // Limpieza modo escuchar
+    unawaited(_recorder.stop());
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Modo escuchar: cortamos grabación si la app se va a segundo plano.
+    if (_mode == ScannerMode.escuchar) {
+      switch (state) {
+        case AppLifecycleState.resumed:
+          break;
+        case AppLifecycleState.inactive:
+        case AppLifecycleState.paused:
+        case AppLifecycleState.hidden:
+          if (_listening) unawaited(_stopListening());
+          break;
+        case AppLifecycleState.detached:
+          break;
+      }
+      return;
+    }
+
     // Si no hay permisos (por ejemplo, diálogo), no hacemos start/stop.
     if (!_controller.value.hasCameraPermission) return;
 
@@ -179,8 +219,24 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         if (strong) {
           Future.microtask(() async {
             if (!mounted) return;
-            _snack('Coincidencia fuerte encontrada. Abriendo…');
-            await _openAddFlow(best);
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) {
+                return AlertDialog(
+                  title: const Text('Coincidencia encontrada'),
+                  content: Text('${best.artist}\n${best.album}'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuar')),
+                  ],
+                );
+              },
+            );
+            if (ok == true) {
+              await _openAddFlow(best);
+            } else {
+              _reset();
+            }
           });
         }
       }
@@ -220,6 +276,18 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   Future<void> _setMode(ScannerMode m) async {
     if (_mode == m) return;
 
+    // Si estábamos grabando audio, detenemos antes de cambiar de modo.
+    if (_mode == ScannerMode.escuchar && _listening) {
+      try {
+        await _recorder.stop();
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    // Si el usuario salió de la pantalla mientras esperábamos, evitamos setState.
+    if (!mounted) return;
+
     setState(() {
       _mode = m;
       // Limpieza suave de estado al cambiar.
@@ -229,13 +297,27 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       _hits = [];
       _locked = false;
       _coverError = null;
+      _coverNote = null;
       _coverOcr = null;
       _coverQuery = null;
+      _coverFallbackTerm = null;
       _coverSuggestions = const [];
       _coverSuggestionIndex = 0;
       _coverHits = [];
       _coverSearching = false;
       _coverFile = null;
+
+      _listening = false;
+      _listenIdentifying = false;
+      _listenError = null;
+      _listenResult = null;
+      _listenFile = null;
+      _listenSuggestions = const [];
+      _listenSuggestionIndex = 0;
+      _listenQuery = null;
+      _listenNote = null;
+      _listenHits = [];
+      _listenAutoPrompted = false;
     });
 
     if (m == ScannerMode.codigo) {
@@ -263,8 +345,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         _coverFile = f;
         _coverSearching = true;
         _coverError = null;
+        _coverNote = null;
         _coverOcr = null;
         _coverQuery = null;
+        _coverFallbackTerm = null;
         _coverSuggestions = const [];
         _coverSuggestionIndex = 0;
         _coverHits = [];
@@ -286,22 +370,26 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       final recognized = await recognizer.processImage(input);
       final raw = recognized.text.trim();
 
-      final candidates = _extractOcrCandidates(raw);
-      final query = candidates.isEmpty ? '' : candidates.join(' ');
+      // 1) Extraemos líneas "buenas" usando geometría (tamaño/posición), y si no sale nada,
+      //    caemos al método antiguo (texto plano).
+      final geomLines = _extractOcrCandidatesFromRecognized(recognized);
+      final candidates = geomLines.isNotEmpty ? geomLines : _extractOcrCandidates(raw);
+      final term = candidates.join(' ').trim();
 
       if (!mounted) return;
-      final suggestions = _buildCoverSuggestions(candidates);
+      final suggestions = _buildCoverSuggestionsSmart(candidates);
       if (!mounted) return;
       setState(() {
         _coverOcr = raw;
         _coverSuggestions = suggestions;
         _coverSuggestionIndex = 0;
-        _coverQuery = (suggestions.isNotEmpty ? suggestions.first.query : query).trim().isEmpty
+        _coverFallbackTerm = term;
+        _coverQuery = (suggestions.isNotEmpty ? suggestions.first.query : term).trim().isEmpty
             ? null
-            : (suggestions.isNotEmpty ? suggestions.first.query : query);
+            : (suggestions.isNotEmpty ? suggestions.first.query : term);
       });
 
-      if (query.isEmpty) {
+      if (term.isEmpty) {
         if (!mounted) return;
         setState(() {
           _coverSearching = false;
@@ -310,13 +398,22 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         return;
       }
 
-      final selected = _coverSuggestions.isNotEmpty ? _coverSuggestions[_coverSuggestionIndex].query : query;
-      var hits = await BarcodeLookupService.searchReleasesByText(selected);
+      // 2) Pipeline automático (Exacto → Simple → Álbum → Amplio). Si no hay hits o MB falla,
+      //    hacemos fallback a iTunes (sin API key).
+      final outcome = await _searchCoverPipeline(
+        options: suggestions.isNotEmpty ? suggestions : [
+          _CoverQueryOption(label: 'Buscar', query: term),
+        ],
+        itunesTerm: term,
+      );
       if (!mounted) return;
       setState(() {
-        _coverHits = _rankHits(hits);
+        _coverHits = _rankHits(outcome.hits);
         _coverSearching = false;
-        _coverError = hits.isEmpty ? 'No encontré coincidencias. Prueba otra foto o más cerca del texto.' : null;
+        _coverError = outcome.error;
+        _coverNote = outcome.note;
+        _coverQuery = outcome.usedQuery;
+        _coverSuggestionIndex = outcome.usedSuggestionIndex ?? 0;
       });
     } catch (_) {
       if (!mounted) return;
@@ -329,7 +426,514 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
   }
 
+  // ---------------------------
+  // MODO ESCUCHAR (AUDIO)
+  // ---------------------------
+
+  Future<void> _startListening() async {
+    if (_listening || _listenIdentifying) return;
+
+    final token = await AudioRecognitionService.getToken();
+    if (!mounted) return;
+    if (token == null) {
+      _snack('Configura el token en Ajustes → Reconocimiento (Escuchar).');
+      return;
+    }
+
+    final hasPerm = await _recorder.hasPermission();
+    if (!mounted) return;
+    if (!hasPerm) {
+      _snack('Permiso de micrófono denegado.');
+      return;
+    }
+
+    final dir = await getTemporaryDirectory();
+    if (!mounted) return;
+    final path = '${dir.path}/gabolp_listen_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+    setState(() {
+      _listening = true;
+      _listenIdentifying = false;
+      _listenError = null;
+      _listenResult = null;
+      _listenFile = null;
+      _listenSuggestions = const [];
+      _listenSuggestionIndex = 0;
+      _listenQuery = null;
+      _listenNote = null;
+      _listenHits = [];
+      _listenAutoPrompted = false;
+    });
+
+    try {
+    await _recorder.start(
+      path: path,
+      encoder: AudioEncoder.aacLc,
+      bitRate: 128000,
+      sampleRate: 44100,
+    );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _listening = false;
+        _listenError = 'No pude iniciar la grabación.';
+      });
+      return;
+    }
+
+    // Auto-detener a los ~8s para que sea rápido y barato.
+    unawaited(() async {
+      await Future.delayed(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (_mode != ScannerMode.escuchar) return;
+      if (_listening) await _stopListening();
+    }());
+  }
+
+  Future<void> _stopListening() async {
+    if (!_listening) return;
+    if (!mounted) return;
+    setState(() {
+      _listening = false;
+      _listenIdentifying = true;
+      _listenError = null;
+    });
+
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (_) {
+      path = null;
+    }
+
+    if (path == null || path.trim().isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _listenIdentifying = false;
+        _listenError = 'No se pudo guardar el audio.';
+      });
+      return;
+    }
+
+    final f = File(path);
+    if (!mounted) return;
+    setState(() => _listenFile = f);
+
+    final res = await AudioRecognitionService.identifyFromFile(f);
+    if (!mounted) return;
+
+    if (!res.ok) {
+      setState(() {
+        _listenIdentifying = false;
+        _listenError = res.error ?? 'No se pudo reconocer.';
+        _listenResult = null;
+        _listenHits = [];
+        _listenSuggestions = const [];
+        _listenQuery = null;
+      });
+      return;
+    }
+
+    // Construimos sugerencias de búsqueda a partir del resultado.
+    final suggestions = _buildListenSuggestions(res);
+    final baseTerm = _buildListenItunesTerm(res);
+    final fallbackQuery = baseTerm.isEmpty ? '${res.artist} ${res.title}'.trim() : baseTerm;
+
+    final options = suggestions.isNotEmpty
+        ? suggestions
+        : [
+            _ListenQueryOption(label: 'Buscar', query: fallbackQuery),
+          ];
+
+    setState(() {
+      _listenResult = res;
+      _listenSuggestions = options;
+      _listenSuggestionIndex = 0;
+      _listenQuery = null;
+      _listenNote = null;
+    });
+
+    final firstQ = options.isNotEmpty ? options.first.query.trim() : '';
+    if (firstQ.isEmpty) {
+      setState(() {
+        _listenIdentifying = false;
+        _listenError = 'Reconocí la canción pero no pude armar una búsqueda.';
+      });
+      return;
+    }
+
+    final outcome = await _searchListenPipeline(
+      options: options,
+      itunesTerm: fallbackQuery,
+    );
+    if (!mounted) return;
+
+    final ranked = _rankHits(outcome.hits);
+    setState(() {
+      _listenHits = ranked;
+      _listenIdentifying = false;
+      _listenError = outcome.error;
+      _listenNote = outcome.note;
+      _listenQuery = outcome.usedQuery.trim().isEmpty ? null : outcome.usedQuery;
+      _listenSuggestionIndex = outcome.usedSuggestionIndex ?? 0;
+    });
+
+    // Si tenemos artista + álbum, ofrecemos abrir la ficha del álbum más probable.
+    // Esto evita que el usuario tenga que tocar manualmente un resultado cada vez.
+    unawaited(_maybePromptOpenListenFlow(res, ranked));
+  }
+
+  static List<_ListenQueryOption> _buildListenSuggestions(AudioRecognitionResult r) {
+    final artist = (r.artist ?? '').trim();
+    final title = (r.title ?? '').trim();
+    final album = (r.album ?? '').trim();
+    if (artist.isEmpty && title.isEmpty) return const [];
+
+    final out = <_ListenQueryOption>[];
+
+    if (artist.isNotEmpty && album.isNotEmpty) {
+      final a = _escapeForMb(artist);
+      final al = _escapeForMb(album);
+      out.add(_ListenQueryOption(label: 'Álbum (Exacto)', query: 'artist:"$a" AND release:"$al"'));
+      out.add(_ListenQueryOption(label: 'Álbum (Simple)', query: '$artist $album'));
+      out.add(_ListenQueryOption(label: 'Solo álbum', query: album));
+    }
+
+    // Cuando no hay álbum, intentamos con artista + canción (puede encontrar singles/EPs)
+    final base = [artist, title].where((e) => e.isNotEmpty).join(' ');
+    if (base.isNotEmpty) {
+      out.add(_ListenQueryOption(label: 'Canción', query: base));
+      out.add(_ListenQueryOption(label: 'Canción (Vinyl)', query: '$base vinyl'));
+    }
+
+    // Evita duplicados
+    final seen = <String>{};
+    final dedup = <_ListenQueryOption>[];
+    for (final o in out) {
+      final k = o.query.toLowerCase().trim();
+      if (k.isEmpty || seen.contains(k)) continue;
+      seen.add(k);
+      dedup.add(o);
+    }
+    return dedup;
+  }
+
+  static String _buildListenItunesTerm(AudioRecognitionResult r) {
+    final artist = (r.artist ?? '').trim();
+    final title = (r.title ?? '').trim();
+    final album = (r.album ?? '').trim();
+
+    if (artist.isNotEmpty && album.isNotEmpty) {
+      return '$artist $album'.trim();
+    }
+    return [artist, title].where((e) => e.isNotEmpty).join(' ').trim();
+  }
+
+  Future<void> _maybePromptOpenListenFlow(AudioRecognitionResult res, List<BarcodeReleaseHit> rankedHits) async {
+    if (!mounted) return;
+    if (_mode != ScannerMode.escuchar) return;
+    if (_listenAutoPrompted) return;
+
+    final artist = (res.artist ?? '').trim();
+    final album = (res.album ?? '').trim();
+    if (artist.isEmpty || album.isEmpty) return;
+
+    // Marcamos antes de abrir para no repetir el diálogo con el mismo resultado.
+    _listenAutoPrompted = true;
+
+    final hasHits = rankedHits.isNotEmpty;
+    final best = hasHits ? rankedHits.first : null;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Álbum encontrado'),
+          content: Text(
+            hasHits
+                ? '${best!.artist}\n${best.album}'
+                : '$artist\n$album\n\nNo encontré el release exacto, pero puedo abrir la ficha con esta info.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuar')),
+          ],
+        );
+      },
+    );
+    if (!mounted) return;
+    if (ok != true) return;
+
+    if (best != null) {
+      await _openAddFlow(best);
+    } else {
+      await _openAddFlowFromArtistAlbum(artist: artist, album: album);
+    }
+  }
+
+  Future<void> _continueFromListenResult() async {
+    final res = _listenResult;
+    if (res == null) return;
+    final artist = (res.artist ?? '').trim();
+    final album = (res.album ?? '').trim();
+    if (artist.isEmpty || album.isEmpty) {
+      _snack('No tengo artista y álbum para continuar.');
+      return;
+    }
+
+    if (_listenHits.isNotEmpty) {
+      await _openAddFlow(_listenHits.first);
+    } else {
+      await _openAddFlowFromArtistAlbum(artist: artist, album: album);
+    }
+  }
+
+
+  Future<void> _searchByListenQuery(String q, {int? suggestionIndex}) async {
+    final query = q.trim();
+    if (query.isEmpty) return;
+
+    final itunesTerm = _listenResult != null ? _buildListenItunesTerm(_listenResult!) : query;
+
+    setState(() {
+      _listenIdentifying = true;
+      _listenError = null;
+      _listenNote = null;
+      _listenHits = [];
+      _listenQuery = query;
+      if (suggestionIndex != null) _listenSuggestionIndex = suggestionIndex;
+    });
+
+    final outcome = await _searchListenPipeline(
+      options: [
+        _ListenQueryOption(label: 'Buscar', query: query),
+      ],
+      itunesTerm: itunesTerm.isEmpty ? query : itunesTerm,
+      suggestionIndexBase: suggestionIndex,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _listenHits = _rankHits(outcome.hits);
+      _listenIdentifying = false;
+      _listenError = outcome.error;
+      _listenNote = outcome.note;
+      _listenQuery = outcome.usedQuery.trim().isEmpty ? null : outcome.usedQuery;
+      if (outcome.usedSuggestionIndex != null) {
+        _listenSuggestionIndex = outcome.usedSuggestionIndex!;
+      }
+    });
+  }
+
+  Future<String?> _askWishlistStatus() async {
+    String picked = 'Por comprar';
+    if (!mounted) return null;
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Estado (wishlist)'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String>(
+                    value: 'Por comprar',
+                    groupValue: picked,
+                    title: const Text('Por comprar'),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                  RadioListTile<String>(
+                    value: 'Buscando',
+                    groupValue: picked,
+                    title: const Text('Buscando'),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                  RadioListTile<String>(
+                    value: 'Comprado',
+                    groupValue: picked,
+                    title: const Text('Comprado'),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                ElevatedButton(onPressed: () => Navigator.pop(ctx, picked), child: const Text('Aceptar')),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _addHitToWishlist(BarcodeReleaseHit h) async {
+    final status = await _askWishlistStatus();
+    if (status == null) return;
+
+    PreparedVinylAdd prepared;
+    try {
+      prepared = await _prepareHit(h);
+    } catch (_) {
+      _snack('No pude preparar la info.');
+      return;
+    }
+
+    final cover250 = prepared.selectedCover250 ?? prepared.coverFallback250;
+    final cover500 = prepared.selectedCover500 ?? prepared.coverFallback500;
+
+    await VinylDb.instance.addToWishlist(
+      artista: prepared.artist,
+      album: prepared.album,
+      year: prepared.year,
+      cover250: cover250,
+      cover500: cover500,
+      artistId: prepared.artistId,
+      status: status,
+    );
+
+    await BackupService.autoSaveIfEnabled();
+    _snack('Agregado a wishlist ✅');
+  }
+
+  Future<PreparedVinylAdd> _prepareHit(BarcodeReleaseHit h) async {
+    final rgid = (h.releaseGroupId ?? '').trim();
+    final rid = (h.releaseId ?? '').trim();
+    if (rgid.isNotEmpty) {
+      return VinylAddService.prepareFromReleaseGroup(
+        artist: h.artist,
+        album: h.album,
+        releaseGroupId: rgid,
+        releaseId: rid.isEmpty ? null : rid,
+        year: h.year,
+        artistId: h.artistId,
+      );
+    }
+    return VinylAddService.prepare(
+      artist: h.artist,
+      album: h.album,
+      artistId: h.artistId,
+    );
+  }
+
   static String _escapeForMb(String s) => s.replaceAll('"', '\\"');
+
+  /// Extrae mejores candidatos de OCR usando geometría (líneas más grandes) para evitar
+  /// que el OCR meta ruido (sellos, "stereo", etc.) en la búsqueda.
+  static List<String> _extractOcrCandidatesFromRecognized(RecognizedText recognized) {
+    final items = <({String text, double top, double height, double area})>[];
+    for (final b in recognized.blocks) {
+      for (final l in b.lines) {
+        final t = l.text.trim();
+        if (t.length < 3) continue;
+        final rect = l.boundingBox;
+        final area = rect.width * rect.height;
+        items.add((text: t, top: rect.top, height: rect.height, area: area));
+      }
+    }
+    if (items.isEmpty) return [];
+
+    // Elegimos las líneas "más grandes" primero (típicamente artista/álbum),
+    // luego las ordenamos por posición vertical para mantener lectura natural.
+    items.sort((a, b) {
+      final h = b.height.compareTo(a.height);
+      if (h != 0) return h;
+      return b.area.compareTo(a.area);
+    });
+    final picked = items.take(8).toList();
+    picked.sort((a, b) => a.top.compareTo(b.top));
+    final lines = picked.map((e) => e.text).toList();
+    return _cleanOcrLines(lines, limit: 4);
+  }
+
+  static List<String> _cleanOcrLines(List<String> lines, {int limit = 4}) {
+    final cleaned = <String>[];
+    final seen = <String>{};
+
+    for (final raw in lines) {
+      final l = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (l.length < 3 || l.length > 45) continue;
+      if (RegExp(r'^\d+$').hasMatch(l)) continue;
+
+      final low = l.toLowerCase();
+      // Filtra líneas que sean básicamente ruido.
+      if (_stopwords.any((w) => low == w || low.contains(' $w ') || low.startsWith('$w ') || low.endsWith(' $w'))) {
+        if (low.split(' ').every((p) => _stopwords.contains(p))) continue;
+      }
+
+      final key = low.replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+      if (key.isEmpty) continue;
+      if (seen.contains(key)) continue;
+      seen.add(key);
+
+      cleaned.add(l);
+      if (cleaned.length >= limit) break;
+    }
+
+    return cleaned;
+  }
+
+  /// Construye sugerencias más "inteligentes" para el caso típico de carátulas:
+  /// a veces el artista viene partido en 2 líneas ("PINK" / "FLOYD").
+  static List<_CoverQueryOption> _buildCoverSuggestionsSmart(List<String> candidates) {
+    if (candidates.isEmpty) return const [];
+
+    String join2(int a, int b) => [candidates[a], candidates[b]].where((e) => e.trim().isNotEmpty).join(' ').trim();
+
+    final out = <_CoverQueryOption>[];
+
+    // Caso 2+ líneas: lo clásico (artista + álbum)
+    if (candidates.length >= 2) {
+      final artist = candidates[0];
+      final album = candidates[1];
+      out.add(_CoverQueryOption(label: 'Exacto', query: 'artist:"${_escapeForMb(artist)}" AND release:"${_escapeForMb(album)}"'));
+      out.add(_CoverQueryOption(label: 'Simple', query: '$artist $album'));
+      out.add(_CoverQueryOption(label: 'Álbum', query: album));
+    }
+
+    // Caso 3+ líneas: artista partido o álbum partido
+    if (candidates.length >= 3) {
+      final artist12 = join2(0, 1);
+      final album3 = candidates[2];
+      if (artist12.isNotEmpty && album3.isNotEmpty) {
+        out.add(_CoverQueryOption(label: 'Exacto (1+2/3)', query: 'artist:"${_escapeForMb(artist12)}" AND release:"${_escapeForMb(album3)}"'));
+        out.add(_CoverQueryOption(label: 'Simple (1+2/3)', query: '$artist12 $album3'));
+      }
+      final album23 = join2(1, 2);
+      final artist1 = candidates[0];
+      if (artist1.isNotEmpty && album23.isNotEmpty) {
+        out.add(_CoverQueryOption(label: 'Exacto (1/2+3)', query: 'artist:"${_escapeForMb(artist1)}" AND release:"${_escapeForMb(album23)}"'));
+        out.add(_CoverQueryOption(label: 'Simple (1/2+3)', query: '$artist1 $album23'));
+      }
+      out.add(_CoverQueryOption(label: 'Álbum (3)', query: candidates[2]));
+    }
+
+    // Caso 1 línea: búsqueda simple
+    if (candidates.length == 1) {
+      out.add(_CoverQueryOption(label: 'Buscar', query: candidates[0]));
+    }
+
+    // Amplio final (3 líneas máx)
+    final wide = candidates.take(3).join(' ').trim();
+    if (wide.isNotEmpty) {
+      out.add(_CoverQueryOption(label: 'Amplio', query: wide));
+      out.add(_CoverQueryOption(label: 'Amplio (vinyl)', query: '$wide vinyl'));
+    }
+
+    // Dedup
+    final seen = <String>{};
+    final dedup = <_CoverQueryOption>[];
+    for (final o in out) {
+      final k = o.query.toLowerCase().trim();
+      if (k.isEmpty || seen.contains(k)) continue;
+      seen.add(k);
+      dedup.add(o);
+      if (dedup.length >= 8) break;
+    }
+    return dedup;
+  }
 
   static List<_CoverQueryOption> _buildCoverSuggestions(List<String> candidates) {
     if (candidates.isEmpty) return const [];
@@ -381,6 +985,247 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     return cleaned;
   }
 
+  Future<void> _searchCoverFromSuggestion(int suggestionIndex) async {
+    if (suggestionIndex < 0 || suggestionIndex >= _coverSuggestions.length) return;
+    final opt = _coverSuggestions[suggestionIndex];
+    final term = (_coverFallbackTerm ?? opt.query).trim();
+
+    setState(() {
+      _coverSuggestionIndex = suggestionIndex;
+      _coverSearching = true;
+      _coverError = null;
+      _coverNote = null;
+      _coverHits = [];
+      _coverQuery = opt.query;
+    });
+
+    final outcome = await _searchCoverPipeline(
+      options: [opt],
+      itunesTerm: term.isEmpty ? opt.query : term,
+      suggestionIndexBase: suggestionIndex,
+    );
+    if (!mounted) return;
+    setState(() {
+      _coverHits = _rankHits(outcome.hits);
+      _coverSearching = false;
+      _coverError = outcome.error;
+      _coverNote = outcome.note;
+      _coverQuery = outcome.usedQuery;
+      _coverSuggestionIndex = outcome.usedSuggestionIndex ?? _coverSuggestionIndex;
+    });
+  }
+
+  Future<void> _editCoverQuery() async {
+    final initial = ((_coverQuery ?? _coverFallbackTerm) ?? '').trim();
+    if (!mounted) return;
+    final ctrl = TextEditingController(text: initial);
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Editar búsqueda'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Ej: Pink Floyd Animals'),
+            onSubmitted: (v) => Navigator.pop(ctx, v),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Buscar')),
+          ],
+        );
+      },
+    );
+
+    final q = (picked ?? '').trim();
+    if (q.isEmpty) return;
+
+    setState(() {
+      _coverSearching = true;
+      _coverError = null;
+      _coverNote = null;
+      _coverHits = [];
+      _coverQuery = q;
+    });
+
+    final outcome = await _searchCoverPipeline(
+      options: [_CoverQueryOption(label: 'Buscar', query: q)],
+      itunesTerm: q,
+    );
+    if (!mounted) return;
+    setState(() {
+      _coverHits = _rankHits(outcome.hits);
+      _coverSearching = false;
+      _coverError = outcome.error;
+      _coverNote = outcome.note;
+      _coverQuery = outcome.usedQuery;
+    });
+  }
+
+  
+  Future<void> _searchListenFromSuggestion(int suggestionIndex) async {
+    if (suggestionIndex < 0 || suggestionIndex >= _listenSuggestions.length) return;
+    final opt = _listenSuggestions[suggestionIndex];
+    final itunesTerm = _listenResult != null ? _buildListenItunesTerm(_listenResult!) : opt.query;
+
+    setState(() {
+      _listenSuggestionIndex = suggestionIndex;
+      _listenIdentifying = true;
+      _listenError = null;
+      _listenNote = null;
+      _listenHits = [];
+      _listenQuery = opt.query;
+    });
+
+    final outcome = await _searchListenPipeline(
+      options: [opt],
+      itunesTerm: itunesTerm.trim().isEmpty ? opt.query : itunesTerm,
+      suggestionIndexBase: suggestionIndex,
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _listenHits = _rankHits(outcome.hits);
+      _listenIdentifying = false;
+      _listenError = outcome.error;
+      _listenNote = outcome.note;
+      _listenQuery = outcome.usedQuery.trim().isEmpty ? null : outcome.usedQuery;
+      if (outcome.usedSuggestionIndex != null) {
+        _listenSuggestionIndex = outcome.usedSuggestionIndex!;
+      }
+    });
+  }
+
+  Future<void> _editListenQuery() async {
+    final base = _listenResult != null ? _buildListenItunesTerm(_listenResult!) : '';
+    final initial = (_listenQuery ?? base).trim();
+    if (!mounted) return;
+    final ctrl = TextEditingController(text: initial);
+
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Editar búsqueda'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Ej: Pink Floyd Animals'),
+            onSubmitted: (v) => Navigator.pop(ctx, v),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Buscar')),
+          ],
+        );
+      },
+    );
+
+    final q = (picked ?? '').trim();
+    if (q.isEmpty) return;
+
+    await _searchByListenQuery(q);
+  }
+
+  Future<_CoverSearchOutcome> _searchListenPipeline({
+    required List<_ListenQueryOption> options,
+    required String itunesTerm,
+    int? suggestionIndexBase,
+  }) async {
+    final mapped = options.map((o) => _CoverQueryOption(label: o.label, query: o.query)).toList();
+    return _searchCoverPipeline(
+      options: mapped,
+      itunesTerm: itunesTerm,
+      suggestionIndexBase: suggestionIndexBase,
+    );
+  }
+
+
+  String _mbErrorToHuman(MbErrorKind kind, int? statusCode) {
+    switch (kind) {
+      case MbErrorKind.rateLimited:
+        return 'MusicBrainz está con límite de velocidad (HTTP ${statusCode ?? 429}).';
+      case MbErrorKind.serviceUnavailable:
+        return 'MusicBrainz no está disponible (HTTP ${statusCode ?? 503}).';
+      case MbErrorKind.network:
+        return 'No pude conectar con MusicBrainz.';
+      case MbErrorKind.unknown:
+        return 'Error consultando MusicBrainz.';
+      case MbErrorKind.none:
+        return '';
+    }
+  }
+
+  List<BarcodeReleaseHit> _itunesToBarcodeHits(List<ItunesAlbumHit> hits, {required String query}) {
+    final out = <BarcodeReleaseHit>[];
+    for (final h in hits) {
+      out.add(
+        BarcodeReleaseHit(
+          barcode: query,
+          artist: h.artist,
+          album: h.album,
+          year: h.year,
+          country: h.country,
+          coverUrl250: h.coverUrl250,
+          coverUrl500: h.coverUrl500,
+          hasFrontCover: (h.coverUrl250 ?? '').trim().isNotEmpty,
+        ),
+      );
+    }
+    return out;
+  }
+
+  Future<_CoverSearchOutcome> _searchCoverPipeline({
+    required List<_CoverQueryOption> options,
+    required String itunesTerm,
+    int? suggestionIndexBase,
+  }) async {
+    MbErrorKind lastErrKind = MbErrorKind.none;
+    int? lastStatus;
+
+    for (int i = 0; i < options.length; i++) {
+      final opt = options[i];
+      final res = await BarcodeLookupService.searchReleasesByTextDetailed(opt.query);
+      if (res.hits.isNotEmpty) {
+        return _CoverSearchOutcome(
+          hits: res.hits,
+          usedQuery: opt.query,
+          usedSuggestionIndex: suggestionIndexBase != null ? suggestionIndexBase + i : i,
+        );
+      }
+      if (!res.ok) {
+        lastErrKind = res.errorKind;
+        lastStatus = res.statusCode;
+        break;
+      }
+    }
+
+    // Sin resultados (o MusicBrainz falló): fallback a iTunes.
+    final term = itunesTerm.trim();
+    final it = await ItunesSearchService.searchAlbums(term: term.isEmpty ? options.first.query : term, limit: 12);
+    if (it.isNotEmpty) {
+      final note = lastErrKind == MbErrorKind.none
+          ? 'No encontré coincidencias en MusicBrainz. Mostrando resultados de iTunes.'
+          : '${_mbErrorToHuman(lastErrKind, lastStatus)} Mostrando resultados de iTunes.';
+      return _CoverSearchOutcome(
+        hits: _itunesToBarcodeHits(it, query: term.isEmpty ? options.first.query : term),
+        usedQuery: term.isEmpty ? options.first.query : term,
+        note: note,
+        usedSuggestionIndex: suggestionIndexBase,
+      );
+    }
+
+    // Nada en iTunes tampoco.
+    final extra = lastErrKind == MbErrorKind.none ? '' : ' ${_mbErrorToHuman(lastErrKind, lastStatus)}';
+    return _CoverSearchOutcome(
+      hits: const [],
+      usedQuery: (term.isEmpty ? (options.isNotEmpty ? options.first.query : '') : term),
+      error: 'No encontré coincidencias. Prueba otra foto o acércate al texto.$extra',
+      usedSuggestionIndex: suggestionIndexBase,
+    );
+  }
+
   Future<void> _openAddFlow(BarcodeReleaseHit h) async {
     final rgid = (h.releaseGroupId ?? '').trim();
     final rid = (h.releaseId ?? '').trim();
@@ -413,11 +1258,35 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
     if (!mounted) return;
 
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _AddPreparedSheet(prepared: prepared),
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddVinylPreviewScreen(prepared: prepared),
+      ),
+    );
+  }
+
+  Future<void> _openAddFlowFromArtistAlbum({required String artist, required String album, String? artistId}) async {
+    final a = artist.trim();
+    final al = album.trim();
+    if (a.isEmpty || al.isEmpty) {
+      _snack('Falta artista o álbum.');
+      return;
+    }
+
+    _snack('Preparando…');
+    PreparedVinylAdd prepared;
+    try {
+      prepared = await VinylAddService.prepare(artist: a, album: al, artistId: artistId);
+    } catch (_) {
+      _snack('No pude preparar la info.');
+      return;
+    }
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddVinylPreviewScreen(prepared: prepared),
+      ),
     );
   }
 
@@ -445,6 +1314,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     segments: const [
                       ButtonSegment<ScannerMode>(value: ScannerMode.codigo, label: Text('Código'), icon: Icon(Icons.qr_code_2)),
                       ButtonSegment<ScannerMode>(value: ScannerMode.caratula, label: Text('Carátula'), icon: Icon(Icons.image_search)),
+                      ButtonSegment<ScannerMode>(value: ScannerMode.escuchar, label: Text('Escuchar'), icon: Icon(Icons.hearing_outlined)),
                     ],
                     selected: <ScannerMode>{_mode},
                     onSelectionChanged: (s) => unawaited(_setMode(s.first)),
@@ -475,7 +1345,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       ),
       body: _mode == ScannerMode.codigo
           ? _buildBarcodeBody(panelBg: panelBg, cs: cs)
-          : _buildCoverBody(panelBg: panelBg, cs: cs),
+          : (_mode == ScannerMode.caratula
+              ? _buildCoverBody(panelBg: panelBg, cs: cs)
+              : _buildListenBody(panelBg: panelBg, cs: cs)),
     );
   }
 
@@ -598,8 +1470,10 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                               : () {
                                   setState(() {
                                     _coverFile = null;
+                                    _coverNote = null;
                                     _coverOcr = null;
                                     _coverQuery = null;
+                                    _coverFallbackTerm = null;
                                     _coverSuggestions = const [];
                                     _coverSuggestionIndex = 0;
                                     _coverHits = [];
@@ -625,33 +1499,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                               ? null
                               : (v) {
                                   if (!v) return;
-                                  setState(() {
-                                    _coverSuggestionIndex = i;
-                                    _coverSearching = true;
-                                    _coverError = null;
-                                    _coverHits = [];
-                                    _coverQuery = opt.query;
-                                  });
-                                  // Re-buscar con el texto ya reconocido (sin repetir OCR)
-                                  unawaited(() async {
-                                    try {
-                                      final hits = await BarcodeLookupService.searchReleasesByText(opt.query);
-                                      if (!mounted) return;
-                                      setState(() {
-                                        _coverHits = _rankHits(hits);
-                                        _coverSearching = false;
-                                        _coverError = hits.isEmpty
-                                            ? 'No encontré coincidencias. Prueba otra sugerencia.'
-                                            : null;
-                                      });
-                                    } catch (_) {
-                                      if (!mounted) return;
-                                      setState(() {
-                                        _coverSearching = false;
-                                        _coverError = 'Error buscando. Revisa tu conexión.';
-                                      });
-                                    }
-                                  }());
+                                  unawaited(_searchCoverFromSuggestion(i));
                                 },
                         );
                       }),
@@ -659,7 +1507,44 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   ],
                   if ((_coverQuery ?? '').trim().isNotEmpty) ...[
                     const SizedBox(height: 10),
-                    Text('Búsqueda: ${_coverQuery!}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Búsqueda: ${_coverQuery!}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: 'Editar búsqueda',
+                          onPressed: _coverSearching ? null : () => unawaited(_editCoverQuery()),
+                          icon: const Icon(Icons.edit),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if ((_coverNote ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _coverNote!,
+                      style: TextStyle(color: cs.onSurface.withOpacity(0.8), fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                  if ((_coverOcr ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: const Text('Texto detectado'),
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: SelectableText(_coverOcr!),
+                        ),
+                      ],
+                    ),
                   ],
                   if (_coverError != null) ...[
                     const SizedBox(height: 10),
@@ -705,6 +1590,229 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         final h = _coverHits[i];
         final rgid = (h.releaseGroupId ?? '').trim();
         final rid = (h.releaseId ?? '').trim();
+        final coverRG250 = rgid.isEmpty ? null : 'https://coverartarchive.org/release-group/$rgid/front-250';
+        final coverRG500 = rgid.isEmpty ? null : 'https://coverartarchive.org/release-group/$rgid/front-500';
+        final coverRel250 = rid.isEmpty ? null : 'https://coverartarchive.org/release/$rid/front-250';
+        final coverRel500 = rid.isEmpty ? null : 'https://coverartarchive.org/release/$rid/front-500';
+        final primary = (h.coverUrl250 ?? coverRG250 ?? coverRel250);
+        final fallback = (h.coverUrl500 ?? coverRG500 ?? coverRel500 ?? coverRel250);
+        return ListTile(
+          leading: _CoverThumb(primary: primary, fallback: fallback),
+          title: Text('${h.artist} — ${h.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            [
+              if ((h.mediaFormat ?? '').trim().isNotEmpty) h.mediaFormat,
+              if ((h.year ?? '').isNotEmpty) h.year,
+              if ((h.country ?? '').isNotEmpty) h.country,
+            ].join(' • '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => unawaited(_openAddFlow(h)),
+        );
+      },
+    );
+  }
+
+  // ---------------------------
+  // UI: MODO ESCUCHAR
+  // ---------------------------
+
+  Widget _buildListenBody({required Color panelBg, required ColorScheme cs}) {
+    final t = Theme.of(context);
+    final res = _listenResult;
+    final hasRes = res != null && res.ok;
+    final isBusy = _listening || _listenIdentifying;
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: panelBg,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.hearing_outlined),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Escuchar y reconocer',
+                        style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Toca “Escuchar” para grabar ~8 segundos y reconocer la canción.\n'
+                  'Luego te muestro el álbum más probable para abrir su ficha y agregarlo a tu Lista o a Deseos.',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _listenIdentifying
+                          ? null
+                          : (_listening
+                              ? () => unawaited(_stopListening())
+                              : () => unawaited(_startListening())),
+                      icon: Icon(_listening ? Icons.stop : Icons.mic),
+                      label: Text(_listening ? 'Detener' : 'Escuchar'),
+                    ),
+                    if (isBusy) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    TextButton.icon(
+                      onPressed: isBusy ? null : _clearListen,
+                      icon: const Icon(Icons.clear),
+                      label: const Text('Limpiar'),
+                    ),
+                  ],
+                ),
+
+                if (_listenError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(_listenError!, style: const TextStyle(fontWeight: FontWeight.w800)),
+                ],
+
+                if (hasRes) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: cs.outlineVariant),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${res!.artist ?? ''} — ${res.title ?? ''}',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if ((res.album ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text('Álbum: ${res.album}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if ((res.album ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: isBusy ? null : () => unawaited(_continueFromListenResult()),
+                      icon: const Icon(Icons.chevron_right),
+                      label: const Text('Continuar'),
+                    ),
+                  ],
+                ],
+
+                if (_listenSuggestions.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: List.generate(_listenSuggestions.length, (i) {
+                      final opt = _listenSuggestions[i];
+                      return ChoiceChip(
+                        label: Text(opt.label),
+                        selected: _listenSuggestionIndex == i,
+                        onSelected: _listenIdentifying
+                            ? null
+                            : (v) {
+                                if (!v) return;
+                                unawaited(_searchListenFromSuggestion(i));
+                              },
+                      );
+                    }),
+                  ),
+                ],
+                if ((_listenQuery ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Búsqueda: ${_listenQuery!}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Editar búsqueda',
+                        onPressed: _listenIdentifying ? null : () => unawaited(_editListenQuery()),
+                        icon: const Icon(Icons.edit),
+                      ),
+                    ],
+                  ),
+                ],
+                if ((_listenNote ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _listenNote!,
+                    style: TextStyle(color: cs.onSurface.withOpacity(0.8), fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: panelBg,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: _buildListenResults(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListenResults() {
+    if (_listening) {
+      return const Center(child: Text('Escuchando…'));
+    }
+    if (_listenIdentifying) {
+      return const Center(child: Text('Reconociendo y buscando…'));
+    }
+    if (_listenHits.isEmpty) {
+      return Center(
+        child: Text(
+          (_listenResult == null)
+              ? 'Presiona “Escuchar” para reconocer una canción.\n\nTip: pon el celular cerca del parlante y evita ruido fuerte.'
+              : 'Reconocí la canción, pero no encontré el álbum.\nPrueba otra sugerencia o escucha de nuevo.',
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return ListView.separated(
+      itemCount: _listenHits.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final h = _listenHits[i];
+        final rgid = (h.releaseGroupId ?? '').trim();
+        final rid = (h.releaseId ?? '').trim();
         final coverRG = rgid.isEmpty ? null : 'https://coverartarchive.org/release-group/$rgid/front-250';
         final coverRel = rid.isEmpty ? null : 'https://coverartarchive.org/release/$rid/front-250';
         return ListTile(
@@ -720,11 +1828,33 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             overflow: TextOverflow.ellipsis,
           ),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => _openAddFlow(h),
+          onTap: () => unawaited(_openAddFlow(h)),
         );
       },
     );
   }
+
+  void _clearListen() {
+    if (_listening) {
+      unawaited(_recorder.stop());
+    }
+    setState(() {
+      _listening = false;
+      _listenIdentifying = false;
+      _listenError = null;
+      _listenResult = null;
+      _listenFile = null;
+      _listenSuggestions = const [];
+      _listenSuggestionIndex = 0;
+      _listenQuery = null;
+      _listenNote = null;
+      _listenHits = [];
+      _listenAutoPrompted = false;
+    });
+  }
+
+  // Antes había un selector "Vinilos/Favoritos/Deseos".
+  // Ahora el flujo se maneja dentro de la ficha del disco (botón "Agregar").
 
   Widget _buildPanelContent() {
     final code = _barcode;
@@ -840,7 +1970,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   overflow: TextOverflow.ellipsis,
                 ),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => _openAddFlow(h),
+                onTap: () => unawaited(_openAddFlow(h)),
               );
             },
           ),
@@ -855,6 +1985,30 @@ class _CoverQueryOption {
   final String query;
   const _CoverQueryOption({required this.label, required this.query});
 }
+
+class _CoverSearchOutcome {
+  final List<BarcodeReleaseHit> hits;
+  final String? error;
+  final String? note;
+  final String usedQuery;
+  final int? usedSuggestionIndex;
+
+  const _CoverSearchOutcome({
+    required this.hits,
+    required this.usedQuery,
+    this.error,
+    this.note,
+    this.usedSuggestionIndex,
+  });
+}
+
+class _ListenQueryOption {
+  final String label;
+  final String query;
+  const _ListenQueryOption({required this.label, required this.query});
+}
+
+enum _AddTarget { collection, favorites, wishlist }
 
 class _CoverThumb extends StatelessWidget {
   final String? primary;
@@ -896,7 +2050,8 @@ class _CoverThumb extends StatelessWidget {
 
 class _AddPreparedSheet extends StatefulWidget {
   final PreparedVinylAdd prepared;
-  const _AddPreparedSheet({required this.prepared});
+  final bool favorite;
+  const _AddPreparedSheet({required this.prepared, this.favorite = false});
 
   @override
   State<_AddPreparedSheet> createState() => _AddPreparedSheetState();
@@ -947,7 +2102,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
     final res = await VinylAddService.addPrepared(
       widget.prepared,
       overrideYear: _yearCtrl.text.trim().isEmpty ? null : _yearCtrl.text.trim(),
-      favorite: false,
+      favorite: widget.favorite,
       condition: _condition,
       format: _format,
     );

@@ -453,6 +453,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     int id = _vinylId[key] ?? 0;
     if (id <= 0) {
       final row = await VinylDb.instance.findByExact(artista: artistName, album: al.title);
+      if (!mounted) return;
       id = _asInt(row?['id']);
       _vinylId[key] = id;
     }

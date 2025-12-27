@@ -29,6 +29,8 @@ dependencies:
   google_mlkit_text_recognition: ^0.13.0
   # Exportaciones (inventario imprimible)
   pdf: ^3.11.3
+  # Modo escuchar (identificación por audio)
+  record: ^4.4.4
 
 dev_dependencies:
   flutter_test:

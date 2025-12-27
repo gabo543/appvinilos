@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
+import '../services/price_range_service.dart';
 import '../db/vinyl_db.dart';
 
 class VinylDetailSheet extends StatefulWidget {
@@ -15,6 +16,9 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   bool loadingTracks = false;
   List<TrackItem> tracks = [];
   String? msg;
+
+  bool loadingPrice = false;
+  PriceRange? priceRange;
 
   Future<void> _editMeta() async {
     final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
@@ -141,6 +145,44 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   void initState() {
     super.initState();
     _loadTracks();
+    _loadPrice();
+  }
+
+  String _fmtMoney(double v) {
+    final r = v.round();
+    if ((v - r).abs() < 0.001) return r.toString();
+    return v.toStringAsFixed(2);
+  }
+
+  String _priceLabel() {
+    if (loadingPrice) return '€ …';
+    final pr = priceRange;
+    if (pr == null) return '€ —';
+    return '€ ${_fmtMoney(pr.min)} - ${_fmtMoney(pr.max)}';
+  }
+
+  Future<void> _loadPrice() async {
+    final artista = (widget.vinyl['artista'] as String?)?.trim() ?? '';
+    final album = (widget.vinyl['album'] as String?)?.trim() ?? '';
+    if (artista.isEmpty || album.isEmpty) return;
+    setState(() {
+      loadingPrice = true;
+      priceRange = null;
+    });
+    try {
+      final pr = await PriceRangeService.getRange(artist: artista, album: album);
+      if (!mounted) return;
+      setState(() {
+        priceRange = pr;
+        loadingPrice = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        priceRange = null;
+        loadingPrice = false;
+      });
+    }
   }
 
   Future<void> _loadTracks() async {
@@ -270,6 +312,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               children: [
                 _pill(context, 'Orden', code),
                 _pill(context, 'Año', year.isEmpty ? '—' : year),
+                _pill(context, 'Precio', _priceLabel()),
                 _pill(context, 'Género', genre.isEmpty ? '—' : genre),
                 _pill(context, 'País', country.isEmpty ? '—' : country),
                 if (condition.isNotEmpty) _pill(context, 'Condición', condition),

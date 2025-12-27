@@ -18,6 +18,9 @@ class PreparedVinylAdd {
   final String artist;
   final String album;
 
+  /// MusicBrainz Artist ID (si lo conocemos). Útil para reseñas/país.
+  final String? artistId;
+
   final String? year;
   final String? genre;
   final String? country;
@@ -44,6 +47,7 @@ class PreparedVinylAdd {
     required this.album,
     required this.coverCandidates,
     this.selectedCover,
+    this.artistId,
     this.year,
     this.genre,
     this.country,
@@ -96,6 +100,7 @@ class VinylAddService {
       album: al,
       coverCandidates: candidates,
       selectedCover: candidates.isNotEmpty ? candidates.first : null,
+      artistId: (artistId ?? '').trim().isEmpty ? null : artistId!.trim(),
       year: (meta.year ?? '').trim().isEmpty ? null : meta.year!.trim(),
       genre: (meta.genre ?? '').trim().isEmpty ? null : meta.genre!.trim(),
       country: country.isEmpty ? null : country,
@@ -155,6 +160,7 @@ class VinylAddService {
       album: al,
       coverCandidates: candidates,
       selectedCover: candidates.first,
+      artistId: (artistId ?? '').trim().isEmpty ? null : artistId!.trim(),
       year: (meta.year ?? '').trim().isEmpty ? null : meta.year!.trim(),
       genre: (meta.genre ?? '').trim().isEmpty ? null : meta.genre!.trim(),
       country: country.isEmpty ? null : country,

@@ -404,6 +404,39 @@ if (oldV < 9) {
     );
   }
 
+  /// Resumen por artista para la vista "Artistas".
+  ///
+  /// Devuelve filas con:
+  /// - artistKey
+  /// - artistNo
+  /// - artista (nombre display)
+  /// - country (primer país no vacío encontrado)
+  /// - total (cantidad de vinilos en tu colección de ese artista)
+  Future<List<Map<String, dynamic>>> getArtistSummaries() async {
+    final d = await db;
+
+    // Nota: usamos artistKey como agrupador estable (normalizado) y artistNo como orden.
+    // Tomamos el primer país no vacío encontrado para ese artista.
+    return d.rawQuery('''
+      SELECT
+        v.artistKey AS artistKey,
+        MIN(v.artistNo) AS artistNo,
+        MIN(v.artista) AS artista,
+        (
+          SELECT v2.country
+          FROM vinyls v2
+          WHERE v2.artistKey = v.artistKey
+            AND v2.country IS NOT NULL
+            AND TRIM(v2.country) != ''
+          LIMIT 1
+        ) AS country,
+        COUNT(*) AS total
+      FROM vinyls v
+      GROUP BY v.artistKey
+      ORDER BY MIN(v.artistNo) ASC, MIN(v.artista) ASC;
+    ''');
+  }
+
   /// Marca/Desmarca favorito.
   ///
   /// ✅ Ruta principal: actualiza por `id`.

@@ -17,7 +17,6 @@ class HomeHeader extends StatelessWidget {
   final VoidCallback onWishlist;
   final VoidCallback onSearch;
   final VoidCallback onScanner;
-  final VoidCallback onDiscography;
   final VoidCallback onSettings;
   final VoidCallback onTrash;
 
@@ -32,7 +31,6 @@ class HomeHeader extends StatelessWidget {
     required this.onWishlist,
     required this.onSearch,
     required this.onScanner,
-    required this.onDiscography,
     required this.onSettings,
     required this.onTrash,
   });
@@ -136,15 +134,6 @@ class HomeHeader extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              'Organiza tu música',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.textTheme.bodySmall?.copyWith(
-                                color: cs.onSurface.withOpacity(0.70),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -155,6 +144,20 @@ class HomeHeader extends StatelessWidget {
                         onTap: onRefresh,
                       ),
                     ],
+                  ),
+
+                  // Bajamos el slogan para que tenga ancho completo y no se recorte
+                  // en pantallas más estrechas.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      'Organiza tu música',
+                      maxLines: 2,
+                      style: t.textTheme.bodyMedium?.copyWith(
+                        color: cs.onSurface.withOpacity(0.72),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
 
                   const SizedBox(height: 14),
@@ -210,7 +213,7 @@ class HomeHeader extends StatelessWidget {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Buscar artista o álbum…',
+                              'Busca Discografías',
                               style: t.textTheme.bodyMedium?.copyWith(
                                 color: cs.onSurface.withOpacity(0.70),
                                 fontWeight: FontWeight.w800,
@@ -238,12 +241,6 @@ class HomeHeader extends StatelessWidget {
                           title: 'Escanear',
                           subtitle: 'Código de barras',
                           onTap: onScanner,
-                        ),
-                        _ActionSpec(
-                          icon: Icons.library_music,
-                          title: 'Disco\u200bgrafías',
-                          subtitle: 'Busca por artista',
-                          onTap: onDiscography,
                         ),
                         _ActionSpec(
                           icon: Icons.delete_outline,

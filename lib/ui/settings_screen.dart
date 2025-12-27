@@ -4,9 +4,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../services/backup_service.dart';
 import '../services/app_theme_service.dart';
-import '../services/view_mode_service.dart';
 import '../services/cover_cache_service.dart';
 import '../services/export_service.dart';
+import '../services/audio_recognition_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 
@@ -53,7 +53,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   bool _auto = false;
-  bool _grid = false;
   int _theme = 1;
   int _textIntensity = 6;
   int _bgLevel = 5;
@@ -63,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _downloadingCovers = false;
   int _coversDone = 0;
   int _coversTotal = 0;
+  bool _audioConfigured = false;
 
   @override
   void initState() {
@@ -72,23 +72,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final v = await BackupService.isAutoEnabled();
-    final g = await ViewModeService.isGridEnabled();
     final t = await AppThemeService.getTheme();
     final ti = await AppThemeService.getTextIntensity();
     final bg = await AppThemeService.getBgLevel();
     final cl = await AppThemeService.getCardLevel();
     final bs = await AppThemeService.getCardBorderStyle();
+    final token = await AudioRecognitionService.getToken();
     if (!mounted) return;
     setState(() {
       _auto = v;
-      _grid = g;
       _theme = t;
       _textIntensity = ti;
       _bgLevel = bg;
       _cardLevel = cl;
       _borderStyle = bs;
+      _audioConfigured = token != null;
       _loading = false;
     });
+  }
+
+  Future<void> _configAudio() async {
+    final current = await AudioRecognitionService.getToken();
+    final ctrl = TextEditingController(text: current ?? '');
+    if (!mounted) return;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Reconocimiento (Escuchar)'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Para reconocer canciones necesitas un token (AudD).\n\n'
+                'Pega tu token aquí. Puedes dejarlo vacío para desactivar.',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                decoration: const InputDecoration(
+                  labelText: 'Token AudD',
+                  hintText: 'api_token…',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (saved != true) return;
+    await AudioRecognitionService.setToken(ctrl.text);
+    final t = await AudioRecognitionService.getToken();
+    if (!mounted) return;
+    setState(() => _audioConfigured = t != null);
+    _snack(t == null ? 'Reconocimiento desactivado' : 'Token guardado ✅');
   }
 
   void _snack(String msg) {
@@ -400,6 +448,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(height: 1),
                       ListTile(
+                        leading: const Icon(Icons.hearing_outlined),
+                        title: const Text('Reconocimiento (Escuchar)'),
+                        subtitle: Text(
+                          _audioConfigured
+                              ? 'Token configurado ✅'
+                              : 'Configura token (AudD) para reconocer canciones con el micrófono.',
+                        ),
+                        onTap: _configAudio,
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
                         leading: const Icon(Icons.upload_file),
                         title: Text('Cargar backup local'),
                         subtitle: Text('Reemplaza TODO (vinilos + wishlist + papelera + ajustes) por el último backup local.'),
@@ -653,26 +712,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                Card(
-                  child: SwitchListTile(
-                    value: _grid,
-                    onChanged: (v) async {
-                      setState(() => _grid = v);
-                      ViewModeService.setGridEnabled(v);
-                      _snack(v ? 'Vista: CUADRÍCULA ✅' : 'Vista: LISTA ✅');
-                    },
-                    secondary: Icon(_grid ? Icons.grid_view : Icons.view_list),
-                    title: Text('Vista de la lista'),
-                    subtitle: Text(
-                      _grid
-                          ? 'Muestra tus vinilos en cuadrícula (tarjetas).'
-                          : 'Muestra tus vinilos en lista vertical.',
-                    ),
-                  ),
-                ),
-
-              ],
+],
             ),
     );
   }
