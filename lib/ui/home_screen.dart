@@ -30,6 +30,21 @@ enum VinylScope { vinilos, artistas }
 
 enum VinylSortMode { az, yearDesc, recent, code }
 
+/// Fila renderizable para listas con encabezados alfabéticos.
+///
+/// Se usa en:
+/// - Vinilos (cuando se ordena por Artista A–Z)
+/// - Sub-vista Artistas (lista tipo “contactos”)
+class _AlphaRow {
+  final String? header;
+  final Map<String, dynamic>? payload;
+  const _AlphaRow._({this.header, this.payload});
+  const _AlphaRow.header(String h) : this._(header: h);
+  const _AlphaRow.item(Map<String, dynamic> p) : this._(payload: p);
+
+  bool get isHeader => header != null;
+}
+
 enum _AddVinylMethod { scan, manual }
 
 String vinylSortLabel(VinylSortMode m) {
@@ -2202,6 +2217,66 @@ Widget vistaBorrar({bool embedInScroll = true}) {
     return int.tryParse(s);
   }
 
+  // ----------------- ORDEN / SECCIONES POR ARTISTA -----------------
+  String _normalizeArtistForSort(String s) {
+    var t = s.trim().toLowerCase();
+    // Quitamos artículos comunes al inicio para ordenar “Beatles” bajo B, no bajo T.
+    for (final a in const ['the ', 'los ', 'las ', 'el ', 'la ']) {
+      if (t.startsWith(a)) {
+        t = t.substring(a.length);
+        break;
+      }
+    }
+    // Normalización básica de acentos (suficiente para encabezados A–Z).
+    t = t
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ü', 'u')
+        .replaceAll('ñ', 'n');
+    // Quitamos símbolos iniciales comunes.
+    t = t.replaceFirst(RegExp(r"^[\s\"'\(\[\{]+"), '');
+    return t;
+  }
+
+  String _alphaBucketFromArtist(String artistName) {
+    final norm = _normalizeArtistForSort(artistName);
+    if (norm.isEmpty) return '#';
+    final ch = String.fromCharCode(norm.runes.first).toUpperCase();
+    if (RegExp(r'[A-Z]').hasMatch(ch)) return ch;
+    if (RegExp(r'[0-9]').hasMatch(ch)) return '#';
+    return '#';
+  }
+
+  Widget _alphaHeader(String letter) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Row(
+        children: [
+          Text(
+            letter,
+            style: t.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.4,
+              color: cs.onSurface.withOpacity(0.92),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: cs.outlineVariant.withOpacity(0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> _applyListFiltersAndSort(List<Map<String, dynamic>> items) {
     final aQ = _filterArtistQ.trim().toLowerCase();
     final gQ = _filterGenreQ.trim().toLowerCase();
@@ -2243,7 +2318,7 @@ Widget vistaBorrar({bool embedInScroll = true}) {
         list.sort((x, y) {
           final ax = (x['artista'] as String?) ?? '';
           final ay = (y['artista'] as String?) ?? '';
-          final c1 = safeCmp(ax, ay);
+          final c1 = safeCmp(_normalizeArtistForSort(ax), _normalizeArtistForSort(ay));
           if (c1 != 0) return c1;
           final bx = (x['album'] as String?) ?? '';
           final by = (y['album'] as String?) ?? '';
@@ -2555,10 +2630,17 @@ Widget listaCompleta({
           ? items0
           : items0.where((v) => (v['artistKey'] ?? '').toString().trim() == fKey).toList();
 
+      // ✅ En "Vinilos" aplicamos filtros y orden (A–Z, Año, Recientes, Código).
+      // En Favoritos/Borrar mantenemos el orden actual para no sorprender (y porque ahí no mostramos
+      // la barra de filtros/orden).
+      final baseList = (!conBorrar && !onlyFavorites && vista == Vista.lista && _vinylScope == VinylScope.vinilos)
+          ? _applyListFiltersAndSort(items)
+          : List<Map<String, dynamic>>.from(items);
+
       // Cache de artistas para autocompletar en el buscador (solo local, sin web).
       // Lo actualizamos desde el snapshot actual para que sea consistente en Vinilos/Favoritos.
       final setA = <String>{};
-      for (final v in items) {
+      for (final v in baseList) {
         final a = (v['artista'] as String?)?.trim() ?? '';
         if (a.isNotEmpty) setA.add(a);
       }
@@ -2567,8 +2649,8 @@ Widget listaCompleta({
 
       final qNorm = _norm(_localQuery);
       final visibleItems = qNorm.isEmpty
-          ? items
-          : items.where((v) => _matchesLocal(v, qNorm)).toList();
+          ? baseList
+          : baseList.where((v) => _matchesLocal(v, qNorm)).toList();
 
       if (visibleItems.isEmpty) {
         // Caso: hay vinilos, pero el filtro/búsqueda no encontró nada.
@@ -2648,6 +2730,33 @@ Widget listaCompleta({
         );
       }
 
+      // 📚 Cuando se ordena A–Z en "Vinilos", agrupamos por letra (A, B, C...) como en “Contactos”.
+      final bool showAlphaHeaders = (!conBorrar && !onlyFavorites && vista == Vista.lista && _vinylScope == VinylScope.vinilos && _sortMode == VinylSortMode.az);
+      if (showAlphaHeaders) {
+        final rows = <_AlphaRow>[];
+        String last = '';
+        for (final v in visibleItems) {
+          final letter = _alphaBucketFromArtist((v['artista'] as String?) ?? '');
+          if (letter != last) {
+            rows.add(_AlphaRow.header(letter));
+            last = letter;
+          }
+          rows.add(_AlphaRow.item(v));
+        }
+        return ListView.builder(
+          shrinkWrap: embedInScroll,
+          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: rows.length,
+          itemBuilder: (context, i) {
+            final r = rows[i];
+            if (r.isHeader) {
+              return _alphaHeader(r.header!);
+            }
+            return _vinylListCard(r.payload!, conBorrar: conBorrar);
+          },
+        );
+      }
 
       return ListView.builder(
         // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
@@ -2720,17 +2829,7 @@ Widget listaCompleta({
     // cuando el usuario activa la búsqueda.
     // Un poquito más de aire entre el leading (logo + back) y el título,
     // para que la flecha no quede “pegada” (por ejemplo en “Borrar”).
-    final titleWidget = Padding(
-      padding: const EdgeInsets.only(left: 10),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-    );
+    final titleWidget = appBarTitleTextScaled(title, padding: const EdgeInsets.only(left: 10));
 
     return AppBar(
       toolbarHeight: kAppBarToolbarHeight,
@@ -2968,9 +3067,9 @@ Widget listaCompleta({
         _artistSuggestions = setA.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
         final qNorm = _norm(_localQuery);
-        final visible = qNorm.isEmpty ? rows : rows.where((a) => _matchesArtistSummary(a, qNorm)).toList();
+        final visible0 = qNorm.isEmpty ? rows : rows.where((a) => _matchesArtistSummary(a, qNorm)).toList();
 
-        if (visible.isEmpty) {
+        if (visible0.isEmpty) {
           return _emptyState(
             icon: Icons.search_off,
             title: 'Sin resultados',
@@ -2978,61 +3077,89 @@ Widget listaCompleta({
           );
         }
 
-        return ListView.separated(
+        // Orden A–Z + encabezados por letra (A, B, C...).
+        final visible = List<Map<String, dynamic>>.from(visible0)
+          ..sort((x, y) {
+            final ax = _normalizeArtistForSort((x['artista'] ?? '').toString());
+            final ay = _normalizeArtistForSort((y['artista'] ?? '').toString());
+            return ax.compareTo(ay);
+          });
+
+        final alphaRows = <_AlphaRow>[];
+        String last = '';
+        for (final a in visible) {
+          final letter = _alphaBucketFromArtist((a['artista'] ?? '').toString());
+          if (letter != last) {
+            alphaRows.add(_AlphaRow.header(letter));
+            last = letter;
+          }
+          alphaRows.add(_AlphaRow.item(a));
+        }
+
+        return ListView.builder(
           shrinkWrap: embedInScroll,
           physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: visible.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemCount: alphaRows.length,
           itemBuilder: (context, i) {
-            final a = visible[i];
+            final r = alphaRows[i];
+            if (r.isHeader) {
+              return _alphaHeader(r.header!);
+            }
+            final a = r.payload!;
             final name = (a['artista'] ?? '').toString().trim();
             final key = (a['artistKey'] ?? '').toString().trim();
             final country = (a['country'] ?? '').toString().trim();
             final total = _asInt(a['total']);
 
-            return ListTile(
-              title: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name.isEmpty ? '—' : name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name.isEmpty ? '—' : name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 54,
+                        child: Text(
+                          country.isEmpty ? '—' : country,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.70),
+                        ),
+                        child: Text(
+                          total.toString(),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 54,
-                    child: Text(
-                      country.isEmpty ? '—' : country,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.70),
-                    ),
-                    child: Text(
-                      total.toString(),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-              onTap: () {
-                if (key.isEmpty) return;
-                setState(() {
-                  _artistFilterKey = key;
-                  _artistFilterName = name;
-                });
-                _setVinylScope(VinylScope.vinilos);
-              },
+                  onTap: () {
+                    if (key.isEmpty) return;
+                    setState(() {
+                      _artistFilterKey = key;
+                      _artistFilterName = name;
+                    });
+                    _setVinylScope(VinylScope.vinilos);
+                  },
+                ),
+                const Divider(height: 1),
+              ],
             );
           },
         );

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 // Tamaños de branding.
-// Nota: mantenemos el logo del Home grande, pero el del AppBar debe ser compacto
-// para que no “aplast[e]” el título (Vinilos/Favoritos).
-const double kAppBarLogoSize = 34; // tamaño estándar en AppBar
+// - Home mantiene su header grande.
+// - Resto de pantallas: logo del AppBar al doble (pedido).
+// Para que el título no se corte, usamos un título con FittedBox(scaleDown).
+const double kAppBarLogoSize = 68; // logo grande en AppBar
 const double kHomeHeaderLogoSize = 144; // mantener look grande del Home
 const double kAppBarGapLogoBack = 12;
-const double kAppBarToolbarHeight = kAppBarLogoSize + 20; // colchón
+const double kAppBarToolbarHeight = kAppBarLogoSize + 26; // alto extra para el logo grande
 const double kBackIconSize = 30;
-
 
 /// Logo de la app (mismo asset que el ícono del teléfono) para AppBar y headers.
 class AppLogo extends StatelessWidget {
@@ -75,6 +75,26 @@ Widget appBarLeadingLogoBack(
   );
 }
 
+/// Título para AppBar que **no se corta**.
+/// - Usa FittedBox(scaleDown) para que el texto se vea completo incluso con logo grande.
+Widget appBarTitleTextScaled(
+  String title, {
+  EdgeInsets padding = const EdgeInsets.only(left: 10),
+  TextStyle? style,
+}) {
+  return Padding(
+    padding: padding,
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: FittedBox(
+        alignment: Alignment.centerLeft,
+        fit: BoxFit.scaleDown,
+        child: Text(title, maxLines: 1, style: style),
+      ),
+    ),
+  );
+}
+
 /// (Legacy) Título de AppBar con logo a la izquierda + contenido (texto o widget).
 Widget appBarTitleWithLogo({
   required Widget child,
@@ -91,7 +111,7 @@ Widget appBarTitleWithLogo({
   );
 }
 
-/// (Legacy) Título de AppBar con logo + texto (con ellipsis).
+/// (Legacy) Título de AppBar con logo + texto.
 Widget appBarTitleTextWithLogo(
   String title, {
   double logoSize = kAppBarLogoSize,
@@ -101,7 +121,7 @@ Widget appBarTitleTextWithLogo(
     child: Text(
       title,
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      overflow: TextOverflow.visible,
     ),
   );
 }

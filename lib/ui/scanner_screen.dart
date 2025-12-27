@@ -17,6 +17,7 @@ import '../services/add_defaults_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 import 'add_vinyl_preview_screen.dart';
+import 'cover_scan_screen.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -1464,7 +1465,22 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     );
   }
 
-  @override
+  
+
+  Future<void> _openCoverFullScreen() async {
+    // Guardamos el modo actual (Código/Escuchar), liberamos recursos, y abrimos la pantalla full-screen.
+    final prev = _mode;
+    await _setMode(ScannerMode.caratula);
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CoverScanScreen()),
+    );
+
+    if (!mounted) return;
+    await _setMode(prev);
+  }
+@override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final cs = t.colorScheme;
@@ -1516,10 +1532,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         // Más aire entre la flecha (leading) y el título.
-        title: const Padding(
-          padding: EdgeInsets.only(left: 8),
-          child: Text('Escáner', maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
+        title: appBarTitleTextScaled('Escáner', padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         bottom: PreferredSize(
           // Más alto: los 3 botones van vertical para que siempre se lean completos.
@@ -1561,11 +1574,26 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   subtitle: 'Busca el álbum por UPC/EAN.',
                 ),
                 const SizedBox(height: 8),
-                modeButton(
-                  mode: ScannerMode.caratula,
-                  icon: Icons.image_search,
-                  title: 'Carátula',
-                  subtitle: 'Lee artista y álbum desde la portada.',
+                // Carátula se abre en una pantalla aparte (full-screen) para que nunca se corte nada.
+                FilledButton.tonalIcon(
+                  style: ButtonStyle(
+                    alignment: Alignment.centerLeft,
+                    padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 12, vertical: 12)),
+                    shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                  ),
+                  onPressed: () => unawaited(_openCoverFullScreen()),
+                  icon: const Icon(Icons.image_search),
+                  label: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Carátula', style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Lee artista y álbum desde la portada.',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(0.72)),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 modeButton(

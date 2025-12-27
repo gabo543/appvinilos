@@ -529,10 +529,7 @@ Widget _placeholder() {
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         // Más aire entre el leading (logo + back) y el título.
-        title: const Padding(
-          padding: EdgeInsets.only(left: 8),
-          child: Text('Deseos', maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
+        title: appBarTitleTextScaled('Deseos', padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
           IconButton(

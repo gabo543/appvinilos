@@ -86,9 +86,20 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   String _k(String artist, String album) => '${artist.trim()}||${album.trim()}';
 
   String _priceLabelFor(PriceRange pr) {
-    // Formato pedido: "€ A - B". Usamos enteros para que se vea limpio.
-    final a = pr.min.round();
-    final b = pr.max.round();
+    // Formato pedido: "€ A - B".
+    // Antes redondeábamos con .round() y en rangos cercanos terminaba igual
+    // (ej: 18.4–18.6 => 18–18). Mostramos enteros cuando corresponde, pero
+    // usamos 2 decimales si hay fracción.
+
+    String fmt(double v) {
+      final r = v.roundToDouble();
+      if ((v - r).abs() < 0.005) return r.toInt().toString();
+      return v.toStringAsFixed(2);
+    }
+
+    final a = fmt(pr.min);
+    final b = fmt(pr.max);
+    if (a == b) return '€ $a';
     return '€ $a - $b';
   }
 
@@ -608,8 +619,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
-        title: const Text('Discografías'),
-        titleSpacing: 0,
+        title: appBarTitleTextScaled('Discografías', padding: const EdgeInsets.only(left: 8)),
+        titleSpacing: 12,
         actions: [
           if ((pickedArtist != null || albums.isNotEmpty) && artistName.trim().isNotEmpty)
             IconButton(
@@ -799,54 +810,76 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                     Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 8),
                                       child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.end,
                                         children: [
-                                          actionItem(
-                                            icon: addIcon,
-                                            label: 'Lista',
-                                            tooltip: addDisabled ? 'Ya está en tu lista' : 'Agregar a tu lista',
-                                            disabled: addDisabled,
-                                            onTap: () async {
-                                              _dismissKeyboard();
-                                              final opts = await _askConditionAndFormat();
-                                              if (!mounted || opts == null) return;
-                                              await _addAlbumOptimistic(
-                                                artistName: artistName,
-                                                album: al,
-                                                condition: opts['condition'] ?? 'VG+',
-                                                format: opts['format'] ?? 'LP',
-                                              );
-                                            },
-                                          ),
-                                          actionItem(
-                                            icon: favIcon,
-                                            label: 'Fav',
-                                            tooltip: favDisabled
-                                                ? (exists ? 'Cargando...' : 'Primero agrega a tu lista')
-                                                : (fav ? 'Quitar favorito' : 'Marcar favorito'),
-                                            disabled: favDisabled,
-                                            onTap: () => _toggleFavorite(artistName, al),
-                                          ),
-                                          actionItem(
-                                            icon: wishIcon,
-                                            label: 'Deseos',
-                                            tooltip: wishDisabled ? 'No disponible' : 'Agregar a deseos',
-                                            disabled: wishDisabled,
-                                            onTap: () async {
-                                              final st = await _askWishlistStatus();
-                                              if (!mounted || st == null) return;
-                                              await _addWishlist(artistName, al, st);
-                                            },
-                                          ),
-                                          if (busy)
-                                            const Padding(
-                                              padding: EdgeInsets.only(left: 8),
-                                              child: SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
-                                              ),
+                                          // 🇨🇱 País del artista (misma línea inferior izquierda)
+                                          Expanded(
+                                            child: Builder(
+                                              builder: (_) {
+                                                final c = (pickedArtist?.country ?? '').trim();
+                                                if (c.isEmpty) return const SizedBox.shrink();
+                                                return Text(
+                                                  'País: $c',
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                      ),
+                                                );
+                                              },
                                             ),
+                                          ),
+
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              actionItem(
+                                                icon: addIcon,
+                                                label: 'Lista',
+                                                tooltip: addDisabled ? 'Ya está en tu lista' : 'Agregar a tu lista',
+                                                disabled: addDisabled,
+                                                onTap: () async {
+                                                  _dismissKeyboard();
+                                                  final opts = await _askConditionAndFormat();
+                                                  if (!mounted || opts == null) return;
+                                                  await _addAlbumOptimistic(
+                                                    artistName: artistName,
+                                                    album: al,
+                                                    condition: opts['condition'] ?? 'VG+',
+                                                    format: opts['format'] ?? 'LP',
+                                                  );
+                                                },
+                                              ),
+                                              actionItem(
+                                                icon: favIcon,
+                                                label: 'Fav',
+                                                tooltip: favDisabled
+                                                    ? (exists ? 'Cargando...' : 'Primero agrega a tu lista')
+                                                    : (fav ? 'Quitar favorito' : 'Marcar favorito'),
+                                                disabled: favDisabled,
+                                                onTap: () => _toggleFavorite(artistName, al),
+                                              ),
+                                              actionItem(
+                                                icon: wishIcon,
+                                                label: 'Deseos',
+                                                tooltip: wishDisabled ? 'No disponible' : 'Agregar a deseos',
+                                                disabled: wishDisabled,
+                                                onTap: () async {
+                                                  final st = await _askWishlistStatus();
+                                                  if (!mounted || st == null) return;
+                                                  await _addWishlist(artistName, al, st);
+                                                },
+                                              ),
+                                              if (busy)
+                                                const Padding(
+                                                  padding: EdgeInsets.only(left: 8),
+                                                  child: SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
                                         ],
                                       ),
                                     ),
