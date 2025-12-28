@@ -146,11 +146,17 @@ workflows:
       - name: Instalar dependencias
         script: |
           flutter pub get
-
       - name: Analizar código (detecta errores antes del build)
         script: |
-          # No fallar por 'info' y 'warning' (solo por errores reales).
-          flutter analyze --no-fatal-infos --no-fatal-warnings
+          # Mostrar el análisis, pero fallar SOLO si hay errores reales (no por infos/warnings).
+          set +e
+          OUT="$(flutter analyze 2>&1)"
+          echo "$OUT"
+          echo "$OUT" | grep -q "error •" && exit 1
+          exit 0
+
+
+
 
       - name: Fix plugin record (AGP 8+) - agregar namespace
         script: |
