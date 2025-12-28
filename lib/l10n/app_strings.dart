@@ -10,7 +10,11 @@ import '../services/locale_service.dart';
 /// Nota: mantenemos un diccionario por "texto ES" para que sea fácil añadir traducciones sin
 /// tener que inventar keys.
 class AppStrings {
-  static const Map<String, String> _en = {
+  // NOTE: This map intentionally is NOT const.
+  // Dart treats duplicate keys as a compile-time error in const maps.
+  // Keeping it `final` allows the app to compile even if a translation key
+  // is accidentally duplicated (the last value wins).
+  static final Map<String, String> _en = <String, String>{
   "2xLP": "2xLP",
   "Abrir ficha del disco": "Open record details",
   "Aceptar": "Accept",
