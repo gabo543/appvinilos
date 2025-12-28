@@ -363,6 +363,7 @@ Widget _placeholder() {
     final artista = (w['artista'] ?? '').toString().trim();
     final album = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
+    final status = (w['status'] ?? '').toString().trim();
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -495,6 +496,7 @@ Widget _placeholder() {
     final artista = (w['artista'] ?? '').toString().trim();
     final album = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
+    final status = (w['status'] ?? '').toString().trim();
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -616,6 +618,7 @@ Widget _placeholder() {
     final artistName = (w['artista'] ?? '').toString().trim();
     final albumTitle = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
+    final status = (w['status'] ?? '').toString().trim();
     final cover250 = (w['cover250'] ?? '').toString().trim();
     final cover500 = (w['cover500'] ?? '').toString().trim();
     final artistId = (w['artistId'] ?? '').toString().trim();

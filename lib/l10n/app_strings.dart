@@ -322,7 +322,6 @@ class AppStrings {
   "No hay vinilos": "No records",
   "Marca un vinilo como favorito y aparecerá aquí.": "Mark a record as favorite and it will show up here.",
   "Agrega tu primer vinilo desde Discografía o Buscar.": "Add your first record from Discographies or Scan.",
-  "Sin artistas aún": "No artists yet",
   "Cuando agregues vinilos, aquí verás tu colección agrupada por artista.": "When you add records, you’ll see your collection grouped by artist here.",
   "No encontré artistas que coincidan con tu búsqueda.": "I couldn't find artists matching your search.",
   "No encontré coincidencias en tu lista.": "I couldn't find matches in your collection.",
