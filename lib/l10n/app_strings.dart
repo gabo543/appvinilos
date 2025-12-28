@@ -240,12 +240,80 @@ class AppStrings {
   "Ya está en wishlist": "It's already in your wishlist",
   "Ya existe en Deseos.": "Already in Wishlist.",
   "Token guardado ✅": "Token saved ✅",
-  "Reconocimiento desactivado": "Recognition disabled"
+  "Reconocimiento desactivado": "Recognition disabled",
+  "Ver más": "See more",
+  "Ver menos": "See less",
+  "Debes usar “Guardar backup” manualmente.": "You must use “Save backup” manually.",
+  "Respalda solo cuando agregas o borras vinilos.": "Back up only when you add or delete records.",
+  "Tu estantería": "Your shelf",
+  "Actualizar": "Refresh",
+  "Organiza tu música": "Organize your music",
+  "Papelera y limpieza": "Trash & cleanup",
+  "Backup y diseño": "Backup & design",
+  "Borrar": "Delete",
+  "Mostrar precios": "Show prices",
+  "Ocultar precios": "Hide prices",
+  "Lista": "List",
+  "Fav": "Fav",
+  "Cargando...": "Loading...",
+  "Quitar favorito": "Remove favorite",
+  "Marcar favorito": "Mark favorite",
+  "No disponible": "Not available",
+  "Agregar a deseos": "Add to wishlist",
+  "Error cargando wishlist": "Error loading wishlist",
+  "No encontré canciones.": "No tracks found.",
+  "Error cargando información.": "Error loading information.",
+  "Búsqueda": "Search",
+  "No se pudo guardar": "Couldn't save",
+  "No hay ID (MBID) guardado para este LP, no puedo buscar canciones.": "No MBID saved for this record, I can't load tracks.",
+  "No encontré canciones para este disco.": "No tracks found for this record.",
+  "GaBoLP — Inventario": "GaBoLP — Inventory",
+  "Total": "Total",
+  "Cod.": "Code",
+  "Cond.": "Cond.",
+  "Para reconocer canciones necesitas un token (AudD).\n\nPega tu token aquí. Puedes dejarlo vacío para desactivar.": "To recognize songs you need an AudD token.\n\nPaste your token here. Leave it blank to disable.",
+  "Obsidiana": "Obsidian",
+  "Marfil": "Ivory",
+  "Grafito": "Graphite",
+  "Vinilo Retro": "Retro Vinyl",
+  "Lila": "Lilac",
+  "Verde Sala": "Living Room Green",
+  "Suave": "Soft",
+  "Normal": "Normal",
+  "Fuerte": "Strong",
+  "Máx": "Max",
+  "Blanco suave": "Soft white",
+  "Gris frío": "Cool gray",
+  "Gris cálido": "Warm gray",
+  "Verde menta": "Mint green",
+  "Verde salvia": "Sage green",
+  "Rojo rosado": "Rose red",
+  "Durazno": "Peach",
+  "Bronce": "Bronze",
+  "Azul hielo": "Ice blue",
+  "copias": "copies",
+  "Nivel": "Level",
+
+  "Busca Discografías": "Search Discographies",
+  "Primero agrega a tu lista": "Add to your collection first",
+  "No se pudo actualizar favorito (0 filas afectadas).": "Could not update favorite (0 rows affected).",
+  "Vinilo no encontrado.": "Record not found.",
+  "No se pudo persistir favorito.": "Could not save favorite.",
+  "Duplicado": "Duplicate",
+  "Artista y Álbum son obligatorios.": "Artist and Album are required.",
+  "No encontré el vinilo.": "I couldn't find the record.",
+  "Ese vinilo ya existe en tu lista.": "That record already exists in your collection.",
 };
 
   static bool isEnglish(BuildContext context) {
     final code = LocaleService.code;
     return code == 'en';
+  }
+
+
+  static String tRaw(String esText) {
+    if (LocaleService.code == 'en') return _en[esText] ?? esText;
+    return esText;
   }
 
   static String t(BuildContext context, String esText) {
@@ -279,4 +347,30 @@ class AppStrings {
 extension AppStringsX on BuildContext {
   /// Traduce un texto ES a EN (si el usuario eligió Inglés).
   String tr(String esText) => AppStrings.t(this, esText);
+
+  /// Traducción ‘inteligente’ para mensajes que incluyen detalles (errores, rutas, etc).
+  /// Intenta traducir el texto completo; si no existe, traduce el prefijo antes de ‘: ’
+  /// o la primera línea (antes de \n) y deja el resto intacto.
+  String trSmart(String text) {
+    final exact = AppStrings.t(this, text);
+    if (exact != text) return exact;
+
+    final idx = text.indexOf(': ');
+    if (idx > 0) {
+      final head = text.substring(0, idx);
+      final tail = text.substring(idx);
+      final headT = AppStrings.t(this, head);
+      if (headT != head) return headT + tail;
+    }
+
+    final nl = text.indexOf('\n');
+    if (nl > 0) {
+      final head = text.substring(0, nl);
+      final tail = text.substring(nl);
+      final headT = AppStrings.t(this, head);
+      if (headT != head) return headT + tail;
+    }
+
+    return text;
+  }
 }

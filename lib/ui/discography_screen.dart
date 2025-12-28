@@ -178,7 +178,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   void _snack(String t) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart(t))));
   }
 
   void _onArtistTextChanged(String _) {
@@ -625,7 +625,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         actions: [
           if ((pickedArtist != null || albums.isNotEmpty) && artistName.trim().isNotEmpty)
             IconButton(
-              tooltip: _showPrices ? 'Ocultar precios' : 'Mostrar precios',
+              tooltip: _showPrices ? context.tr('Ocultar precios') : context.tr('Mostrar precios'),
               icon: Icon(Icons.euro_symbol),
               onPressed: () {
                 setState(() => _showPrices = !_showPrices);
@@ -835,8 +835,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                             children: [
                                               actionItem(
                                                 icon: addIcon,
-                                                label: 'Lista',
-                                                tooltip: addDisabled ? 'Ya está en tu lista' : 'Agregar a tu lista',
+                                                label: context.tr('Lista'),
+                                                tooltip: addDisabled ? context.tr('Ya está en tu lista') : context.tr('Agregar a tu lista'),
                                                 disabled: addDisabled,
                                                 onTap: () async {
                                                   _dismissKeyboard();
@@ -852,17 +852,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                               ),
                                               actionItem(
                                                 icon: favIcon,
-                                                label: 'Fav',
+                                                label: context.tr('Fav'),
                                                 tooltip: favDisabled
-                                                    ? (exists ? 'Cargando...' : 'Primero agrega a tu lista')
-                                                    : (fav ? 'Quitar favorito' : 'Marcar favorito'),
+                                                    ? (exists ? context.tr('Cargando...') : context.tr('Primero agrega a tu lista'))
+                                                    : (fav ? context.tr('Quitar favorito') : context.tr('Marcar favorito')),
                                                 disabled: favDisabled,
                                                 onTap: () => _toggleFavorite(artistName, al),
                                               ),
                                               actionItem(
                                                 icon: wishIcon,
-                                                label: 'Deseos',
-                                                tooltip: wishDisabled ? 'No disponible' : 'Agregar a deseos',
+                                                label: context.tr('Deseos'),
+                                                tooltip: wishDisabled ? context.tr('No disponible') : context.tr('Agregar a deseos'),
                                                 disabled: wishDisabled,
                                                 onTap: () async {
                                                   final st = await _askWishlistStatus();

@@ -108,8 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Para reconocer canciones necesitas un token (AudD).\n\n'
-                'Pega tu token aquí. Puedes dejarlo vacío para desactivar.',
+                context.tr('Para reconocer canciones necesitas un token (AudD).\n\nPega tu token aquí. Puedes dejarlo vacío para desactivar.'),
                 style: TextStyle(fontSize: 14),
               ),
               SizedBox(height: 12),
@@ -144,7 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(msg))),
+      SnackBar(content: Text(context.trSmart(msg))),
     );
   }
 
@@ -385,9 +384,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final t = Theme.of(context);
     final cs = t.colorScheme;
 
-    final themeName = _themeLabels[_theme] ?? 'Obsidiana';
-    final intensityName = _labelIntensity(_textIntensity);
-    final borderName = _borderName(_borderStyle);
+    final themeName = context.tr(_themeLabels[_theme] ?? 'Obsidiana');
+    final intensityName = context.tr(_labelIntensity(_textIntensity));
+    final borderName = context.tr(_borderName(_borderStyle));
     final borderBase = AppThemeService.borderBaseColor(_borderStyle);
     final isDark = t.brightness == Brightness.dark;
     final previewBorder = borderBase.withOpacity(isDark ? 0.90 : 0.70);
@@ -406,11 +405,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.2)),
-                  if (subtitle != null) ...[
+                  Text(titleT, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.2)),
+                  if (subtitleT != null) ...[
                     SizedBox(height: 3),
                     Text(
-                      subtitle,
+                      subtitleT!,
                       style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700),
                     ),
                   ],
@@ -597,7 +596,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ExpansionTile(
                     leading: Icon(Icons.palette_outlined),
                     title: Text(context.tr('Personalizar diseño')),
-                    subtitle: Text('Tema: $themeName · Texto: $intensityName'),
+                    subtitle: Text("${context.tr('Tema')}: $themeName · ${context.tr('Texto')}: $intensityName"),
                     childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                     children: [
                       SizedBox(height: 10),
@@ -654,7 +653,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(context.tr('Fondo'), style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
                           Spacer(),
-                          Text('Nivel $_bgLevel', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+                          Text("${context.tr('Nivel')} $_bgLevel", style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
                         ],
                       ),
                       Slider(
@@ -673,7 +672,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(context.tr('Cuadros'), style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
                           Spacer(),
-                          Text('Nivel $_cardLevel', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+                          Text("${context.tr('Nivel')} $_cardLevel", style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
                         ],
                       ),
                       Slider(

@@ -160,7 +160,7 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                             runSpacing: 6,
                             children: [
                               if ((info!.country ?? '').trim().isNotEmpty)
-                                Chip(label: Text('País: ${info!.country}')),
+                                Chip(label: Text(AppStrings.labeled(context, 'País', info!.country!))),
                               ...info!.genres.take(4).map((g) => Chip(label: Text(g))),
                             ],
                           ),
@@ -175,7 +175,8 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                               alignment: Alignment.centerLeft,
                               child: TextButton(
                                 onPressed: () => setState(() => _bioExpanded = !_bioExpanded),
-                                child: Text(_bioExpanded ? 'Ver menos' : 'Ver más'),
+                                child: Text(_bioExpanded ? context.tr('Ver menos') : context.tr('Ver más')),
+
                               ),
                             ),
                           ],
@@ -187,13 +188,13 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                   if (!loading && msg != null)
                     Padding(
                       padding: const EdgeInsets.all(10),
-                      child: Text(msg!),
+                      child: Text(context.tr(msg!)),
                     ),
                   if (!loading && tracks.isNotEmpty)
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'Canciones (${tracks.length})',
+                        AppStrings.tracksCount(context, tracks.length),
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),

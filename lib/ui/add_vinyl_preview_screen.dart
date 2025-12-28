@@ -433,7 +433,8 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                             alignment: Alignment.centerLeft,
                             child: TextButton(
                               onPressed: () => setState(() => _bioExpanded = !_bioExpanded),
-                              child: Text(_bioExpanded ? 'Ver menos' : 'Ver más'),
+                              child: Text(_bioExpanded ? context.tr('Ver menos') : context.tr('Ver más')),
+
                             ),
                           ),
                         ],
@@ -781,7 +782,7 @@ class _WishlistAddSheetState extends State<_WishlistAddSheet> {
                     SizedBox(height: 2),
                     Text(p.album, style: TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
                     SizedBox(height: 6),
-                    Text('Año: ${(p.year ?? '—')}', style: TextStyle(fontWeight: FontWeight.w700)),
+                    Text("${context.tr('Año')}: ${(p.year ?? '—')}", style: TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),

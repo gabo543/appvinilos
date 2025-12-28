@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_logo.dart';
+import '../../l10n/app_strings.dart';
 
 /// Header/Dashboard principal de la Home.
 ///
@@ -126,7 +127,7 @@ class HomeHeader extends StatelessWidget {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Tu estantería',
+                                context.tr('Tu estantería'),
                                 maxLines: 1,
                                 style: t.textTheme.titleSmall?.copyWith(
                                   color: cs.onSurface.withOpacity(0.90),
@@ -142,7 +143,7 @@ class HomeHeader extends StatelessWidget {
                       const SizedBox(width: 8),
                       _IconPill(
                         icon: Icons.refresh,
-                        tooltip: 'Actualizar',
+                        tooltip: context.tr('Actualizar'),
                         onTap: onRefresh,
                       ),
                     ],
@@ -153,7 +154,7 @@ class HomeHeader extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(
-                      'Organiza tu música',
+                      context.tr('Organiza tu música'),
                       maxLines: 2,
                       style: t.textTheme.bodyMedium?.copyWith(
                         color: cs.onSurface.withOpacity(0.72),
@@ -170,7 +171,7 @@ class HomeHeader extends StatelessWidget {
                       Expanded(
                         child: _StatCard(
                           icon: Icons.library_music,
-                          label: 'Vinilos',
+                          label: context.tr('Vinilos'),
                           value: allCount,
                           onTap: onVinyls,
                         ),
@@ -179,7 +180,7 @@ class HomeHeader extends StatelessWidget {
                       Expanded(
                         child: _StatCard(
                           icon: Icons.star,
-                          label: 'Favoritos',
+                          label: context.tr('Favoritos'),
                           value: favoritesCount,
                           onTap: onFavorites,
                         ),
@@ -188,7 +189,7 @@ class HomeHeader extends StatelessWidget {
                       Expanded(
                         child: _StatCard(
                           icon: Icons.shopping_cart,
-                          label: 'Deseos',
+                          label: context.tr('Deseos'),
                           value: wishlistCount,
                           onTap: onWishlist,
                         ),
@@ -215,7 +216,7 @@ class HomeHeader extends StatelessWidget {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Busca Discografías',
+                              context.tr('Busca Discografías')),
                               style: t.textTheme.bodyMedium?.copyWith(
                                 color: cs.onSurface.withOpacity(0.70),
                                 fontWeight: FontWeight.w800,
@@ -240,20 +241,20 @@ class HomeHeader extends StatelessWidget {
                         _ActionSpec(
                           icon: Icons.qr_code_scanner,
                           // ZWSP para permitir salto en palabras largas si hiciera falta.
-                          title: 'Escanear',
-                          subtitle: 'Código de barras',
+                          title: context.tr('Escanear'),
+                          subtitle: context.tr('Código de barras'),
                           onTap: onScanner,
                         ),
                         _ActionSpec(
                           icon: Icons.delete_outline,
-                          title: 'Borrar',
-                          subtitle: 'Papelera y limpieza',
+                          title: context.tr('Borrar'),
+                          subtitle: context.tr('Papelera y limpieza'),
                           onTap: onTrash,
                         ),
                         _ActionSpec(
                           icon: Icons.settings,
-                          title: 'Ajustes',
-                          subtitle: 'Backup y diseño',
+                          title: context.tr('Ajustes'),
+                          subtitle: context.tr('Backup y diseño'),
                           onTap: onSettings,
                         ),
                       ];

@@ -126,7 +126,7 @@ class DiscographyService {
     String? artistName,
   }) async {
     final url = Uri.parse(
-      '$_mbBase/artist/$artistId?inc=tags&fmt=json',
+      '$_mbBase/artist/$artistId?inc=tags+url-rels&fmt=json',
     );
     final res = await _get(url);
 
@@ -149,7 +149,23 @@ class DiscographyService {
       }
     }
 
-    final bio = name == null ? null : await _fetchWikipediaBioES(name);
+    String? bio;
+    // 1) Intentar Wikipedia desde relaciones de MusicBrainz (más preciso que buscar por nombre)
+    if (res.statusCode == 200) {
+      try {
+        final data = jsonDecode(res.body);
+        final wikiUrl = _pickWikipediaUrlFromRelations(data);
+        if (wikiUrl != null) {
+          bio = await _fetchWikipediaSummaryFromUrl(wikiUrl);
+        }
+      } catch (_) {}
+    }
+    // 2) Fallback: búsqueda por nombre (puede devolver cosas que no son música)
+    bio ??= (name == null ? null : await _fetchWikipediaBioES(name));
+    // 3) Filtro anti-basura: si no parece reseña musical, la descartamos
+    if (bio != null && name != null && !_isRelevantMusicBio(bio!, name)) {
+      bio = null;
+    }
 
     return ArtistInfo(
       country: country,
@@ -256,7 +272,135 @@ class DiscographyService {
     return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
   }
 
-  // =====================================
+  
+// =====================================
+// 🧠 SELECCIÓN DE WIKIPEDIA + FILTRO
+// =====================================
+  static String? _pickWikipediaUrlFromRelations(dynamic data) {
+    final rels = (data['relations'] as List?) ?? [];
+    String? esUrl;
+    String? enUrl;
+    String? anyUrl;
+
+    for (final r in rels) {
+      final urlObj = r is Map ? r['url'] : null;
+      final resource = urlObj is Map ? (urlObj['resource'] ?? '').toString() : '';
+      if (resource.isEmpty) continue;
+
+      final type = (r is Map ? (r['type'] ?? '').toString().toLowerCase() : '');
+      final isWiki = type == 'wikipedia' || resource.contains('wikipedia.org/wiki/');
+      if (!isWiki) continue;
+
+      anyUrl ??= resource;
+      if (resource.contains('es.wikipedia.org')) esUrl ??= resource;
+      if (resource.contains('en.wikipedia.org')) enUrl ??= resource;
+    }
+
+    // Preferimos ES, luego EN, luego cualquiera
+    return esUrl ?? enUrl ?? anyUrl;
+  }
+
+  static Future<String?> _fetchWikipediaSummaryFromUrl(String wikiUrl) async {
+    try {
+      final uri = Uri.parse(wikiUrl);
+      final host = uri.host; // ej: en.wikipedia.org
+      if (!host.contains('wikipedia.org')) return null;
+
+      // Ruta típica: /wiki/Titulo
+      if (uri.pathSegments.isEmpty) return null;
+      final titleRaw = uri.pathSegments.last;
+      final title = Uri.decodeComponent(titleRaw);
+
+      final sum = Uri.parse(
+        'https://$host/api/rest_v1/page/summary/${Uri.encodeComponent(title)}',
+      );
+      final sumRes = await http.get(sum, headers: _headers()).timeout(const Duration(seconds: 15));
+      if (sumRes.statusCode != 200) return null;
+
+      final decoded = jsonDecode(sumRes.body);
+      final extract = decoded['extract'];
+      if (extract == null) return null;
+
+      final txt = extract.toString().trim();
+      return txt.isEmpty ? null : txt;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _isRelevantMusicBio(String text, String artistName) {
+    final t = text.toLowerCase();
+
+    // Red flags típicos de texto basura / e-commerce / políticas.
+    const bad = [
+      'privacy policy',
+      'política de privacidad',
+      'cookies',
+      'cookie policy',
+      'terms of service',
+      'términos y condiciones',
+      'shipping',
+      'envío',
+      'returns',
+      'devoluciones',
+      'subscribe',
+      'suscríbete',
+      'login',
+      'iniciar sesión',
+      'warranty',
+      'garantía',
+      'free shipping',
+    ];
+    for (final b in bad) {
+      if (t.contains(b)) return false;
+    }
+
+    // Señales musicales (ES + EN).
+    const music = [
+      'album',
+      'álbum',
+      'band',
+      'banda',
+      'musician',
+      'músico',
+      'singer',
+      'cantante',
+      'song',
+      'canción',
+      'record',
+      'disco',
+      'studio',
+      'estudio',
+      'debut',
+      'track',
+      'pista',
+      'release',
+      'lanzamiento',
+      'genre',
+      'género',
+      'rock',
+      'pop',
+      'hip hop',
+      'metal',
+      'jazz',
+      'electronic',
+      'electrónica',
+    ];
+
+    final name = artistName.toLowerCase().trim();
+    final mentionsName = name.isNotEmpty && t.contains(name);
+
+    int hits = 0;
+    for (final k in music) {
+      if (t.contains(k)) hits++;
+      if (hits >= 2) break;
+    }
+
+    // Aceptamos si menciona al artista o tiene suficientes señales musicales.
+    return mentionsName || hits >= 2;
+  }
+
+// =====================================
   // 📝 WIKIPEDIA EN ESPAÑOL (PRIMERO)
   // =====================================
   static Future<String?> _fetchWikipediaBioES(String name) async {

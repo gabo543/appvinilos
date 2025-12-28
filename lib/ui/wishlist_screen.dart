@@ -78,7 +78,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         children: [
           Icon(icon, size: 14, color: fg),
           SizedBox(width: 6),
-          Text(status, style: textStyle),
+          Text(context.tr(status), style: textStyle),
         ],
       ),
     );
@@ -152,7 +152,7 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
 }
 void _snack(String t) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart(t))));
   }
 
   Future<void> _removeItem(Map<String, dynamic> w) async {
@@ -550,7 +550,7 @@ Widget _placeholder() {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text('Error cargando wishlist: ${snap.error}'),
+                child: Text("${context.tr('Error cargando wishlist')}: ${snap.error}"),
               ),
             );
           }

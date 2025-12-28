@@ -1763,7 +1763,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Búsqueda: ${_coverQuery!}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                          child: Text("${context.tr('Búsqueda')}: ${_coverQuery!}", maxLines: 2, overflow: TextOverflow.ellipsis),
                         ),
                         SizedBox(width: 8),
                         IconButton(
@@ -1958,7 +1958,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                         ),
                         if ((res.album ?? '').trim().isNotEmpty) ...[
                           SizedBox(height: 2),
-                          Text('Álbum: ${res.album}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                          Text("${context.tr('Álbum')}: ${res.album}", maxLines: 2, overflow: TextOverflow.ellipsis),
                         ],
                       ],
                     ),
@@ -2141,7 +2141,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
               children: [
                 Text(context.tr('Buscando en MusicBrainz…'), style: TextStyle(fontWeight: FontWeight.w800)),
                 SizedBox(height: 2),
-                Text('Código: $code', style: TextStyle(fontSize: 14)),
+                Text("${context.tr('Código')}: $code", style: TextStyle(fontSize: 14)),
               ],
             ),
           ),
@@ -2161,7 +2161,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
           SizedBox(height: 6),
           Row(
             children: [
-              Expanded(child: Text('Código: $code', style: TextStyle(fontSize: 14))),
+              Expanded(child: Text("${context.tr('Código')}: $code", style: TextStyle(fontSize: 14))),
               TextButton.icon(
                 onPressed: _reset,
                 icon: Icon(Icons.qr_code_scanner),

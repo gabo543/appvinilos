@@ -187,16 +187,63 @@ class PriceRangeService {
       final releases = (rg['releases'] as List?) ?? const [];
       if (releases.isEmpty) return null;
 
-      final releaseId = (releases.first as Map)['id']?.toString();
-      if (releaseId == null || releaseId.trim().isEmpty) return null;
+      // Queremos precios enfocados en VINILOS: dentro del release-group, preferimos
+      // un release que tenga media.format == "Vinyl" en MusicBrainz y que además
+      // tenga relación a un release de Discogs.
+      //
+      // Nota: MB tiene rate limiting (1 req/s). Tomamos una muestra acotada.
+      final candidateIds = <String>[];
+      for (final r in releases.take(8)) {
+        final id = (r as Map)['id']?.toString();
+        if (id != null && id.trim().isNotEmpty) candidateIds.add(id.trim());
+      }
 
-      final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=url-rels&fmt=json');
+      // 1) Intento "vinyl-first": buscar un release MB con media Vinyl, y de ese
+      //    mismo release sacar el Discogs release id.
+      for (final mbReleaseId in candidateIds) {
+        final discogsId = await _discogsReleaseIdFromMbRelease(mbReleaseId, requireVinyl: true);
+        if (discogsId != null) return discogsId;
+      }
+
+      // 2) Fallback: si no encontramos un MB release marcado como Vinyl, intentamos
+      //    igual desde el primero (mejor que nada).
+      for (final mbReleaseId in candidateIds) {
+        final discogsId = await _discogsReleaseIdFromMbRelease(mbReleaseId, requireVinyl: false);
+        if (discogsId != null) return discogsId;
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _mbReleaseHasVinylMedia(Map<String, dynamic> mbRelease) {
+    final media = (mbRelease['media'] as List?) ?? const [];
+    for (final m in media) {
+      final fmt = (m as Map)['format']?.toString().toLowerCase().trim();
+      if (fmt == null) continue;
+      if (fmt.contains('vinyl')) return true;
+    }
+    return false;
+  }
+
+  /// Dado un MusicBrainz release id, intenta obtener un Discogs release id.
+  ///
+  /// Si [requireVinyl] es true, solo acepta releases que MB marque como Vinyl.
+  static Future<String?> _discogsReleaseIdFromMbRelease(
+    String mbReleaseId, {
+    required bool requireVinyl,
+  }) async {
+    try {
+      final urlRel = Uri.parse('$_mbBase/release/$mbReleaseId?inc=media+url-rels&fmt=json');
       final resRel = await _mbGet(urlRel);
       if (resRel.statusCode != 200) return null;
 
       final rel = jsonDecode(resRel.body) as Map<String, dynamic>;
-      final rels = (rel['relations'] as List?) ?? const [];
+      if (requireVinyl && !_mbReleaseHasVinylMedia(rel)) return null;
 
+      final rels = (rel['relations'] as List?) ?? const [];
       String? masterId;
 
       for (final r in rels) {
@@ -204,7 +251,15 @@ class PriceRangeService {
         if (url.isEmpty) continue;
 
         final mRelease = RegExp(r'discogs\.com/(?:[a-z]{2}/)?release/(\d+)', caseSensitive: false).firstMatch(url);
-        if (mRelease != null) return mRelease.group(1);
+        if (mRelease != null) {
+          final rid = mRelease.group(1);
+          if (rid != null && rid.isNotEmpty) {
+            // Validación best-effort: si podemos confirmar que el release de Discogs
+            // es Vinyl, mejor. Si el check falla (timeout/403), no bloqueamos.
+            final okVinyl = await _discogsReleaseIsVinylBestEffort(rid);
+            if (okVinyl != false) return rid;
+          }
+        }
 
         final mMaster = RegExp(r'discogs\.com/(?:[a-z]{2}/)?master/(\d+)', caseSensitive: false).firstMatch(url);
         if (mMaster != null) {
@@ -213,11 +268,50 @@ class PriceRangeService {
       }
 
       if (masterId != null) {
-        return _discogsMainReleaseFromMaster(masterId);
+        final mainRid = await _discogsMainReleaseFromMaster(masterId);
+        if (mainRid != null) {
+          final okVinyl = await _discogsReleaseIsVinylBestEffort(mainRid);
+          if (okVinyl != false) return mainRid;
+        }
       }
-
       return null;
     } catch (_) {
+      return null;
+    }
+  }
+
+  static final Map<String, bool?> _discogsVinylCache = {};
+
+  /// Devuelve:
+  /// - true  => confirmado que es Vinyl
+  /// - false => confirmado que NO es Vinyl
+  /// - null  => no se pudo comprobar (network/rate limit). En ese caso no bloqueamos.
+  static Future<bool?> _discogsReleaseIsVinylBestEffort(String releaseId) async {
+    final rid = releaseId.trim();
+    if (rid.isEmpty) return null;
+    if (_discogsVinylCache.containsKey(rid)) return _discogsVinylCache[rid];
+
+    final url = Uri.parse('https://api.discogs.com/releases/$rid');
+    try {
+      final res = await http.get(url, headers: _discogsHeaders()).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) {
+        _discogsVinylCache[rid] = null;
+        return null;
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final formats = (data['formats'] as List?) ?? const [];
+      for (final f in formats) {
+        final name = (f as Map)['name']?.toString().toLowerCase().trim();
+        if (name == null) continue;
+        if (name.contains('vinyl')) {
+          _discogsVinylCache[rid] = true;
+          return true;
+        }
+      }
+      _discogsVinylCache[rid] = false;
+      return false;
+    } catch (_) {
+      _discogsVinylCache[rid] = null;
       return null;
     }
   }
@@ -258,6 +352,7 @@ class PriceRangeService {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final low = data['lowest_price'];
       final high = data['highest_price'];
+      final med = data['median_price'];
 
       double? min;
       double? max;
@@ -274,6 +369,15 @@ class PriceRangeService {
         final v = (high['value'] as num?)?.toDouble();
         if (v != null) max = v;
         final c = (high['currency'] as String?)?.trim();
+        if (c != null && c.isNotEmpty) cur = c.toUpperCase();
+      }
+
+      // Si highest_price no viene (a veces no hay suficiente data), usamos median_price
+      // para evitar rangos "€ X - X" cuando sí existe un valor central.
+      if (max == null && med is Map) {
+        final v = (med['value'] as num?)?.toDouble();
+        if (v != null) max = v;
+        final c = (med['currency'] as String?)?.trim();
         if (c != null && c.isNotEmpty) cur = c.toUpperCase();
       }
 

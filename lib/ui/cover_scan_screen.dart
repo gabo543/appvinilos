@@ -529,7 +529,7 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
                     ),
                     if ((_coverQuery ?? '').trim().isNotEmpty) ...[
                       SizedBox(height: 10),
-                      Text('Búsqueda: ${_coverQuery!}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text("${context.tr('Búsqueda')}: ${_coverQuery!}", maxLines: 2, overflow: TextOverflow.ellipsis),
                     ],
                     if ((_coverNote ?? '').trim().isNotEmpty) ...[
                       SizedBox(height: 6),

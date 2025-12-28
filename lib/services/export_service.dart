@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import '../l10n/app_strings.dart';
 
 import '../db/vinyl_db.dart';
 
@@ -105,8 +106,8 @@ class ExportService {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text('GaBoLP — Inventario', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                pw.Text('Total: ${all.length}', style: const pw.TextStyle(fontSize: 11)),
+                pw.Text(AppStrings.tRaw('GaBoLP — Inventario'), style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.Text('${AppStrings.tRaw('Total')}: ${all.length}', style: const pw.TextStyle(fontSize: 11)),
               ],
             ),
             pw.SizedBox(height: 8),
@@ -116,7 +117,7 @@ class ExportService {
             ),
             pw.SizedBox(height: 14),
             pw.Table.fromTextArray(
-              headers: const ['Cod.', 'Artista', 'Álbum', 'Año', 'Formato', 'Cond.'],
+              headers: [AppStrings.tRaw('Cod.'), AppStrings.tRaw('Artista'), AppStrings.tRaw('Álbum'), AppStrings.tRaw('Año'), AppStrings.tRaw('Formato'), AppStrings.tRaw('Cond.')],
               data: data,
               headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
               cellStyle: const pw.TextStyle(fontSize: 8),

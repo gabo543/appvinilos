@@ -2095,12 +2095,12 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Artista: ${p.artist}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
-                            Text('Álbum: ${p.album}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
+                            Text(AppStrings.labeled(context, 'Artista', p.artist), style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
+                            Text(AppStrings.labeled(context, 'Álbum', p.album), style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
                             SizedBox(height: 6),
-                            Text('Año: ${p.year ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
-                            Text('Género: ${p.genre ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
-                            Text('País: ${p.country ?? '—'}', style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
+                            Text(AppStrings.labeled(context, 'Año', (p.year ?? '—')), style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
+                            Text(AppStrings.labeled(context, 'Género', (p.genre ?? '—')), style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
+                            Text(AppStrings.labeled(context, 'País', (p.country ?? '—')), style: TextStyle(color: cs.onSurface.withOpacity(0.72), fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -2252,26 +2252,40 @@ Widget vistaBorrar({bool embedInScroll = true}) {
   Widget _alphaHeader(String letter) {
     final t = Theme.of(context);
     final cs = t.colorScheme;
+
+    // Encabezado de sección (A/B/C…) con fondo suave para que se diferencie
+    // tanto en tema claro como oscuro.
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-      child: Row(
-        children: [
-          Text(
-            letter,
-            style: t.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.4,
-              color: cs.onSurface.withOpacity(0.92),
-            ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceVariant.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: cs.outlineVariant.withOpacity(0.55),
+            width: 1,
           ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Container(
-              height: 1,
-              color: cs.outlineVariant.withOpacity(0.8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Text(
+              letter,
+              style: t.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.4,
+                color: cs.onSurfaceVariant.withOpacity(0.95),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                height: 1,
+                color: cs.outlineVariant.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

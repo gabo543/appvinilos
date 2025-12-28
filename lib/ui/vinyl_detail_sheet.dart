@@ -138,7 +138,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('Actualizado ✅'))));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${context.tr('No se pudo guardar')}: ${context.trSmart(e.toString())}")));
     }
   }
 
@@ -350,7 +350,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
             if (!loadingTracks && msg != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(msg!, style: TextStyle(color: sub)),
+                child: Text(context.tr(msg!), style: TextStyle(color: sub)),
               ),
 
             if (!loadingTracks && tracks.isNotEmpty)
@@ -385,7 +385,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: dark ? Colors.white12 : Colors.black12),
       ),
-      child: Text('$k: $v', style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
+      child: Text('${context.tr(k)}: $v', style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
     );
   }
 }
