@@ -12,7 +12,7 @@ import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
 
 class WishlistScreen extends StatefulWidget {
-  WishlistScreen({super.key});
+  const WishlistScreen({super.key});
 
   @override
   State<WishlistScreen> createState() => _WishlistScreenState();
@@ -115,6 +115,8 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
     format = await AddDefaultsService.getLastFormat(fallback: format);
   } catch (_) {}
 
+  if (!mounted) return null;
+
   final res = await showDialog<Map<String, String>>(
     context: context,
     builder: (ctx) {
@@ -126,7 +128,8 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
-                  value: condition,
+                  initialValue: condition,
+                  key: ValueKey(condition),
                   decoration: InputDecoration(labelText: context.tr('Condición')),
                   items: [
                     DropdownMenuItem(value: 'M', child: Text(context.tr('M (Mint)'))),
@@ -139,7 +142,8 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
                 ),
                 SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: format,
+                  initialValue: format,
+                  key: ValueKey(format),
                   decoration: InputDecoration(labelText: context.tr('Formato')),
                   items: [
                     DropdownMenuItem(value: 'LP', child: Text(context.tr('LP'))),
@@ -313,9 +317,9 @@ void _snack(String t) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.35 : 0.65),
+        color: cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.35 : 0.65),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: isDark ? 0.55 : 0.35)),
       ),
       child: Text(
         t,
@@ -331,7 +335,7 @@ Widget _placeholder() {
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.35),
+        color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Icon(Icons.library_music, color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -359,7 +363,6 @@ Widget _placeholder() {
     final artista = (w['artista'] ?? '').toString().trim();
     final album = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
-    final status = (w['status'] ?? '').toString().trim();
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -367,7 +370,7 @@ Widget _placeholder() {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: isDark ? 0.55 : 0.35)),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -384,7 +387,7 @@ Widget _placeholder() {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
-                    color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
+                    color: cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.30 : 0.60),
                     child: _leadingCover(w, size: 92),
                   ),
                 ),
@@ -492,7 +495,6 @@ Widget _placeholder() {
     final artista = (w['artista'] ?? '').toString().trim();
     final album = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
-    final status = (w['status'] ?? '').toString().trim();
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -500,7 +502,7 @@ Widget _placeholder() {
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: isDark ? 0.55 : 0.35)),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -517,7 +519,7 @@ Widget _placeholder() {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: Container(
-                      color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
+                      color: cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.30 : 0.60),
                       child: _leadingCover(w, size: 220),
                     ),
                   ),
@@ -614,7 +616,6 @@ Widget _placeholder() {
     final artistName = (w['artista'] ?? '').toString().trim();
     final albumTitle = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
-              final status = (w['status'] ?? '').toString().trim();
     final cover250 = (w['cover250'] ?? '').toString().trim();
     final cover500 = (w['cover500'] ?? '').toString().trim();
     final artistId = (w['artistId'] ?? '').toString().trim();

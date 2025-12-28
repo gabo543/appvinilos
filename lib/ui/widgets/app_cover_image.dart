@@ -34,8 +34,8 @@ class AppCoverImage extends StatelessWidget {
       width: width,
       height: height,
       alignment: Alignment.center,
-      color: cs.surfaceVariant.withOpacity(0.55),
-      child: Icon(Icons.album_outlined, color: cs.onSurfaceVariant.withOpacity(0.65)),
+      color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+      child: Icon(Icons.album_outlined, color: cs.onSurfaceVariant.withValues(alpha: 0.65)),
     );
   }
 

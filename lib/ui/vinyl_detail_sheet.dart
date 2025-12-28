@@ -404,7 +404,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: dark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
+                  color: dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: dark ? Colors.white12 : Colors.black12),
                 ),
@@ -456,7 +456,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: dark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+        color: dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: dark ? Colors.white12 : Colors.black12),
       ),
@@ -474,7 +474,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: dark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+        color: dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: dark ? Colors.white12 : Colors.black12),
       ),
