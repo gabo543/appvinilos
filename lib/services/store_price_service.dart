@@ -303,13 +303,13 @@ class StorePriceService {
 
   static String? _extractCanonical(String html) {
     final h = html.replaceAll('&nbsp;', ' ');
-    final og = RegExp(r'property=["\']og:url["\']\s+content=["\']([^"\']+)["\']',
+    final og = RegExp(r'''property=["']og:url["']\s+content=["']([^"']+)["']''',
             caseSensitive: false)
         .firstMatch(h)
         ?.group(1);
     if (og != null && og.trim().isNotEmpty) return og.trim();
 
-    final can = RegExp(r'rel=["\']canonical["\']\s+href=["\']([^"\']+)["\']',
+    final can = RegExp(r'''rel=["']canonical["']\s+href=["']([^"']+)["']''',
             caseSensitive: false)
         .firstMatch(h)
         ?.group(1);
@@ -423,7 +423,7 @@ class StorePriceService {
     final html = res.body;
     // Intentamos tomar el precio del primer resultado (no el mínimo del listado).
     double? price;
-    final rel = RegExp(r'href=["\'](/music/[^"\']+)["\']', caseSensitive: false).firstMatch(html)?.group(1);
+    final rel = RegExp(r'''href=["'](/music/[^"']+)["']''', caseSensitive: false).firstMatch(html)?.group(1);
     if (rel != null && rel.isNotEmpty) {
       final idx = html.indexOf(rel);
       if (idx >= 0) {
@@ -468,11 +468,11 @@ class StorePriceService {
       // Intenta extraer primer link de producto y entrar.
       final productUrl = _firstHref(
         html,
-        RegExp(r'href=["\'](https?://www\.muziker\.fi/[^"\']+)["\']', caseSensitive: false),
+        RegExp(r'''href=["'](https?://www\.muziker\.fi/[^"']+)["']''', caseSensitive: false),
       );
       final productPath = _firstHref(
         html,
-        RegExp(r'href=["\'](/[^"\']+)["\']', caseSensitive: false),
+        RegExp(r'''href=["'](/[^"']+)["']''', caseSensitive: false),
         prefix: 'https://www.muziker.fi',
       );
       final candidate = productUrl ?? productPath;
@@ -513,11 +513,11 @@ class StorePriceService {
       // Intenta extraer primer link de producto y entrar (preferible).
       final productUrl = _firstHref(
         html,
-        RegExp(r'href=["\'](https?://www\\.muziker\\.fi/[^"\']+)["\']', caseSensitive: false),
+        RegExp(r'''href=["'](https?://www\.muziker\.fi/[^"']+)["']''', caseSensitive: false),
       );
       final productPath = _firstHref(
         html,
-        RegExp(r'href=["\'](/[^"\']+)["\']', caseSensitive: false),
+        RegExp(r'''href=["'](/[^"']+)["']''', caseSensitive: false),
         prefix: 'https://www.muziker.fi',
       );
       final candidate = productUrl ?? productPath;

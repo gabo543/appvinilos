@@ -1,9 +1,179 @@
 import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
 import '../services/price_range_service.dart';
+import '../services/store_price_service.dart';
 import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
+
+/// Bottom sheet con los precios (iMusic / Muziker / Levykauppa Äx).
+///
+/// - Si hay barcode (EAN/UPC), lo usa (más preciso).
+/// - Si no, busca por texto (artista + álbum) en las mismas tiendas.
+class _VinylStorePricesSheet extends StatefulWidget {
+  final String artista;
+  final String album;
+  final String? barcode;
+
+  const _VinylStorePricesSheet({
+    required this.artista,
+    required this.album,
+    this.barcode,
+  });
+
+  @override
+  State<_VinylStorePricesSheet> createState() => _VinylStorePricesSheetState();
+}
+
+class _VinylStorePricesSheetState extends State<_VinylStorePricesSheet> {
+  late Future<List<StoreOffer>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _fetch();
+  }
+
+  Future<List<StoreOffer>> _fetch({bool forceRefresh = false}) {
+    final b = (widget.barcode ?? '').trim();
+    if (b.isNotEmpty) {
+      return StorePriceService.fetchOffersByBarcodeCached(b, forceRefresh: forceRefresh);
+    }
+    return StorePriceService.fetchOffersByQueryCached(
+      artist: widget.artista,
+      album: widget.album,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _fetch(forceRefresh: true);
+    });
+  }
+
+  String _fmt(double v) {
+    // Formato simple para UI: 12.00 -> 12
+    final r = v.roundToDouble();
+    if ((v - r).abs() < 0.005) return r.toInt().toString();
+    return v.toStringAsFixed(2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final b = (widget.barcode ?? '').trim();
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.tr('Precios en tiendas'),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${widget.artista} — ${widget.album}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      b.isNotEmpty ? 'EAN/UPC: $b' : context.tr('Búsqueda por texto (sin EAN)'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: context.tr('Actualizar'),
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FutureBuilder<List<StoreOffer>>(
+            future: _future,
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              final offers = snap.data ?? const <StoreOffer>[];
+              if (offers.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    context.tr('No pude obtener precios en las tiendas seleccionadas.'),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                );
+              }
+
+              final sorted = [...offers]..sort((a, b) => a.price.compareTo(b.price));
+              final best2 = sorted.take(2).toList();
+              final min = sorted.first.price;
+              final max = sorted.last.price;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 10),
+                  ...best2.map(
+                    (o) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text(o.note == null || o.note!.trim().isEmpty ? o.url : '${o.note}\n${o.url}'),
+                      trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                    ),
+                  ),
+                  if (sorted.length > best2.length) ...[
+                    const Divider(),
+                    Text(
+                      context.tr('Más resultados'),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 6),
+                    ...sorted.skip(2).map(
+                      (o) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(
+                    context.tr('Los precios pueden cambiar y algunas tiendas pueden bloquear la consulta automática.'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class VinylDetailSheet extends StatefulWidget {
   final Map<String, dynamic> vinyl;
@@ -22,6 +192,26 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   PriceRange? priceRange;
 
   Map<String, dynamic>? _priceAlert; // alerta de precio para este ítem
+
+  Future<void> _openStorePrices() async {
+    final artista = (widget.vinyl['artista'] as String?)?.trim() ?? '';
+    final album = (widget.vinyl['album'] as String?)?.trim() ?? '';
+    if (artista.isEmpty || album.isEmpty) return;
+
+    final barcode = (widget.vinyl['barcode'] as String?)?.trim();
+
+    if (!mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _VinylStorePricesSheet(
+        artista: artista,
+        album: album,
+        barcode: (barcode == null || barcode.isEmpty) ? null : barcode,
+      ),
+    );
+  }
 
   Future<void> _editMeta() async {
     final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
@@ -472,46 +662,52 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
     final hasAlert = _priceAlert != null && id > 0;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: dark ? Colors.white12 : Colors.black12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('${context.tr('Precio')}: ${_priceLabel()} ${_priceUpdatedMini()}'.trim(),
-              style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
-          const SizedBox(width: 4),
-          Tooltip(
-            message: context.tr('Actualizar precio'),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: loadingPrice ? null : () => _loadPrice(forceRefresh: true),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(Icons.refresh, size: 18, color: fg),
-              ),
-            ),
-          ),
-          if (id > 0) ...[
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: _openStorePrices,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: dark ? Colors.white12 : Colors.black12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.euro_symbol, size: 18, color: fg),
             const SizedBox(width: 6),
-            InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: _editPriceAlert,
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(
-                  hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
-                  size: 18,
-                  color: fg,
+            Text('${_priceLabel()} ${_priceUpdatedMini()}'.trim(),
+                style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
+            const SizedBox(width: 4),
+            Tooltip(
+              message: context.tr('Actualizar precio'),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: loadingPrice ? null : () => _loadPrice(forceRefresh: true),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.refresh, size: 18, color: fg),
                 ),
               ),
             ),
+            if (id > 0) ...[
+              const SizedBox(width: 6),
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: _editPriceAlert,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
+                    size: 18,
+                    color: fg,
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
