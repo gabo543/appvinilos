@@ -1028,7 +1028,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                 ),
                               );
                             },
-                          )),
+                          ))),
               ),
           ],
         ),
