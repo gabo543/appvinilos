@@ -216,7 +216,7 @@ class HomeHeader extends StatelessWidget {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              context.tr('Busca Discografías')),
+                              context.tr('Busca Discografías'),
                               style: t.textTheme.bodyMedium?.copyWith(
                                 color: cs.onSurface.withOpacity(0.70),
                                 fontWeight: FontWeight.w800,
