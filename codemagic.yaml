@@ -148,10 +148,14 @@ workflows:
           flutter pub get
       - name: Analizar código (detecta errores antes del build)
         script: |
-          # Mostrar el análisis, pero fallar SOLO si hay errores reales (no por infos/warnings).
-          set +e
-          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze_out.txt
-          grep -q "error •" analyze_out.txt && exit 1
+          # Mostrar el análisis, pero NO cortar el build por infos/warnings.
+          # Codemagic suele ejecutar con `set -e` y `pipefail`, así que evitamos pipes.
+          flutter analyze --no-fatal-infos --no-fatal-warnings > analyze_out.txt 2>&1 || true
+          cat analyze_out.txt
+          # Fallar SOLO si hay errores reales.
+          if grep -q "error •" analyze_out.txt; then
+            exit 1
+          fi
           exit 0
 
 
