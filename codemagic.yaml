@@ -150,9 +150,8 @@ workflows:
         script: |
           # Mostrar el análisis, pero fallar SOLO si hay errores reales (no por infos/warnings).
           set +e
-          OUT="$(flutter analyze 2>&1)"
-          echo "$OUT"
-          echo "$OUT" | grep -q "error •" && exit 1
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze_out.txt
+          grep -q "error •" analyze_out.txt && exit 1
           exit 0
 
 
