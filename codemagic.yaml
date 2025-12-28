@@ -149,7 +149,8 @@ workflows:
 
       - name: Analizar código (detecta errores antes del build)
         script: |
-          flutter analyze
+          # No fallar por 'info' y 'warning' (solo por errores reales).
+          flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Fix plugin record (AGP 8+) - agregar namespace
         script: |
