@@ -8,6 +8,7 @@ import '../services/discography_service.dart';
 import '../services/vinyl_add_service.dart';
 import '../services/add_defaults_service.dart';
 import '../services/price_range_service.dart';
+import 'widgets/app_cover_image.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
 import '../l10n/app_strings.dart';
@@ -754,23 +755,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                 child: Column(
                                   children: [
                                     ListTile(
-                                      leading: ClipRRect(
+                                      leading: AppCoverImage(
+                                        pathOrUrl: al.cover250,
+                                        width: 56,
+                                        height: 56,
+                                        fit: BoxFit.cover,
                                         borderRadius: BorderRadius.circular(10),
-                                        child: Image.network(
-                                          al.cover250,
-                                          width: 56,
-                                          height: 56,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Icon(Icons.album, size: 34),
-                                          loadingBuilder: (ctx, child, prog) {
-                                            if (prog == null) return child;
-                                            return SizedBox(
-                                              width: 56,
-                                              height: 56,
-                                              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                            );
-                                          },
-                                        ),
                                       ),
                                       title: Text(
                                         al.title,

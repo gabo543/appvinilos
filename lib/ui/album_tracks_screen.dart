@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
 import '../l10n/app_strings.dart';
+import 'widgets/app_cover_image.dart';
 
 class AlbumTracksScreen extends StatefulWidget {
   final AlbumItem album;
@@ -104,15 +105,12 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                 children: [
                   Row(
                     children: [
-                      ClipRRect(
+                      AppCoverImage(
+                        pathOrUrl: widget.album.cover250,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          widget.album.cover250,
-                          width: 72,
-                          height: 72,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(Icons.album, size: 48),
-                        ),
                       ),
                       SizedBox(width: 12),
                       Expanded(

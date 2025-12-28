@@ -147,6 +147,10 @@ workflows:
         script: |
           flutter pub get
 
+      - name: Analizar código (detecta errores antes del build)
+        script: |
+          flutter analyze
+
       - name: Fix plugin record (AGP 8+) - agregar namespace
         script: |
           set -e

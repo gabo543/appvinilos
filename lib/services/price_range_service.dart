@@ -9,24 +9,34 @@ class PriceRange {
   final double min;
   final double max;
   final String currency; // e.g. EUR, USD
+  /// Timestamp (ms) when this price was fetched.
+  final int fetchedAtMs;
 
-  const PriceRange({required this.min, required this.max, required this.currency});
+  PriceRange({required this.min, required this.max, required this.currency, required this.fetchedAtMs});
+
+  DateTime get fetchedAt => DateTime.fromMillisecondsSinceEpoch(fetchedAtMs);
 
   Map<String, dynamic> toJson() => {
         'min': min,
         'max': max,
         'currency': currency,
-        'ts': DateTime.now().millisecondsSinceEpoch,
+        'ts': fetchedAtMs,
       };
 
   static PriceRange? fromJson(Map<String, dynamic> m) {
     final min = (m['min'] as num?)?.toDouble();
     final max = (m['max'] as num?)?.toDouble();
     final currency = (m['currency'] as String?)?.trim();
+    final ts = (m['ts'] as num?)?.toInt();
     if (min == null || max == null || currency == null || currency.isEmpty) {
       return null;
     }
-    return PriceRange(min: min, max: max, currency: currency);
+    return PriceRange(
+      min: min,
+      max: max,
+      currency: currency,
+      fetchedAtMs: (ts != null && ts > 0) ? ts : DateTime.now().millisecondsSinceEpoch,
+    );
   }
 }
 
@@ -109,37 +119,40 @@ class PriceRangeService {
     required String artist,
     required String album,
     String? mbid,
+    bool forceRefresh = false,
   }) async {
     final a = artist.trim();
     final al = album.trim();
     if (a.isEmpty || al.isEmpty) return null;
 
     final key = _cacheKey(artist: a, album: al, mbid: mbid);
-    if (_memCache.containsKey(key)) return _memCache[key];
+    if (!forceRefresh && _memCache.containsKey(key)) return _memCache[key];
 
-    // 1) SharedPrefs cache
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(key);
-      if (raw != null && raw.trim().isNotEmpty) {
-        final m = jsonDecode(raw) as Map<String, dynamic>;
-        final ts = (m['ts'] as num?)?.toInt();
+    if (!forceRefresh) {
+      // 1) SharedPrefs cache
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString(key);
+        if (raw != null && raw.trim().isNotEmpty) {
+          final m = jsonDecode(raw) as Map<String, dynamic>;
+          final ts = (m['ts'] as num?)?.toInt();
 
-        if (m['null'] == true) {
-          if (_isFreshTs(ts, _ttlNull)) {
-            _memCache[key] = null;
-            return null;
-          }
-        } else {
-          if (_isFreshTs(ts, _ttlOk)) {
-            final pr = PriceRange.fromJson(m);
-            _memCache[key] = pr;
-            return pr;
+          if (m['null'] == true) {
+            if (_isFreshTs(ts, _ttlNull)) {
+              _memCache[key] = null;
+              return null;
+            }
+          } else {
+            if (_isFreshTs(ts, _ttlOk)) {
+              final pr = PriceRange.fromJson(m);
+              _memCache[key] = pr;
+              return pr;
+            }
           }
         }
+      } catch (_) {
+        // ignore
       }
-    } catch (_) {
-      // ignore
     }
 
     PriceRange? pr;
@@ -155,6 +168,11 @@ class PriceRangeService {
 
     // 3) Fallback best-effort: scraping (puede fallar por 403)
     pr ??= await _fetchFromDiscogsHtml(artist: a, album: al);
+
+    // Marca timestamp si vino sin ts (defensivo)
+    if (pr != null && pr.fetchedAtMs <= 0) {
+      pr = PriceRange(min: pr.min, max: pr.max, currency: pr.currency, fetchedAtMs: DateTime.now().millisecondsSinceEpoch);
+    }
 
     _memCache[key] = pr;
 
@@ -391,7 +409,12 @@ class PriceRangeService {
         min = max;
         max = t;
       }
-      return PriceRange(min: min, max: max, currency: cur);
+      return PriceRange(
+        min: min,
+        max: max,
+        currency: cur,
+        fetchedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (_) {
       return null;
     }
@@ -479,7 +502,12 @@ class PriceRangeService {
       final max = _parseNumber(highestJson.group(1) ?? '');
       final cur = (lowestJson.group(2) ?? 'EUR').toUpperCase();
       if (min != null && max != null && max >= min) {
-        return PriceRange(min: min, max: max, currency: cur);
+        return PriceRange(
+          min: min,
+          max: max,
+          currency: cur,
+          fetchedAtMs: DateTime.now().millisecondsSinceEpoch,
+        );
       }
     }
 
@@ -491,7 +519,12 @@ class PriceRangeService {
       final max = _parseNumber(highTxt.group(2) ?? '');
       final cur = _symbolToCurrency(lowTxt.group(1) ?? '€');
       if (min != null && max != null && max >= min) {
-        return PriceRange(min: min, max: max, currency: cur);
+        return PriceRange(
+          min: min,
+          max: max,
+          currency: cur,
+          fetchedAtMs: DateTime.now().millisecondsSinceEpoch,
+        );
       }
     }
 

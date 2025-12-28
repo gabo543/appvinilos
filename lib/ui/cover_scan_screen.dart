@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/barcode_lookup_service.dart';
 import '../services/itunes_search_service.dart';
 import '../services/vinyl_add_service.dart';
+import '../services/recent_scans_service.dart';
 import 'add_vinyl_preview_screen.dart';
 import 'app_logo.dart';
 import '../l10n/app_strings.dart';
@@ -394,6 +395,17 @@ class _CoverScanScreenState extends State<CoverScanScreen> {
       return;
     }
     if (!mounted) return;
+
+    await RecentScansService.add(
+      RecentScanEntry(
+        artist: h.artist,
+        album: h.album,
+        releaseGroupId: rgid.isEmpty ? null : rgid,
+        releaseId: rid.isEmpty ? null : rid,
+        source: 'cover',
+        tsMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
 
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => AddVinylPreviewScreen(prepared: prepared)),

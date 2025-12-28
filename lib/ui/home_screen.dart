@@ -20,6 +20,7 @@ import 'app_logo.dart';
 import 'home/home_header.dart';
 import 'manual_vinyl_entry_screen.dart';
 import '../l10n/app_strings.dart';
+import 'widgets/app_cover_image.dart';
 
 enum Vista { inicio, lista, favoritos, borrar }
 
@@ -790,55 +791,24 @@ Future<void> _loadViewMode() async {
     final dpr = MediaQuery.of(context).devicePixelRatio;
     final cachePx = (size * dpr).round().clamp(64, 1024);
 
-if (cp.startsWith('http://') || cp.startsWith('https://')) {
-      final cache = cachePx;
-	  return ClipRRect(
-	    borderRadius: BorderRadius.circular(8),
-	    child: Container(
-	      alignment: Alignment.center,
-	      color: Colors.black12,
-	      child: Image.network(
-	        cp,
-	        width: size,
-	        height: size,
-	        fit: fit,
-	      cacheWidth: cache,
-	      cacheHeight: cache,
-	      errorBuilder: (_, __, ___) => Icon(Icons.album),
-	      loadingBuilder: (context, child, progress) {
-	        if (progress == null) return child;
-	        return Center(child: CircularProgressIndicator(strokeWidth: 2));
-	      },
-	      ),
-	    ),
-	  );
-}
-    if (cp.isNotEmpty && _fileExistsCached(cp)) {
+    String pick = cp;
+    if (pick.isNotEmpty && _fileExistsCached(pick)) {
       // Si existe un thumb descargado (cover_cache_service), úsalo en tamaños pequeños.
-      String pick = cp;
-      if (size <= 72 && cp.contains('_full.')) {
-        final thumb = cp.replaceFirst('_full.', '_thumb.');
+      if (size <= 72 && pick.contains('_full.')) {
+        final thumb = pick.replaceFirst('_full.', '_thumb.');
         if (_fileExistsCached(thumb)) pick = thumb;
       }
-      final f = File(pick);
-      final cache = cachePx;
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          alignment: Alignment.center,
-          color: Colors.black12,
-          child: Image.file(
-            f,
-            width: size,
-            height: size,
-            fit: fit,
-            cacheWidth: cache,
-            cacheHeight: cache,
-          ),
-        ),
-      );
     }
-    return Icon(Icons.album);
+
+    return AppCoverImage(
+      pathOrUrl: pick,
+      width: size,
+      height: size,
+      fit: fit,
+      borderRadius: BorderRadius.circular(8),
+      cacheWidth: cachePx,
+      cacheHeight: cachePx,
+    );
   }
 
   /// Carátula para cards tipo Grid.
@@ -854,42 +824,20 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         final target = (side.isFinite && side > 0) ? side : 220.0;
         final cache = (target * dpr).round().clamp(128, 1024);
 
-        if (cp.startsWith('http://') || cp.startsWith('https://')) {
-          return Container(
-            color: Colors.black12,
-            alignment: Alignment.center,
-            child: Image.network(
-              cp,
-              fit: fit,
-              cacheWidth: cache,
-              cacheHeight: cache,
-              errorBuilder: (_, __, ___) => Icon(Icons.album, size: 48),
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) return child;
-                return Center(child: CircularProgressIndicator(strokeWidth: 2));
-              },
-            ),
-          );
+        String pick = cp;
+        if (pick.isNotEmpty && _fileExistsCached(pick)) {
+          if (target <= 150 && pick.contains('_full.')) {
+            final thumb = pick.replaceFirst('_full.', '_thumb.');
+            if (_fileExistsCached(thumb)) pick = thumb;
+          }
         }
 
-        if (cp.isNotEmpty && _fileExistsCached(cp)) {
-          final f = File(cp);
-          return Container(
-            color: Colors.black12,
-            alignment: Alignment.center,
-            child: Image.file(
-              f,
-              fit: fit,
-              cacheWidth: cache,
-              cacheHeight: cache,
-            ),
-          );
-        }
-
-        return Container(
-          color: Colors.black12,
-          alignment: Alignment.center,
-          child: Icon(Icons.album, size: 48),
+        return AppCoverImage(
+          pathOrUrl: pick,
+          fit: fit,
+          cacheWidth: cache,
+          cacheHeight: cache,
+          borderRadius: BorderRadius.zero,
         );
       },
     );
@@ -1820,9 +1768,9 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         ),
 
         sectionHeader(
-          'Últimos agregados',
-          subtitle: 'Lo último que guardaste en tu colección.',
-          action: 'Ver todos',
+          context.tr('Últimos agregados'),
+          subtitle: context.tr('Lo último que guardaste en tu colección.'),
+          action: context.tr('Ver todos'),
           onAction: () {
             _reloadAllData();
             if (!mounted) return;
@@ -2548,57 +2496,118 @@ Widget vistaBorrar({bool embedInScroll = true}) {
   }
 
   Widget _vinylListTopBar({required int shown, required int total}) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+
+    final label = _hasAnyFilter ? AppStrings.shownOfTotal(context, shown, total) : '$total';
+
+    List<Widget> chips() {
+      final out = <Widget>[];
+
+      void addChip(String label, VoidCallback onClear) {
+        out.add(
+          InputChip(
+            label: Text(label, style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800)),
+            onDeleted: onClear,
+            deleteIcon: const Icon(Icons.close, size: 18),
+            backgroundColor: cs.surfaceVariant.withOpacity(0.55),
+            side: BorderSide(color: cs.outlineVariant.withOpacity(0.55)),
+            labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+          ),
+        );
+      }
+
+      final a = _filterArtistQ.trim();
+      if (a.isNotEmpty) addChip('${context.tr('Artista')}: $a', () => setState(() => _filterArtistQ = ''));
+
+      final g = _filterGenreQ.trim();
+      if (g.isNotEmpty) addChip('${context.tr('Género')}: $g', () => setState(() => _filterGenreQ = ''));
+
+      final c = _filterCountryQ.trim();
+      if (c.isNotEmpty) addChip('${context.tr('País')}: $c', () => setState(() => _filterCountryQ = ''));
+
+      if (_filterYearFrom != null || _filterYearTo != null) {
+        final from = _filterYearFrom?.toString() ?? '—';
+        final to = _filterYearTo?.toString() ?? '—';
+        addChip('${context.tr('Año')}: $from–$to', () => setState(() {
+              _filterYearFrom = null;
+              _filterYearTo = null;
+            }));
+      }
+
+      return out;
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10, top: 4),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Text(
-              _hasAnyFilter ? '$shown de $total' : '$total',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
-          if (_hasAnyFilter)
-            IconButton(
-              tooltip: context.tr('Quitar filtros'),
-              onPressed: () => setState(() {
-                _filterArtistQ = '';
-                _filterGenreQ = '';
-                _filterCountryQ = '';
-                _filterYearFrom = null;
-                _filterYearTo = null;
-              }),
-              icon: Icon(Icons.filter_alt_off),
-            ),
-          IconButton(
-            tooltip: context.tr('Filtros'),
-            onPressed: _openVinylFiltersSheet,
-            icon: Icon(_hasAnyFilter ? Icons.filter_alt : Icons.filter_alt_outlined),
-          ),
-          PopupMenuButton<VinylSortMode>(
-            tooltip: context.tr('Ordenar'),
-            initialValue: _sortMode,
-            onSelected: (m) {
-                setState(() => _sortMode = m);
-                _persistSortMode(m);
-              },
-            itemBuilder: (_) => [
-              PopupMenuItem(value: VinylSortMode.code, child: Text(context.tr('Código'))),
-              PopupMenuItem(value: VinylSortMode.recent, child: Text(context.tr('Recientes'))),
-              PopupMenuItem(value: VinylSortMode.az, child: Text(context.tr('A–Z'))),
-              PopupMenuItem(value: VinylSortMode.yearDesc, child: Text(context.tr('Año'))),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (_hasAnyFilter)
+                IconButton(
+                  tooltip: context.tr('Quitar filtros'),
+                  onPressed: () => setState(() {
+                    _filterArtistQ = '';
+                    _filterGenreQ = '';
+                    _filterCountryQ = '';
+                    _filterYearFrom = null;
+                    _filterYearTo = null;
+                  }),
+                  icon: Icon(Icons.filter_alt_off),
+                ),
+              IconButton(
+                tooltip: context.tr('Filtros'),
+                onPressed: _openVinylFiltersSheet,
+                icon: Icon(_hasAnyFilter ? Icons.filter_alt : Icons.filter_alt_outlined),
+              ),
+              PopupMenuButton<VinylSortMode>(
+                tooltip: context.tr('Ordenar'),
+                initialValue: _sortMode,
+                onSelected: (m) {
+                  setState(() => _sortMode = m);
+                  _persistSortMode(m);
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: VinylSortMode.code, child: Text(context.tr('Código'))),
+                  PopupMenuItem(value: VinylSortMode.recent, child: Text(context.tr('Recientes'))),
+                  PopupMenuItem(value: VinylSortMode.az, child: Text(context.tr('A–Z'))),
+                  PopupMenuItem(value: VinylSortMode.yearDesc, child: Text(context.tr('Año'))),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.sort),
+                      SizedBox(width: 6),
+                      Text(vinylSortLabel(_sortMode)),
+                    ],
+                  ),
+                ),
+              ),
             ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          ),
+          if (_hasAnyFilter) ...[
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  Icon(Icons.sort),
-                  SizedBox(width: 6),
-                  Text(vinylSortLabel(_sortMode)),
+                  ...chips().expand((w) sync* {
+                    yield w;
+                    yield const SizedBox(width: 8);
+                  }),
                 ],
               ),
             ),
-          ),
+          ]
         ],
       ),
     );
@@ -2627,8 +2636,8 @@ Widget listaCompleta({
       if (snap.hasError) {
         return _emptyState(
           icon: Icons.error_outline,
-          title: 'Error cargando',
-          subtitle: 'Algo falló al leer la base de datos. Cierra y vuelve a abrir la app.',
+          title: context.tr('Error cargando'),
+          subtitle: context.tr('Algo falló al leer la base de datos. Cierra y vuelve a abrir la app.'),
         );
       }
       if (!snap.hasData) return Center(child: CircularProgressIndicator());
@@ -2670,9 +2679,9 @@ Widget listaCompleta({
         if (qNorm.isNotEmpty && items.isNotEmpty) {
           return _emptyState(
             icon: Icons.search_off,
-            title: 'Sin resultados',
-            subtitle: 'No encontré coincidencias en tu lista.',
-            actionText: 'Limpiar búsqueda',
+            title: context.tr('Sin resultados'),
+            subtitle: context.tr('No encontré coincidencias en tu lista.'),
+            actionText: context.tr('Limpiar búsqueda'),
             onAction: () {
               setState(() {
                 _localSearchCtrl.clear();
@@ -2686,16 +2695,16 @@ Widget listaCompleta({
         if (conBorrar && _borrarPapelera) {
           return _emptyState(
             icon: Icons.delete_sweep_outlined,
-            title: 'Papelera vacía',
-            subtitle: 'Aquí aparecerán los vinilos que borres para que puedas recuperarlos.',
+            title: context.tr('Papelera vacía'),
+            subtitle: context.tr('Aquí aparecerán los vinilos que borres para que puedas recuperarlos.'),
           );
         }
         return _emptyState(
           icon: onlyFavorites ? Icons.star_outline : Icons.library_music_outlined,
-          title: onlyFavorites ? 'No hay favoritos' : 'No hay vinilos',
+          title: onlyFavorites ? context.tr('No hay favoritos') : context.tr('No hay vinilos'),
           subtitle: onlyFavorites
-              ? 'Marca un vinilo como favorito y aparecerá aquí.'
-              : 'Agrega tu primer vinilo desde Discografía o Buscar.',
+              ? context.tr('Marca un vinilo como favorito y aparecerá aquí.')
+              : context.tr('Agrega tu primer vinilo desde Discografía o Buscar.'),
         );
       }
 
@@ -3066,8 +3075,8 @@ Widget listaCompleta({
         if (rows.isEmpty) {
           return _emptyState(
             icon: Icons.groups_outlined,
-            title: 'Sin artistas aún',
-            subtitle: 'Cuando agregues vinilos, aquí verás tu colección agrupada por artista.',
+            title: context.tr('Sin artistas aún'),
+            subtitle: context.tr('Cuando agregues vinilos, aquí verás tu colección agrupada por artista.'),
           );
         }
 
@@ -3085,8 +3094,8 @@ Widget listaCompleta({
         if (visible0.isEmpty) {
           return _emptyState(
             icon: Icons.search_off,
-            title: 'Sin resultados',
-            subtitle: 'No encontré artistas que coincidan con tu búsqueda.',
+            title: context.tr('Sin resultados'),
+            subtitle: context.tr('No encontré artistas que coincidan con tu búsqueda.'),
           );
         }
 

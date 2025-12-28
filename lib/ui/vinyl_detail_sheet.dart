@@ -1,9 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
 import '../services/price_range_service.dart';
 import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
+import 'widgets/app_cover_image.dart';
 
 class VinylDetailSheet extends StatefulWidget {
   final Map<String, dynamic> vinyl;
@@ -20,6 +20,8 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
 
   bool loadingPrice = false;
   PriceRange? priceRange;
+
+  Map<String, dynamic>? _priceAlert; // alerta de precio para este ítem
 
   Future<void> _editMeta() async {
     final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
@@ -147,6 +149,93 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     super.initState();
     _loadTracks();
     _loadPrice();
+    _loadAlert();
+  }
+
+  Future<void> _loadAlert() async {
+    final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
+    if (id <= 0) return;
+    try {
+      final row = await VinylDb.instance.getPriceAlertFor(kind: 'vinyl', itemId: id);
+      if (!mounted) return;
+      setState(() => _priceAlert = row);
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _editPriceAlert() async {
+    final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
+    if (id <= 0) return;
+
+    final artista = (widget.vinyl['artista'] as String?)?.trim() ?? '';
+    final album = (widget.vinyl['album'] as String?)?.trim() ?? '';
+    final mbid = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
+    if (artista.isEmpty || album.isEmpty) return;
+
+    final initial = (_priceAlert?['target'] as num?)?.toDouble();
+    final ctrl = TextEditingController(text: initial == null ? '' : initial.toStringAsFixed(0));
+
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(context.tr('Alertas de precio')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(context.tr('Avísame si baja de')),
+              SizedBox(height: 10),
+              TextField(
+                controller: ctrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  prefixText: '€ ',
+                  labelText: context.tr('Precio objetivo'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cancelar'))),
+            if (_priceAlert != null)
+              TextButton(onPressed: () => Navigator.pop(ctx, 'delete'), child: Text(context.tr('Quitar alerta'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: Text(context.tr('Guardar alerta'))),
+          ],
+        );
+      },
+    );
+
+    if (res == 'delete') {
+      await VinylDb.instance.deletePriceAlert(kind: 'vinyl', itemId: id);
+      if (!mounted) return;
+      setState(() => _priceAlert = null);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart('Alerta eliminada ✅'))));
+      return;
+    }
+    if (res != 'save') return;
+
+    final target = double.tryParse(ctrl.text.replaceAll(',', '.').trim());
+    if (target == null || target <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart('Precio inválido'))));
+      return;
+    }
+
+    await VinylDb.instance.upsertPriceAlert(
+      kind: 'vinyl',
+      itemId: id,
+      artista: artista,
+      album: album,
+      mbid: mbid,
+      target: target,
+      currency: 'EUR',
+      isActive: true,
+    );
+    await _loadAlert();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart('Alerta guardada ✅'))));
   }
 
   String _fmtMoney(double v) {
@@ -162,7 +251,18 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     return '€ ${_fmtMoney(pr.min)} - ${_fmtMoney(pr.max)}';
   }
 
-  Future<void> _loadPrice() async {
+  String _priceUpdatedMini() {
+    final pr = priceRange;
+    if (loadingPrice || pr == null) return '';
+    final dt = DateTime.fromMillisecondsSinceEpoch(pr.fetchedAtMs);
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 2) return '• 1m';
+    if (diff.inMinutes < 60) return '• ${diff.inMinutes}m';
+    if (diff.inHours < 48) return '• ${diff.inHours}h';
+    return '• ${diff.inDays}d';
+  }
+
+  Future<void> _loadPrice({bool forceRefresh = false}) async {
     final artista = (widget.vinyl['artista'] as String?)?.trim() ?? '';
     final album = (widget.vinyl['album'] as String?)?.trim() ?? '';
     final mbid = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
@@ -172,7 +272,12 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       priceRange = null;
     });
     try {
-      final pr = await PriceRangeService.getRange(artist: artista, album: album, mbid: mbid.isEmpty ? null : mbid);
+      final pr = await PriceRangeService.getRange(
+        artist: artista,
+        album: album,
+        mbid: mbid.isEmpty ? null : mbid,
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
       setState(() {
         priceRange = pr;
@@ -214,45 +319,15 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   Widget _cover() {
     final cp = (widget.vinyl['coverPath'] as String?)?.trim() ?? '';
 
-if (cp.startsWith('http://') || cp.startsWith('https://')) {
-  return ClipRRect(
-    borderRadius: BorderRadius.circular(14),
-    child: Image.network(
-      cp,
+    // Skeleton placeholder + manejo de error unificados.
+    return AppCoverImage(
+      pathOrUrl: cp,
       width: 120,
       height: 120,
       fit: BoxFit.cover,
+      borderRadius: BorderRadius.circular(14),
       cacheWidth: 360,
       cacheHeight: 360,
-      errorBuilder: (_, __, ___) => SizedBox(
-        width: 120,
-        height: 120,
-        child: Center(child: Icon(Icons.album, size: 52)),
-      ),
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return SizedBox(
-          width: 120,
-          height: 120,
-          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        );
-      },
-    ),
-  );
-}
-    if (cp.isNotEmpty) {
-      final f = File(cp);
-      if (f.existsSync()) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.file(f, width: 120, height: 120, fit: BoxFit.cover),
-        );
-      }
-    }
-    return SizedBox(
-      width: 120,
-      height: 120,
-      child: Center(child: Icon(Icons.album, size: 52)),
     );
   }
 
@@ -314,7 +389,7 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
               children: [
                 _pill(context, 'Orden', code),
                 _pill(context, 'Año', year.isEmpty ? '—' : year),
-                _pill(context, 'Precio', _priceLabel()),
+                _pricePill(context),
                 _pill(context, 'Género', genre.isEmpty ? '—' : genre),
                 _pill(context, 'País', country.isEmpty ? '—' : country),
                 if (condition.isNotEmpty) _pill(context, 'Condición', condition),
@@ -386,6 +461,57 @@ if (cp.startsWith('http://') || cp.startsWith('https://')) {
         border: Border.all(color: dark ? Colors.white12 : Colors.black12),
       ),
       child: Text('${context.tr(k)}: $v', style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
+    );
+  }
+
+  Widget _pricePill(BuildContext context) {
+    final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final fg = dark ? Colors.white : Colors.black;
+    final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
+    final hasAlert = _priceAlert != null && id > 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: dark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: dark ? Colors.white12 : Colors.black12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${context.tr('Precio')}: ${_priceLabel()} ${_priceUpdatedMini()}'.trim(),
+              style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: context.tr('Actualizar precio'),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: loadingPrice ? null : () => _loadPrice(forceRefresh: true),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.refresh, size: 18, color: fg),
+              ),
+            ),
+          ),
+          if (id > 0) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: _editPriceAlert,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(
+                  hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
+                  size: 18,
+                  color: fg,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

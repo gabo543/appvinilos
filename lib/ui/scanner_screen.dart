@@ -14,6 +14,7 @@ import '../services/backup_service.dart';
 import '../services/audio_recognition_service.dart';
 import '../services/vinyl_add_service.dart';
 import '../services/add_defaults_service.dart';
+import '../services/recent_scans_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 import 'add_vinyl_preview_screen.dart';
@@ -179,6 +180,138 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
   void _snack(String t) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  String _miniAge(int tsMs) {
+    if (tsMs <= 0) return '';
+    final diff = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(tsMs));
+    if (diff.inMinutes < 2) return '1m';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 48) return '${diff.inHours}h';
+    return '${diff.inDays}d';
+  }
+
+  IconData _sourceIcon(String s) {
+    final t = s.toLowerCase();
+    if (t == 'barcode') return Icons.qr_code_2;
+    if (t == 'cover') return Icons.image_search;
+    if (t == 'listen') return Icons.hearing_outlined;
+    return Icons.history;
+  }
+
+  Future<void> _openRecentScansSheet() async {
+    final items = (await RecentScansService.getRecent()).toList();
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final t = Theme.of(ctx);
+        return StatefulBuilder(
+          builder: (ctx, setStateSheet) {
+            Future<void> refresh() async {
+              final latest = await RecentScansService.getRecent();
+              if (!mounted) return;
+              setStateSheet(() {
+                items
+                  ..clear()
+                  ..addAll(latest);
+              });
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            context.tr('Escaneos recientes'),
+                            style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: items.isEmpty
+                              ? null
+                              : () async {
+                                  await RecentScansService.clear();
+                                  await refresh();
+                                },
+                          icon: const Icon(Icons.delete_outline),
+                          label: Text(context.tr('Limpiar')),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (items.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          context.tr('Aún no hay escaneos.'),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.6),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (ctx, i) {
+                            final e = items[i];
+                            final age = _miniAge(e.tsMs);
+                            return ListTile(
+                              leading: Icon(_sourceIcon(e.source)),
+                              title: Text('${e.artist} — ${e.album}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                              subtitle: age.isEmpty ? null : Text(age),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () async {
+                                Navigator.pop(ctx);
+                                await _openRecentScan(e);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openRecentScan(RecentScanEntry e) async {
+    final rgid = (e.releaseGroupId ?? '').trim();
+    final rid = (e.releaseId ?? '').trim();
+    _snack(context.tr('Preparando…'));
+    PreparedVinylAdd prepared;
+    try {
+      if (rgid.isNotEmpty) {
+        prepared = await VinylAddService.prepareFromReleaseGroup(
+          artist: e.artist,
+          album: e.album,
+          releaseGroupId: rgid,
+          releaseId: rid.isEmpty ? null : rid,
+        );
+      } else {
+        prepared = await VinylAddService.prepare(artist: e.artist, album: e.album);
+      }
+    } catch (_) {
+      _snack(context.tr('No pude preparar la info.'));
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AddVinylPreviewScreen(prepared: prepared)));
   }
 
   void _handleCapture(BarcodeCapture capture) {
@@ -754,9 +887,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     if (ok != true) return;
 
     if (best != null) {
-      await _openAddFlow(best);
+      await _openAddFlow(best, source: 'listen');
     } else {
-      await _openAddFlowFromArtistAlbum(artist: artist, album: album);
+      await _openAddFlowFromArtistAlbum(artist: artist, album: album, source: 'listen');
     }
   }
 
@@ -771,9 +904,9 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
 
     if (_listenHits.isNotEmpty) {
-      await _openAddFlow(_listenHits.first);
+      await _openAddFlow(_listenHits.first, source: 'listen');
     } else {
-      await _openAddFlowFromArtistAlbum(artist: artist, album: album);
+      await _openAddFlowFromArtistAlbum(artist: artist, album: album, source: 'listen');
     }
   }
 
@@ -1400,7 +1533,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     );
   }
 
-  Future<void> _openAddFlow(BarcodeReleaseHit h) async {
+  Future<void> _openAddFlow(BarcodeReleaseHit h, {String source = 'barcode'}) async {
     final rgid = (h.releaseGroupId ?? '').trim();
     final rid = (h.releaseId ?? '').trim();
 
@@ -1432,6 +1565,18 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     }
     if (!mounted) return;
 
+    // Guardar en historial (máx 10).
+    await RecentScansService.add(
+      RecentScanEntry(
+        artist: h.artist,
+        album: h.album,
+        releaseGroupId: rgid.isEmpty ? null : rgid,
+        releaseId: rid.isEmpty ? null : rid,
+        source: source,
+        tsMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AddVinylPreviewScreen(prepared: prepared),
@@ -1439,7 +1584,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
     );
   }
 
-  Future<void> _openAddFlowFromArtistAlbum({required String artist, required String album, String? artistId}) async {
+  Future<void> _openAddFlowFromArtistAlbum({required String artist, required String album, String? artistId, String source = 'scan'}) async {
     final a = artist.trim();
     final al = album.trim();
     if (a.isEmpty || al.isEmpty) {
@@ -1456,6 +1601,18 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
       return;
     }
     if (!mounted) return;
+
+    // Guardar en historial aunque no haya IDs.
+    await RecentScansService.add(
+      RecentScanEntry(
+        artist: a,
+        album: al,
+        releaseGroupId: null,
+        releaseId: null,
+        source: source,
+        tsMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
 
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -1533,6 +1690,13 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
         // Más aire entre la flecha (leading) y el título.
         title: appBarTitleTextScaled(context.tr('Escáner'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
+        actions: [
+          IconButton(
+            tooltip: context.tr('Escaneos recientes'),
+            icon: const Icon(Icons.history),
+            onPressed: () => unawaited(_openRecentScansSheet()),
+          ),
+        ],
         bottom: PreferredSize(
           // Más alto: los 3 botones van vertical para que siempre se lean completos.
           preferredSize: Size.fromHeight(_mode == ScannerMode.codigo ? 212 : 196),
@@ -1862,7 +2026,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             overflow: TextOverflow.ellipsis,
           ),
           trailing: Icon(Icons.chevron_right),
-          onTap: () => unawaited(_openAddFlow(h)),
+          onTap: () => unawaited(_openAddFlow(h, source: 'cover')),
         );
       },
     );
@@ -2080,7 +2244,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
             overflow: TextOverflow.ellipsis,
           ),
           trailing: Icon(Icons.chevron_right),
-          onTap: () => unawaited(_openAddFlow(h)),
+          onTap: () => unawaited(_openAddFlow(h, source: 'listen')),
         );
       },
     );
@@ -2221,7 +2385,7 @@ class _ScannerScreenState extends State<ScannerScreen> with WidgetsBindingObserv
                   overflow: TextOverflow.ellipsis,
                 ),
                 trailing: Icon(Icons.chevron_right),
-                onTap: () => unawaited(_openAddFlow(h)),
+                onTap: () => unawaited(_openAddFlow(h, source: 'barcode')),
               );
             },
           ),

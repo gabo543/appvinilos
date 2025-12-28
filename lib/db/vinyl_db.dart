@@ -22,7 +22,7 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 12, // ✅ v12: reparar carátulas faltantes tras restore (fallback a Cover Art Archive)
+      version: 13, // ✅ v13: alertas de precio (wishlist/colección)
       onOpen: (d) async {
         // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
         try {
@@ -111,6 +111,28 @@ class VinylDb {
         ''');
         await d.execute('CREATE INDEX idx_trash_deleted ON trash(deletedAt);');
         await d.execute('CREATE UNIQUE INDEX idx_trash_unique ON trash(artista, album);');
+
+        // ✅ tabla price_alerts: alerta cuando el precio mínimo de mercado baja de un umbral.
+        await d.execute('''
+          CREATE TABLE price_alerts(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,           -- 'vinyl' | 'wish'
+            itemId INTEGER NOT NULL,      -- vinyls.id o wishlist.id
+            artista TEXT NOT NULL,
+            album TEXT NOT NULL,
+            mbid TEXT,
+            target REAL NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'EUR',
+            isActive INTEGER NOT NULL DEFAULT 1,
+            createdAt INTEGER NOT NULL,
+            lastCheckedAt INTEGER,
+            lastHitAt INTEGER,
+            lastMin REAL,
+            lastMax REAL
+          );
+        ''');
+        await d.execute('CREATE UNIQUE INDEX idx_price_alert_unique ON price_alerts(kind, itemId);');
+        await d.execute('CREATE INDEX idx_price_alert_active ON price_alerts(isActive);');
       },
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 3) {
@@ -374,6 +396,30 @@ if (oldV < 9) {
           try {
             await repairTable('trash');
           } catch (_) {}
+        }
+
+        if (oldV < 13) {
+          // v13: alertas de precio
+          await d.execute('''
+            CREATE TABLE IF NOT EXISTS price_alerts(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL,
+              itemId INTEGER NOT NULL,
+              artista TEXT NOT NULL,
+              album TEXT NOT NULL,
+              mbid TEXT,
+              target REAL NOT NULL,
+              currency TEXT NOT NULL DEFAULT 'EUR',
+              isActive INTEGER NOT NULL DEFAULT 1,
+              createdAt INTEGER NOT NULL,
+              lastCheckedAt INTEGER,
+              lastHitAt INTEGER,
+              lastMin REAL,
+              lastMax REAL
+            );
+          ''');
+          await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_price_alert_unique ON price_alerts(kind, itemId);');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_price_alert_active ON price_alerts(isActive);');
         }
 
 
@@ -1277,5 +1323,103 @@ Future<void> deleteTrashById(int trashId) async {
       where: 'LOWER(artista)=? AND LOWER(album)=?',
       whereArgs: [artista.trim().toLowerCase(), album.trim().toLowerCase()],
     );
+  }
+
+  // ---------------- PRICE ALERTS ----------------
+
+  Future<List<Map<String, dynamic>>> getPriceAlerts({String? kind, bool onlyActive = false}) async {
+    final d = await db;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (kind != null && kind.trim().isNotEmpty) {
+      where.add('kind = ?');
+      args.add(kind.trim());
+    }
+    if (onlyActive) {
+      where.add('isActive = 1');
+    }
+    return d.query(
+      'price_alerts',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'createdAt DESC',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getPriceAlertFor({required String kind, required int itemId}) async {
+    final d = await db;
+    final rows = await d.query(
+      'price_alerts',
+      where: 'kind = ? AND itemId = ?',
+      whereArgs: [kind.trim(), itemId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<void> upsertPriceAlert({
+    required String kind,
+    required int itemId,
+    required String artista,
+    required String album,
+    String? mbid,
+    required double target,
+    String currency = 'EUR',
+    bool isActive = true,
+  }) async {
+    final d = await db;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await d.insert(
+      'price_alerts',
+      {
+        'kind': kind.trim(),
+        'itemId': itemId,
+        'artista': artista.trim(),
+        'album': album.trim(),
+        'mbid': (mbid ?? '').trim(),
+        'target': target,
+        'currency': currency.trim().isEmpty ? 'EUR' : currency.trim().toUpperCase(),
+        'isActive': isActive ? 1 : 0,
+        'createdAt': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> setPriceAlertActive({required int id, required bool isActive}) async {
+    final d = await db;
+    await d.update(
+      'price_alerts',
+      {'isActive': isActive ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> deletePriceAlert({required String kind, required int itemId}) async {
+    final d = await db;
+    await d.delete(
+      'price_alerts',
+      where: 'kind = ? AND itemId = ?',
+      whereArgs: [kind.trim(), itemId],
+    );
+  }
+
+  Future<void> updatePriceAlertCheck({
+    required int id,
+    required int lastCheckedAt,
+    double? lastMin,
+    double? lastMax,
+    int? lastHitAt,
+  }) async {
+    final d = await db;
+    final m = <String, Object?>{
+      'lastCheckedAt': lastCheckedAt,
+      'lastMin': lastMin,
+      'lastMax': lastMax,
+    };
+    if (lastHitAt != null) m['lastHitAt'] = lastHitAt;
+    await d.update('price_alerts', m, where: 'id = ?', whereArgs: [id]);
   }
 }

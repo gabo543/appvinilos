@@ -8,6 +8,7 @@ import '../services/cover_cache_service.dart';
 import '../services/export_service.dart';
 import '../services/audio_recognition_service.dart';
 import '../services/locale_service.dart';
+import '../services/price_alert_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 import '../l10n/app_strings.dart';
@@ -251,6 +252,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _snack('Listo ✅ Eliminados: $deleted');
     } catch (e) {
       _snack('Error en duplicados: $e');
+    }
+  }
+
+  Future<void> _checkPriceAlerts() async {
+    try {
+      if (!mounted) return;
+      _snack('Buscando');
+      final hits = await PriceAlertService.checkNow();
+      if (!mounted) return;
+
+      if (hits.isEmpty) {
+        _snack('Sin coincidencias');
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: Text(context.tr('Alertas de precio')),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: hits.length,
+                itemBuilder: (_, i) {
+                  final h = hits[i];
+                  final cur = h.range.currency;
+                  final min = h.range.min.toStringAsFixed(0);
+                  final max = h.range.max.toStringAsFixed(0);
+                  final target = h.target.toStringAsFixed(0);
+                  return ListTile(
+                    dense: true,
+                    title: Text('${h.artista} — ${h.album}'),
+                    subtitle: Text('$cur $min–$max  ·  ${context.tr('Precio objetivo')}: $cur $target'),
+                    leading: const Icon(Icons.notifications_active_outlined),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(context.tr('Cerrar'))),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      _snack('Error: $e');
     }
   }
 
@@ -570,6 +619,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: Text(context.tr('Detectar / fusionar duplicados')),
                         subtitle: Text(context.tr('Encuentra repetidos por artista+álbum y los fusiona.')),
                         onTap: _duplicados,
+                      ),
+                      div,
+                      ListTile(
+                        leading: Icon(Icons.notifications_active_outlined),
+                        title: Text(context.tr('Alertas de precio')),
+                        subtitle: Text(context.tr('Avísame si baja de')),
+                        onTap: _checkPriceAlerts,
                       ),
                       div,
                       ExpansionTile(

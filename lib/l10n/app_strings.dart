@@ -28,6 +28,9 @@ class AppStrings {
   "Ajusta el contraste del texto.": "Adjust text contrast.",
   "Ajusta fondo y estilo de cards.": "Adjust background and card style.",
   "Algo falló al leer la base de datos. Cierra y vuelve a abrir la app.": "Something went wrong reading the database. Close and reopen the app.",
+  "Alerta guardada ✅": "Alert saved ✅",
+  "Alerta eliminada ✅": "Alert removed ✅",
+  "Alertas de precio": "Price alerts",
   "Aplicar": "Apply",
   "Apunta al código de barras del vinilo.": "Point at the record's barcode.",
   "Aquí aparecerán los vinilos que borres para que puedas recuperarlos.": "Deleted records will appear here so you can restore them.",
@@ -36,6 +39,7 @@ class AppStrings {
   "Artista o álbum": "Artist or album",
   "Artistas": "Artists",
   "Atrás": "Back",
+  "Avísame si baja de": "Notify me if it drops below",
   "Avanzado": "Advanced",
   "Año": "Year",
   "Año (opcional)": "Year (optional)",
@@ -56,6 +60,12 @@ class AppStrings {
   "Cambia el estilo visual de la app.": "Change the app look & feel.",
   "Cambiar cámara": "Switch camera",
   "Cancelar": "Cancel",
+  "Precio objetivo": "Target price",
+  "Guardar alerta": "Save alert",
+  "Quitar alerta": "Remove alert",
+  "Revisar alertas": "Check alerts",
+  "Sin coincidencias": "No matches",
+  "Precio inválido": "Invalid price",
   "Canciones": "Tracks",
   "Cargar backup local": "Load local backup",
   "Carátula": "Cover",
@@ -99,7 +109,9 @@ class AppStrings {
   "Error cargando": "Error loading",
   "Error cargando artistas": "Error loading artists",
   "Escanear": "Scan",
+  "Escaneos recientes": "Recent scans",
   "Escanear otro": "Scan another",
+  "Aún no hay escaneos.": "No scans yet.",
   "Escribe artista y álbum (opcional: año y género).": "Enter artist and album (optional: year and genre).",
   "Escribe los datos básicos. Luego podrás revisar la ficha y agregar a tu lista o a deseos.": "Enter the basics. Then you can review the details and add it to your collection or wishlist.",
   "Escuchando…": "Listening…",
@@ -303,6 +315,21 @@ class AppStrings {
   "Artista y Álbum son obligatorios.": "Artist and Album are required.",
   "No encontré el vinilo.": "I couldn't find the record.",
   "Ese vinilo ya existe en tu lista.": "That record already exists in your collection.",
+
+  "Últimos agregados": "Latest added",
+  "Ver todos": "View all",
+  "No hay favoritos": "No favorites",
+  "No hay vinilos": "No records",
+  "Marca un vinilo como favorito y aparecerá aquí.": "Mark a record as favorite and it will show up here.",
+  "Agrega tu primer vinilo desde Discografía o Buscar.": "Add your first record from Discographies or Scan.",
+  "Sin artistas aún": "No artists yet",
+  "Cuando agregues vinilos, aquí verás tu colección agrupada por artista.": "When you add records, you’ll see your collection grouped by artist here.",
+  "No encontré artistas que coincidan con tu búsqueda.": "I couldn't find artists matching your search.",
+  "No encontré coincidencias en tu lista.": "I couldn't find matches in your collection.",
+  "Limpiar búsqueda": "Clear search",
+  "Papelera vacía": "Trash is empty",
+  "Aquí aparecerán los vinilos que borres para que puedas recuperarlos.": "Deleted records will appear here so you can recover them.",
+  "Colección vinilos": "Vinyl collection",
 };
 
   static bool isEnglish(BuildContext context) {
@@ -341,6 +368,11 @@ class AppStrings {
   static String viewModeHint(BuildContext context, String current, String next) {
     if (isEnglish(context)) return 'View: $current · tap to $next';
     return 'Vista: $current · tocar para $next';
+  }
+
+  static String shownOfTotal(BuildContext context, int shown, int total) {
+    if (isEnglish(context)) return '$shown of $total';
+    return '$shown de $total';
   }
 }
 

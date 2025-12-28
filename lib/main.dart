@@ -5,6 +5,7 @@ import 'ui/home_screen.dart';
 import 'services/app_theme_service.dart';
 import 'services/view_mode_service.dart';
 import 'services/locale_service.dart';
+import 'l10n/app_strings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -615,7 +616,7 @@ ThemeData _applyTextIntensity(ThemeData base, int level) {
                                 GlobalWidgetsLocalizations.delegate,
                                 GlobalCupertinoLocalizations.delegate,
                               ],
-                              title: 'Colección vinilos',
+                              title: AppStrings.tRaw('Colección vinilos'),
                               theme: theme,
                               home: HomeScreen(),
                             );
