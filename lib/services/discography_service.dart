@@ -80,6 +80,79 @@ class DiscographyService {
     return http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
   }
 
+  // ============================================
+  // 🎵 BUSCAR CANCIÓN (para filtrar discografía)
+  // ============================================
+  /// Devuelve IDs de release-groups (álbumes) donde aparece una canción.
+  ///
+  /// En UI esto se usa para filtrar la lista de álbumes SIN descargar todos
+  /// los tracklists.
+  static Future<Set<String>> searchAlbumReleaseGroupsBySong({
+    required String artistId,
+    required String songQuery,
+    int limit = 100,
+  }) async {
+    final arid = artistId.trim();
+    final q = songQuery.trim();
+    if (arid.isEmpty || q.isEmpty) return <String>{};
+
+    // MusicBrainz Search (recording) con filtro por artista.
+    // Nota: `inc=` puede ser ignorado por el endpoint de búsqueda en algunos casos,
+    // por eso abajo tenemos un fallback para resolver release-group desde release.
+    final lucene = 'recording:"$q" AND arid:$arid';
+    final url = Uri.parse(
+      '$_mbBase/recording/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$limit&inc=releases+release-groups',
+    );
+    final res = await _get(url);
+    if (res.statusCode != 200) return <String>{};
+
+    final data = jsonDecode(res.body);
+    final recs = (data['recordings'] as List?) ?? [];
+    final out = <String>{};
+    final fallbackReleaseIds = <String>{};
+
+    for (final r in recs) {
+      final releases = (r is Map ? (r['releases'] as List?) : null) ?? [];
+      for (final rel in releases) {
+        if (rel is! Map) continue;
+        final rg = rel['release-group'];
+        if (rg is Map) {
+          final id = (rg['id'] ?? '').toString().trim();
+          if (id.isNotEmpty) out.add(id);
+        } else if (rg is String) {
+          final id = rg.trim();
+          if (id.isNotEmpty) out.add(id);
+        } else {
+          // fallback: resolver por releaseId si el search no trae release-group.
+          final rid = (rel['id'] ?? '').toString().trim();
+          if (rid.isNotEmpty) fallbackReleaseIds.add(rid);
+        }
+      }
+    }
+
+    // Si ya tenemos release-group IDs, listo.
+    if (out.isNotEmpty || fallbackReleaseIds.isEmpty) return out;
+
+    // Fallback: resolver los release-groups desde algunos releases.
+    // Limitamos para no disparar demasiadas llamadas (la UI pide respuesta rápida).
+    final idsToResolve = fallbackReleaseIds.take(12);
+    for (final rid in idsToResolve) {
+      try {
+        final u = Uri.parse('$_mbBase/release/$rid?inc=release-groups&fmt=json');
+        final rr = await _get(u);
+        if (rr.statusCode != 200) continue;
+        final d = jsonDecode(rr.body);
+        final rg = d is Map ? d['release-group'] : null;
+        final rgid = rg is Map ? (rg['id'] ?? '').toString().trim() : '';
+        if (rgid.isNotEmpty) out.add(rgid);
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    return out;
+  }
+
   // ===============================
   // 🔍 BUSCAR ARTISTAS (AUTOCOMPLETE)
   // ===============================

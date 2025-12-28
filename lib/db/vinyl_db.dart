@@ -22,7 +22,7 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 13, // ✅ v13: alertas de precio (wishlist/colección)
+      version: 14, // ✅ v14: barcode en colección/wishlist/trash
       onOpen: (d) async {
         // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
         try {
@@ -48,6 +48,7 @@ class VinylDb {
             artistBio TEXT,
             coverPath TEXT,
             mbid TEXT,
+            barcode TEXT,
             condition TEXT,
             format TEXT,
             favorite INTEGER NOT NULL DEFAULT 0
@@ -81,6 +82,7 @@ class VinylDb {
             cover500 TEXT,
             artistId TEXT,
             status TEXT,
+            barcode TEXT,
             createdAt INTEGER NOT NULL
           );
         ''');
@@ -103,6 +105,7 @@ class VinylDb {
             artistBio TEXT,
             coverPath TEXT,
             mbid TEXT,
+            barcode TEXT,
             condition TEXT,
             format TEXT,
             favorite INTEGER NOT NULL DEFAULT 0,
@@ -420,6 +423,19 @@ if (oldV < 9) {
           ''');
           await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_price_alert_unique ON price_alerts(kind, itemId);');
           await d.execute('CREATE INDEX IF NOT EXISTS idx_price_alert_active ON price_alerts(isActive);');
+        }
+
+        if (oldV < 14) {
+          // v14: barcode en colección/wishlist/trash
+          try {
+            await d.execute('ALTER TABLE vinyls ADD COLUMN barcode TEXT;');
+          } catch (_) {}
+          try {
+            await d.execute('ALTER TABLE wishlist ADD COLUMN barcode TEXT;');
+          } catch (_) {}
+          try {
+            await d.execute('ALTER TABLE trash ADD COLUMN barcode TEXT;');
+          } catch (_) {}
         }
 
 
@@ -760,6 +776,7 @@ Future<Map<String, dynamic>?> findByExact({
     String? artistBio,
     String? coverPath,
     String? mbid,
+    String? barcode,
     String? condition,
     String? format,
     bool favorite = false,
@@ -790,6 +807,7 @@ Future<Map<String, dynamic>?> findByExact({
         'artistBio': artistBio?.trim(),
         'coverPath': coverPath?.trim(),
         'mbid': mbid?.trim(),
+        'barcode': barcode?.trim(),
         'condition': condition?.trim(),
         'format': format?.trim(),
         'favorite': favorite ? 1 : 0,
@@ -1072,6 +1090,7 @@ Future<void> moveToTrash(int vinylId) async {
         'artistBio': v['artistBio']?.toString(),
         'coverPath': v['coverPath']?.toString(),
         'mbid': v['mbid']?.toString(),
+        'barcode': v['barcode']?.toString(),
         'condition': v['condition']?.toString(),
         'format': v['format']?.toString(),
         'favorite': _fav01(v['favorite']),
@@ -1130,6 +1149,7 @@ Future<bool> restoreFromTrash(int trashId) async {
           'artistBio': t['artistBio']?.toString(),
           'coverPath': t['coverPath']?.toString(),
           'mbid': t['mbid']?.toString(),
+          'barcode': t['barcode']?.toString(),
           'condition': t['condition']?.toString(),
           'format': t['format']?.toString(),
           'favorite': _fav01(t['favorite']),
@@ -1290,6 +1310,7 @@ Future<void> deleteTrashById(int trashId) async {
     String? cover500,
     String? artistId,
     String? status,
+    String? barcode,
   }) async {
     final d = await db;
     await d.insert(
@@ -1302,9 +1323,21 @@ Future<void> deleteTrashById(int trashId) async {
         'cover500': cover500?.trim(),
         'artistId': artistId?.trim(),
         'status': status?.trim(),
+        'barcode': barcode?.trim(),
         'createdAt': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.ignore, // si ya existe, no duplica
+    );
+  }
+
+  Future<void> updateWishlistBarcode(int id, String? barcode) async {
+    final d = await db;
+    final b = (barcode ?? '').trim();
+    await d.update(
+      'wishlist',
+      {'barcode': b.isEmpty ? null : b},
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 

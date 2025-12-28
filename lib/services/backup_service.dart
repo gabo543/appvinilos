@@ -541,6 +541,7 @@ class BackupService {
       'artistBio': m['artistBio']?.toString().trim(),
       'coverPath': m['coverPath']?.toString().trim(),
       'mbid': m['mbid']?.toString().trim(),
+      'barcode': m['barcode']?.toString().trim(),
       'condition': m['condition']?.toString().trim(),
       'format': m['format']?.toString().trim(),
       'favorite': _fav01(m['favorite']),
@@ -568,6 +569,7 @@ class BackupService {
       'cover500': m['cover500']?.toString().trim(),
       'artistId': m['artistId']?.toString().trim(),
       'status': m['status']?.toString().trim(),
+      'barcode': m['barcode']?.toString().trim(),
       'createdAt': createdAt,
     };
     out.removeWhere((k, v) => v is String && v.trim().isEmpty);
@@ -597,6 +599,7 @@ class BackupService {
       'artistBio': m['artistBio']?.toString().trim(),
       'coverPath': m['coverPath']?.toString().trim(),
       'mbid': m['mbid']?.toString().trim(),
+      'barcode': m['barcode']?.toString().trim(),
       'condition': m['condition']?.toString().trim(),
       'format': m['format']?.toString().trim(),
       'favorite': _fav01(m['favorite']),
@@ -811,6 +814,7 @@ class BackupService {
               'country': v['country']?.toString().trim(),
               'artistBio': v['artistBio']?.toString().trim(),
               'mbid': v['mbid']?.toString().trim(),
+              'barcode': v['barcode']?.toString().trim(),
               'coverPath': _normalizeCoverPathForImport(v['coverPath'], v['mbid']),
               'condition': v['condition']?.toString().trim(),
               'format': v['format']?.toString().trim(),
@@ -832,6 +836,7 @@ class BackupService {
               'cover500': w['cover500']?.toString().trim(),
               'artistId': w['artistId']?.toString().trim(),
               'status': w['status']?.toString().trim(),
+              'barcode': w['barcode']?.toString().trim(),
               'createdAt': _asInt(w['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch),
             }..removeWhere((k, val) => val == null || (val is String && val.trim().isEmpty)),
             conflictAlgorithm: ConflictAlgorithm.abort,
@@ -865,6 +870,7 @@ class BackupService {
               'country': t['country']?.toString().trim(),
               'artistBio': t['artistBio']?.toString().trim(),
               'mbid': mbid,
+              'barcode': t['barcode']?.toString().trim(),
               'coverPath': _normalizeCoverPathForImport(t['coverPath'], mbid),
               'condition': t['condition']?.toString().trim(),
               'format': t['format']?.toString().trim(),
@@ -946,6 +952,7 @@ class BackupService {
             'artistBio': chooseStr(v['artistBio']?.toString(), existing['artistBio']),
             // mbid primero, para poder normalizar coverPath usando ese valor.
             'mbid': chooseStr(v['mbid']?.toString(), existing['mbid']),
+            'barcode': chooseStr(v['barcode']?.toString(), existing['barcode']),
             'condition': chooseStr(v['condition']?.toString(), existing['condition']),
             'format': chooseStr(v['format']?.toString(), existing['format']),
             'favorite': fav,
@@ -985,6 +992,7 @@ class BackupService {
               'country': v['country']?.toString().trim(),
               'artistBio': v['artistBio']?.toString().trim(),
               'mbid': mbid,
+              'barcode': v['barcode']?.toString().trim(),
               'coverPath': _normalizeCoverPathForImport(v['coverPath'], mbid),
               'condition': v['condition']?.toString().trim(),
               'format': v['format']?.toString().trim(),
@@ -1029,6 +1037,7 @@ class BackupService {
             'cover500': chooseStr(w['cover500']?.toString(), existing['cover500']),
             'artistId': chooseStr(w['artistId']?.toString(), existing['artistId']),
             'status': chooseStr(w['status']?.toString(), existing['status']),
+            'barcode': chooseStr(w['barcode']?.toString(), existing['barcode']),
             // no tocamos createdAt
           }..removeWhere((k, val) => val == null);
 
@@ -1050,6 +1059,7 @@ class BackupService {
               'cover500': w['cover500']?.toString().trim(),
               'artistId': w['artistId']?.toString().trim(),
               'status': w['status']?.toString().trim(),
+              'barcode': w['barcode']?.toString().trim(),
               'createdAt': _asInt(w['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch),
             }..removeWhere((k, val) => val == null || (val is String && val.trim().isEmpty)),
             conflictAlgorithm: ConflictAlgorithm.abort,
@@ -1098,6 +1108,7 @@ class BackupService {
             'artistBio': chooseStr(t['artistBio']?.toString(), existing['artistBio']),
             // mbid primero, para poder normalizar coverPath usando ese valor.
             'mbid': chooseStr(t['mbid']?.toString(), existing['mbid']),
+            'barcode': chooseStr(t['barcode']?.toString(), existing['barcode']),
             'condition': chooseStr(t['condition']?.toString(), existing['condition']),
             'format': chooseStr(t['format']?.toString(), existing['format']),
             'favorite': fav,
@@ -1142,6 +1153,7 @@ class BackupService {
               'country': t['country']?.toString().trim(),
               'artistBio': t['artistBio']?.toString().trim(),
               'mbid': t['mbid']?.toString().trim(),
+              'barcode': t['barcode']?.toString().trim(),
               'coverPath': _normalizeCoverPathForImport(t['coverPath'], t['mbid']),
               'condition': t['condition']?.toString().trim(),
               'format': t['format']?.toString().trim(),

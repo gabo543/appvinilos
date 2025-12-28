@@ -276,6 +276,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
         artist: artista,
         album: album,
         mbid: mbid.isEmpty ? null : mbid,
+        barcode: (widget.vinyl['barcode'] as String?)?.trim(),
         forceRefresh: forceRefresh,
       );
       if (!mounted) return;

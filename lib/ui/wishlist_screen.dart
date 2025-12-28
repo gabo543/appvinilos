@@ -5,6 +5,7 @@ import '../services/backup_service.dart';
 import '../services/discography_service.dart';
 import '../services/add_defaults_service.dart';
 import '../services/price_alert_service.dart';
+import '../services/store_price_service.dart';
 import 'album_tracks_screen.dart';
 import 'vinyl_detail_sheet.dart';
 import 'app_logo.dart';
@@ -18,12 +19,165 @@ class WishlistScreen extends StatefulWidget {
   State<WishlistScreen> createState() => _WishlistScreenState();
 }
 
+class _StorePricesSheet extends StatefulWidget {
+  final String artista;
+  final String album;
+  final String barcode;
+
+  const _StorePricesSheet({
+    required this.artista,
+    required this.album,
+    required this.barcode,
+  });
+
+  @override
+  State<_StorePricesSheet> createState() => _StorePricesSheetState();
+}
+
+class _StorePricesSheetState extends State<_StorePricesSheet> {
+  late Future<List<StoreOffer>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = StorePriceService.fetchOffersByBarcodeCached(widget.barcode);
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = StorePriceService.fetchOffersByBarcodeCached(widget.barcode, forceRefresh: true);
+    });
+  }
+
+  String _fmt(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.tr('Buscar precios'),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${widget.artista} — ${widget.album}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'EAN/UPC: ${widget.barcode}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: context.tr('Actualizar'),
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FutureBuilder<List<StoreOffer>>(
+            future: _future,
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              final offers = snap.data ?? const <StoreOffer>[];
+              if (offers.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    context.tr('No pude obtener precios en las tiendas seleccionadas.'),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                );
+              }
+
+              final sorted = [...offers]..sort((a, b) => a.price.compareTo(b.price));
+              final best2 = sorted.take(2).toList();
+              final min = sorted.first.price;
+              final max = sorted.last.price;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 10),
+                  ...best2.map(
+                    (o) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text(o.note == null || o.note!.trim().isEmpty ? o.url : '${o.note}\n${o.url}'),
+                      trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                    ),
+                  ),
+                  if (sorted.length > best2.length) ...[
+                    const Divider(),
+                    Text(
+                      context.tr('Más resultados'),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 6),
+                    ...sorted.skip(2).map(
+                      (o) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(
+                    context.tr('Los precios pueden cambiar y algunas tiendas pueden bloquear la consulta automática.'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WishlistScreenState extends State<WishlistScreen> {
   late Future<List<Map<String, dynamic>>> _future;
   bool _grid = false;
 
   // price alerts (wishlist)
   final Map<int, Map<String, dynamic>> _wishAlerts = {};
+
+  // store offers (auto prices)
+  final Map<String, List<StoreOffer>?> _offersByBarcode = {};
+  final Map<String, bool> _offersLoading = {};
+  final Set<String> _prefetchedBarcodes = {};
+  Future<void> _prefetchQueue = Future.value();
 
   @override
   void initState() {
@@ -46,11 +200,192 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
   }
 
+  Future<String?> _askBarcode({String? initial}) async {
+    final c = TextEditingController(text: (initial ?? '').trim());
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(context.tr('Código de barras')),
+          content: TextField(
+            controller: c,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: context.tr('Ej: 0190296611964'),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(context.tr('Cancelar')),
+            ),
+            TextButton(
+              onPressed: () {
+                final v = c.text.trim();
+                Navigator.pop(ctx, v.isEmpty ? null : v);
+              },
+              child: Text(context.tr('Aceptar')),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showStorePrices(Map<String, dynamic> w) async {
+    final id = (w['id'] as int?) ?? 0;
+    if (id <= 0) return;
+
+    final artista = (w['artista'] ?? '').toString();
+    final album = (w['album'] ?? '').toString();
+
+    var barcode = (w['barcode'] ?? '').toString().trim();
+    if (barcode.isEmpty) {
+      final entered = await _askBarcode();
+      if (!mounted) return;
+      if (entered == null || entered.trim().isEmpty) return;
+      barcode = entered.trim();
+      await VinylDb.instance.updateWishlistBarcode(id, barcode);
+      _reload();
+    }
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _StorePricesSheet(
+        artista: artista,
+        album: album,
+        barcode: barcode,
+      ),
+    );
+  }
+
   void _reload() {
     setState(() {
       _future = VinylDb.instance.getWishlist();
     });
     _loadWishAlerts();
+  }
+
+  void _ensureAutoPrices(List<Map<String, dynamic>> items) {
+    for (final w in items) {
+      final barcode = (w['barcode'] ?? '').toString().trim();
+      if (barcode.isEmpty) continue;
+      if (_prefetchedBarcodes.contains(barcode)) continue;
+      _prefetchedBarcodes.add(barcode);
+      _queueFetchOffers(barcode);
+    }
+  }
+
+  void _queueFetchOffers(String barcode, {bool forceRefresh = false}) {
+    final b = barcode.trim();
+    if (b.isEmpty) return;
+
+    // Si ya hay una carga en curso y no es forceRefresh, evitamos duplicar.
+    if (!forceRefresh && (_offersLoading[b] == true)) return;
+
+    _offersLoading[b] = true;
+    if (mounted) setState(() {});
+
+    _prefetchQueue = _prefetchQueue.then((_) async {
+      try {
+        final offers = await StorePriceService.fetchOffersByBarcodeCached(b, forceRefresh: forceRefresh);
+        _offersByBarcode[b] = offers;
+      } catch (_) {
+        _offersByBarcode[b] = const <StoreOffer>[];
+      } finally {
+        _offersLoading[b] = false;
+        if (mounted) setState(() {});
+      }
+    });
+  }
+
+  String _fmtEur(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  String _shortStore(String store) {
+    final s = store.toLowerCase();
+    if (s.contains('imusic')) return 'iMusic';
+    if (s.contains('muziker')) return 'Muziker';
+    if (s.contains('levy')) return 'Äx';
+    return store;
+  }
+
+  Widget _offerPill(String text, {bool compact = false}) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.45 : 0.75);
+    final border = cs.outlineVariant.withValues(alpha: isDark ? 0.55 : 0.35);
+    final padV = compact ? 4.0 : 5.0;
+    final padH = compact ? 7.0 : 8.0;
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        text,
+        style: (Theme.of(context).textTheme.labelMedium ?? const TextStyle()).copyWith(
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget _pricePills(String barcode, {bool compact = false}) {
+    final b = barcode.trim();
+    if (b.isEmpty) return const SizedBox.shrink();
+
+    final offers = _offersByBarcode[b];
+    final loading = _offersLoading[b] == true;
+
+    if (offers == null) {
+      // Aún no se cargó (se cargará automáticamente).
+      if (!loading) return const SizedBox.shrink();
+    }
+
+    if (loading && (offers == null || offers.isEmpty)) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: compact ? 12 : 14,
+            height: compact ? 12 : 14,
+            child: const CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            context.tr('Buscando precios…'),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ],
+      );
+    }
+
+    final list = (offers ?? const <StoreOffer>[]);
+    if (list.isEmpty) {
+      return Text(
+        context.tr('Sin precios'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+      );
+    }
+
+    final sorted = [...list]..sort((a, c) => a.price.compareTo(c.price));
+    final best2 = sorted.take(2).toList();
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final o in best2)
+          _offerPill('€${_fmtEur(o.price)} · ${_shortStore(o.store)}', compact: compact),
+        if (sorted.length > 2) _offerPill('+${sorted.length - 2}', compact: compact),
+      ],
+    );
   }
 
   /// Badge de estado para Wishlist (se ve bien tanto en tema claro como oscuro).
@@ -364,6 +699,7 @@ Widget _placeholder() {
     final album = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
     final status = (w['status'] ?? '').toString().trim();
+    final barcode = (w['barcode'] ?? '').toString().trim();
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -423,6 +759,10 @@ Widget _placeholder() {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                       ),
+                      if (barcode.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _pricePills(barcode),
+                      ],
                     ],
                   ),
                 ),
@@ -442,6 +782,12 @@ Widget _placeholder() {
                     onPressed: () => _editWishAlert(w),
                   ),
                   IconButton(
+                    tooltip: context.tr('Buscar precios'),
+                    icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 22),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _showStorePrices(w),
+                  ),
+                  IconButton(
                     tooltip: context.tr('Agregar a vinilos'),
                     icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
                     visualDensity: VisualDensity.compact,
@@ -457,6 +803,9 @@ Widget _placeholder() {
                         await VinylDb.instance.insertVinyl(
                           artista: a,
                           album: al,
+                          barcode: (w['barcode'] ?? '').toString().trim().isEmpty
+                              ? null
+                              : (w['barcode'] ?? '').toString().trim(),
                           condition: opts['condition'],
                           format: opts['format'],
                           year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
@@ -497,6 +846,7 @@ Widget _placeholder() {
     final album = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
     final status = (w['status'] ?? '').toString().trim();
+    final barcode = (w['barcode'] ?? '').toString().trim();
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -546,6 +896,10 @@ Widget _placeholder() {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
+                  if (barcode.isNotEmpty) ...[
+                    SizedBox(height: 8),
+                    _pricePills(barcode, compact: true),
+                  ],
                   SizedBox(height: 10),
                   Row(
                     children: [
@@ -565,6 +919,12 @@ Widget _placeholder() {
                         onPressed: () => _editWishAlert(w),
                       ),
                       IconButton(
+                        tooltip: context.tr('Buscar precios'),
+                        icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 20),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _showStorePrices(w),
+                      ),
+                      IconButton(
                         tooltip: context.tr('Agregar a vinilos'),
                         icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 20),
                         visualDensity: VisualDensity.compact,
@@ -580,6 +940,9 @@ Widget _placeholder() {
                             await VinylDb.instance.insertVinyl(
                               artista: a,
                               album: al,
+                              barcode: (w['barcode'] ?? '').toString().trim().isEmpty
+                                  ? null
+                                  : (w['barcode'] ?? '').toString().trim(),
                               condition: opts['condition'],
                               format: opts['format'],
                               year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
@@ -713,6 +1076,10 @@ Widget _placeholder() {
           if (items.isEmpty) {
             return Center(child: Text(context.tr('Tu lista de deseos está vacía')));
           }
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _ensureAutoPrices(items);
+          });
 
           return _grid
               ? GridView.builder(
