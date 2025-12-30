@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ArtistHit {
   final String id;
@@ -177,6 +178,86 @@ class DiscographyService {
     return http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
   }
 
+  static Map<String, String> _headersPlain() => {
+        'User-Agent': 'GaBoLP/1.0 (contact: gabo.hachim@gmail.com)',
+        'Accept': 'text/plain',
+      };
+
+  static Future<http.Response> _getPlain(Uri url) async {
+    await _throttle();
+    return http.get(url, headers: _headersPlain()).timeout(const Duration(seconds: 20));
+  }
+
+  // ==================================================
+  // 🏷️ GÉNEROS (MusicBrainz /genre/all)
+  // ==================================================
+  static const String _prefsGenresKey = 'mb_genres_all_v1';
+  static const String _prefsGenresTsKey = 'mb_genres_all_ts_v1';
+  static const Duration _genresTtl = Duration(days: 14);
+
+  static List<String>? _genresMem;
+  static int _genresMemTs = 0;
+
+  static Future<List<String>> getAllGenres({bool forceRefresh = false}) async {
+    if (!forceRefresh && _genresMem != null && _genresMem!.isNotEmpty) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(_genresMemTs);
+      if (DateTime.now().difference(dt) <= _genresTtl) {
+        return _genresMem!;
+      }
+    }
+
+    if (!forceRefresh) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final ts = prefs.getInt(_prefsGenresTsKey) ?? 0;
+        final raw = prefs.getString(_prefsGenresKey);
+        if (ts > 0 && raw != null && raw.trim().isNotEmpty) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+          if (DateTime.now().difference(dt) <= _genresTtl) {
+            final list = raw
+                .split('\n')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList();
+            if (list.isNotEmpty) {
+              _genresMem = list;
+              _genresMemTs = ts;
+              return list;
+            }
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    final url = Uri.parse('$_mbBase/genre/all?fmt=txt');
+    final res = await _getPlain(url);
+    if (res.statusCode != 200) {
+      if (_genresMem != null) return _genresMem!;
+      return const <String>[];
+    }
+
+    final list = res.body
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsGenresKey, list.join('\n'));
+      await prefs.setInt(_prefsGenresTsKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {
+      // ignore
+    }
+
+    _genresMem = list;
+    _genresMemTs = DateTime.now().millisecondsSinceEpoch;
+    return list;
+  }
+
+
   // ==================================================
   // 🧭 EXPLORAR ÁLBUMES (GÉNERO + RANGO DE AÑOS)
   // ==================================================
@@ -190,6 +271,7 @@ class DiscographyService {
     required String genre,
     required int yearFrom,
     required int yearTo,
+    String? countryCode,
     int limit = 30,
     int offset = 0,
   }) async {
@@ -219,8 +301,11 @@ class DiscographyService {
     final dateTerm = (y1 > 0 && y2 > 0)
         ? 'firstreleasedate:[${y1.toString().padLeft(4, '0')}-01-01 TO ${y2.toString().padLeft(4, '0')}-12-31]'
         : '';
+    final cc = (countryCode ?? '').trim().toUpperCase();
+    final countryTerm = (cc.length == 2) ? 'country:$cc' : '';
 
-    final lucene = [genreTerm, typeTerm, if (dateTerm.isNotEmpty) dateTerm].join(' AND ');
+
+    final lucene = [genreTerm, typeTerm, if (dateTerm.isNotEmpty) dateTerm, if (countryTerm.isNotEmpty) countryTerm].join(' AND ');
     final url = Uri.parse(
       '$_mbBase/release-group/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$limit&offset=$offset',
     );

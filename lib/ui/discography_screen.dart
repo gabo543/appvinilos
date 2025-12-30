@@ -129,7 +129,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   String _k(String artist, String album) => '${artist.trim()}||${album.trim()}';
 
   String _priceLabelForOffers(List<StoreOffer> offers) {
-    // Formato: mostrar rango mín–máx.
+    // Formato: min / mediana / máx.
     String fmt(double v) {
       final r = v.roundToDouble();
       if ((v - r).abs() < 0.005) return r.toInt().toString();
@@ -137,12 +137,19 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
 
     if (offers.isEmpty) return '€ —';
-    final min = offers.first.price;
-    final max = offers.last.price;
+    final sorted = [...offers]..sort((a, b) => a.price.compareTo(b.price));
+    final min = sorted.first.price;
+    final max = sorted.last.price;
+    final n = sorted.length;
+    final median = (n % 2 == 1)
+        ? sorted[n ~/ 2].price
+        : (sorted[(n ~/ 2) - 1].price + sorted[n ~/ 2].price) / 2.0;
+
     final a = fmt(min);
+    final m = fmt(median);
     final b = fmt(max);
-    if (a == b) return '€ $a';
-    return '€ $a - $b';
+    if (a == b && a == m) return '€ $a';
+    return '€ $a / $m / $b';
   }
 
   void _ensureOffersLoaded(String artistName, AlbumItem al) {
@@ -893,8 +900,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             icon: const Icon(Icons.hub_outlined),
             onPressed: () {
               _dismissKeyboard();
+              final a = pickedArtist;
+              final name = (a?.name ?? artistCtrl.text.trim());
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SimilarArtistsScreen()),
+                MaterialPageRoute(
+                  builder: (_) => SimilarArtistsScreen(
+                    initialArtistName: name.isEmpty ? null : name,
+                    initialArtistId: a?.id,
+                  ),
+                ),
               );
             },
           ),

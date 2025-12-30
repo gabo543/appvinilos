@@ -53,8 +53,13 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     if (_loadingPrice) return '€ …';
     final pr = _priceRange;
     if (pr == null) return '€ —';
-    if ((pr.min - pr.max).abs() < 0.005) return '€ ${_fmtMoney(pr.min)}';
-    return '€ ${_fmtMoney(pr.min)} - ${_fmtMoney(pr.max)}';
+
+    final a = _fmtMoney(pr.min);
+    final m = _fmtMoney(pr.median);
+    final b = _fmtMoney(pr.max);
+
+    if (a == b && a == m) return '€ $a';
+    return '€ $a / $m / $b';
   }
 
   Future<void> _loadPrice() async {

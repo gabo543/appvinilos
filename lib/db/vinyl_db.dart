@@ -1261,6 +1261,52 @@ Future<void> deleteTrashById(int trashId) async {
     return d.query('wishlist', orderBy: 'createdAt DESC');
   }
 
+
+  /// Wishlist con estado "comprado" (o similar) que aún NO existe en "vinyls".
+  ///
+  /// Lo usamos para avisar al iniciar la app y proponer moverlos a "Mis vinilos".
+  Future<List<Map<String, dynamic>>> getPurchasedWishlistNotInVinyls({int limit = 80}) async {
+    final d = await db;
+    return d.rawQuery(
+      '''
+      SELECT w.*
+      FROM wishlist w
+      WHERE w.status IS NOT NULL
+        AND LOWER(w.status) LIKE '%comprad%'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM vinyls v
+          WHERE LOWER(v.artista) = LOWER(w.artista)
+            AND LOWER(v.album) = LOWER(w.album)
+        )
+      ORDER BY w.createdAt DESC
+      LIMIT ?
+      ''',
+      [limit],
+    );
+  }
+
+  Future<int> countPurchasedWishlistNotInVinyls() async {
+    final d = await db;
+    final r = await d.rawQuery(
+      '''
+      SELECT COUNT(*) as c
+      FROM wishlist w
+      WHERE w.status IS NOT NULL
+        AND LOWER(w.status) LIKE '%comprad%'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM vinyls v
+          WHERE LOWER(v.artista) = LOWER(w.artista)
+            AND LOWER(v.album) = LOWER(w.album)
+        )
+      ''',
+    );
+    final v = r.first['c'];
+    return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
+  }
+
+
   // ✅ Contadores rápidos (evita cargar listas completas solo para contar)
   Future<int> countAll() async {
     final d = await db;

@@ -12,6 +12,7 @@ import '../services/backup_service.dart';
 import '../services/view_mode_service.dart';
 import '../services/app_theme_service.dart';
 import 'discography_screen.dart';
+import 'similar_artists_screen.dart';
 import 'scanner_screen.dart';
 import 'settings_screen.dart';
 import 'vinyl_detail_sheet.dart';
@@ -129,6 +130,12 @@ class _HomeScreenState extends State<HomeScreen> {
   static const String _kPrefLastVista = 'ui.lastVista';
   static const String _kPrefSortMode = 'ui.sortMode';
   static const String _kPrefVinylScope = 'ui.vinylScope';
+
+  // Aviso al iniciar: deseos marcados como "Comprado".
+  static const String _kPrefPurchasedWishLaterTs = 'ui.purchasedWishLaterTs';
+  static const Duration _kPurchasedWishLaterTtl = Duration(hours: 24);
+  bool _purchasedWishPromptShown = false;
+
   SharedPreferences? _prefs;
 
   // ⭐ Cache local para favoritos (cambio instantáneo)
@@ -312,6 +319,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _futureArtists = VinylDb.instance.getArtistSummaries();
     _futureFav = VinylDb.instance.getFavorites();
     _futureTrash = VinylDb.instance.getTrash();
+
+    // Aviso: deseos marcados como "Comprado".
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybePromptPurchasedWishlist();
+    });
   }
 
   Future<void> _loadAddDefaults() async {
@@ -407,6 +419,228 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   
+  // ----------------- AVISO AL INICIAR (DESEOS COMPRADOS) -----------------
+
+  Future<void> _maybePromptPurchasedWishlist() async {
+    if (!mounted) return;
+    if (_purchasedWishPromptShown) return;
+    _purchasedWishPromptShown = true;
+
+    try {
+      final p = _prefs ?? await SharedPreferences.getInstance();
+      _prefs ??= p;
+
+      final ts = p.getInt(_kPrefPurchasedWishLaterTs) ?? 0;
+      if (ts > 0) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+        if (DateTime.now().difference(dt) <= _kPurchasedWishLaterTtl) {
+          return;
+        }
+      }
+
+      final items = await VinylDb.instance.getPurchasedWishlistNotInVinyls(limit: 25);
+      if (!mounted) return;
+      if (items.isEmpty) return;
+
+      await _showPurchasedWishlistSheet(items);
+    } catch (_) {
+      // ignore (si falla, no bloquea el inicio)
+    }
+  }
+
+  Future<void> _showPurchasedWishlistSheet(List<Map<String, dynamic>> items) async {
+    if (!mounted) return;
+
+    final preview = items.take(6).toList();
+    final extra = items.length - preview.length;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        bool working = false;
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            Future<void> onAddAll() async {
+              if (working) return;
+              setModalState(() => working = true);
+
+              final added = await _movePurchasedWishlistToVinyls(items);
+
+              if (!mounted) return;
+              Navigator.of(ctx).maybePop();
+
+              if (added > 0) {
+                _reloadAllData();
+              }
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    added > 0
+                        ? '${context.tr('Agregado a vinilos')}: $added'
+                        : context.tr('Nada para agregar'),
+                  ),
+                ),
+              );
+            }
+
+            Future<void> onLater() async {
+              try {
+                final p = _prefs ?? await SharedPreferences.getInstance();
+                _prefs ??= p;
+                await p.setInt(_kPrefPurchasedWishLaterTs, DateTime.now().millisecondsSinceEpoch);
+              } catch (_) {}
+              if (!mounted) return;
+              Navigator.of(ctx).maybePop();
+            }
+
+            void onReview() {
+              Navigator.of(ctx).maybePop();
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WishlistScreen(showOnlyPurchased: true)),
+              );
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 14,
+                  bottom: 14 + MediaQuery.of(ctx).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.tr('Tienes vinilos comprados en deseos'),
+                      style: Theme.of(ctx).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.tr('¿Quieres agregarlos a Mis vinilos?'),
+                      style: Theme.of(ctx).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    ...preview.map((w) {
+                      final a = (w['artista'] ?? '').toString();
+                      final al = (w['album'] ?? '').toString();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '$a — $al',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    if (extra > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2, bottom: 8),
+                        child: Text(
+                          '+ $extra ${context.tr('más')}',
+                          style: Theme.of(ctx).textTheme.labelMedium,
+                        ),
+                      ),
+                    if (working) const LinearProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.library_add),
+                            label: Text(context.tr('Agregar todos')),
+                            onPressed: working ? null : onAddAll,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: working ? null : onReview,
+                            child: Text(context.tr('Revisar')),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: working ? null : onLater,
+                        child: Text(context.tr('Más tarde')),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<int> _movePurchasedWishlistToVinyls(List<Map<String, dynamic>> items) async {
+    final cond = await AddDefaultsService.getLastCondition(fallback: _addCondition);
+    final fmt = await AddDefaultsService.getLastFormat(fallback: _addFormat);
+
+    int added = 0;
+    for (final w in items) {
+      final idAny = w['id'];
+      final id = (idAny is int) ? idAny : int.tryParse(idAny?.toString() ?? '');
+      if (id == null) continue;
+
+      final artista = (w['artista'] ?? '').toString().trim();
+      final album = (w['album'] ?? '').toString().trim();
+      if (artista.isEmpty || album.isEmpty) continue;
+
+      final year = (w['year'] ?? '').toString().trim();
+      final cover = (w['cover250'] ?? w['cover500'] ?? '').toString().trim();
+      final barcode = (w['barcode'] ?? '').toString().trim();
+      final status = (w['status'] ?? '').toString().toLowerCase();
+
+      if (!status.contains('comprad')) continue;
+
+      try {
+        await VinylDb.instance.insertVinyl(
+          artista: artista,
+          album: album,
+          year: year.isEmpty ? null : year,
+          coverPath: cover.isEmpty ? null : cover,
+          barcode: barcode.isEmpty ? null : barcode,
+          condition: cond,
+          format: fmt,
+        );
+
+        // En el flujo actual, al agregar a vinilos lo sacamos de deseos.
+        await VinylDb.instance.removeWishlistById(id);
+
+        added++;
+      } catch (_) {
+        // si hay duplicado u otro problema, seguimos con el resto
+      }
+    }
+
+    try {
+      await BackupService.autoSaveIfEnabled();
+    } catch (_) {}
+
+    return added;
+  }
+
 void _reloadAllData() {
   if (!mounted) return;
   setState(() {
@@ -874,19 +1108,31 @@ Future<void> _loadViewMode() async {
     final fav = _isFav(v);
 
     final actions = <Widget>[
+      if (!conBorrar && artista.isNotEmpty)
+        _gridActionIcon(
+          tooltip: context.tr('Similares'),
+          icon: Icons.hub_outlined,
+          color: cs.onSurfaceVariant,
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SimilarArtistsScreen(initialArtistName: artista),
+              ),
+            );
+          },
+        ),
       if (!conBorrar)
-        IconButton(
+        _gridActionIcon(
           tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
-          icon: Icon(
-            fav ? Icons.star : Icons.star_border,
-            color: fav ? Colors.amber : cs.onSurfaceVariant,
-          ),
+          icon: fav ? Icons.star : Icons.star_border,
+          color: fav ? Colors.amber : cs.onSurfaceVariant,
           onPressed: () => _toggleFavorite(v),
         ),
       if (conBorrar && !_borrarPapelera)
-        IconButton(
+        _gridActionIcon(
           tooltip: context.tr('Enviar a papelera'),
-          icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant),
+          icon: Icons.delete_outline,
+          color: cs.onSurfaceVariant,
           onPressed: () async {
             final id = _asInt(v['id']);
             if (id == 0) return;
@@ -898,9 +1144,10 @@ Future<void> _loadViewMode() async {
           },
         ),
       if (conBorrar && _borrarPapelera) ...[
-        IconButton(
+        _gridActionIcon(
           tooltip: context.tr('Restaurar'),
-          icon: Icon(Icons.restore_from_trash, color: cs.onSurfaceVariant),
+          icon: Icons.restore_from_trash,
+          color: cs.onSurfaceVariant,
           onPressed: () async {
             final trashId = _asInt(v['id']);
             if (trashId == 0) return;
@@ -911,9 +1158,10 @@ Future<void> _loadViewMode() async {
             snack(ok ? 'Restaurado' : 'No se pudo restaurar');
           },
         ),
-        IconButton(
+        _gridActionIcon(
           tooltip: context.tr('Eliminar definitivo'),
-          icon: Icon(Icons.delete_forever, color: cs.onSurfaceVariant),
+          icon: Icons.delete_forever,
+          color: cs.onSurfaceVariant,
           onPressed: () async {
             final trashId = _asInt(v['id']);
             if (trashId == 0) return;
@@ -943,65 +1191,85 @@ Future<void> _loadViewMode() async {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 98,
-                height: 98,
-                child: Stack(
+                width: 92,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
-                        child: _leadingCover(v, size: 98, fit: BoxFit.contain),
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              color: cs.surfaceContainerHighest.withOpacity(isDark ? 0.30 : 0.60),
+                              child: _leadingCover(v, size: 92, fit: BoxFit.contain),
+                            ),
+                          ),
+                          Positioned(
+                            left: 6,
+                            bottom: 6,
+                            child: _numeroBadge(context, _vinylCode(v), micro: true),
+                          ),
+                        ],
                       ),
                     ),
-                    Positioned(
-                      left: 6,
-                      bottom: 6,
-                      child: _numeroBadge(context, _vinylCode(v), compact: true),
+                    const SizedBox(height: 6),
+                    Text(
+                      year.isEmpty ? '—' : year,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
                   ],
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2, right: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _metaPill(context, year),
-                          _metaPill(context, genre),
-                        ],
-                      ),
-                      SizedBox(height: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      artista.isEmpty ? '—' : artista,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      album.isEmpty ? '—' : album,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    if (genre.isNotEmpty) ...[
+                      const SizedBox(height: 4),
                       Text(
-                        artista.isEmpty ? '—' : artista,
+                        genre,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        album.isEmpty ? '—' : album,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Spacer(),
+                        if (actions.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: actions
+                                .map((w) => Padding(padding: const EdgeInsets.only(left: 2), child: w))
+                                .toList(growable: false),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              if (actions.isNotEmpty)
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: actions
-                      .map((w) => Padding(padding: const EdgeInsets.only(bottom: 2), child: w))
-                      .toList(growable: false),
-                ),
             ],
           ),
         ),

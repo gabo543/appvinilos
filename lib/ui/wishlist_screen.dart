@@ -13,7 +13,9 @@ import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
 
 class WishlistScreen extends StatefulWidget {
-  const WishlistScreen({super.key});
+  final bool showOnlyPurchased;
+
+  const WishlistScreen({super.key, this.showOnlyPurchased = false});
 
   @override
   State<WishlistScreen> createState() => _WishlistScreenState();
@@ -419,9 +421,16 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final sorted = [...list]..sort((a, c) => a.price.compareTo(c.price));
     final best2 = sorted.take(2).toList();
 
-    final rangeText = (sorted.length <= 1)
-        ? '€${_fmtEur(sorted.first.price)}'
-        : '€${_fmtEur(sorted.first.price)} - ${_fmtEur(sorted.last.price)}';
+    final n = sorted.length;
+    final median = (n % 2 == 1)
+        ? sorted[n ~/ 2].price
+        : (sorted[(n ~/ 2) - 1].price + sorted[n ~/ 2].price) / 2.0;
+
+    final a = _fmtEur(sorted.first.price);
+    final m = _fmtEur(median);
+    final b = _fmtEur(sorted.last.price);
+
+    final rangeText = (a == b && a == m) ? '€$a' : '€$a / $m / $b';
 
     return Wrap(
       spacing: 6,
@@ -1120,10 +1129,23 @@ Widget _placeholder() {
             );
           }
 
-          final items = snap.data ?? const [];
+          var items = (snap.data ?? const <Map<String, dynamic>>[]);
+
+          if (widget.showOnlyPurchased) {
+            items = items.where((w) {
+              final s = (w['status'] ?? '').toString().toLowerCase();
+              return s.contains('comprad');
+            }).toList();
+          }
 
           if (items.isEmpty) {
-            return Center(child: Text(context.tr('Tu lista de deseos está vacía')));
+            return Center(
+              child: Text(
+                widget.showOnlyPurchased
+                    ? context.tr('No tienes vinilos comprados en deseos')
+                    : context.tr('Tu lista de deseos está vacía'),
+              ),
+            );
           }
 
           WidgetsBinding.instance.addPostFrameCallback((_) {

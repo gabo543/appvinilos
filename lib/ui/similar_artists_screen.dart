@@ -7,7 +7,10 @@ import '../services/discography_service.dart';
 import 'discography_screen.dart';
 
 class SimilarArtistsScreen extends StatefulWidget {
-  const SimilarArtistsScreen({super.key});
+  final String? initialArtistName;
+  final String? initialArtistId;
+
+  const SimilarArtistsScreen({super.key, this.initialArtistName, this.initialArtistId});
 
   @override
   State<SimilarArtistsScreen> createState() => _SimilarArtistsScreenState();
@@ -43,6 +46,60 @@ class _SimilarArtistsScreenState extends State<SimilarArtistsScreen> {
     if (out.startsWith('the ')) out = out.substring(4);
     return out;
   }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bootstrapInitial();
+    });
+  }
+
+  Future<void> _bootstrapInitial() async {
+    final id = widget.initialArtistId?.trim();
+    final name0 = (widget.initialArtistName ?? '').trim();
+
+    if ((id ?? '').isNotEmpty) {
+      // Si ya vienen ID+nombre (p. ej. desde Discografía), evitamos un resolve extra.
+      final a = ArtistHit(id: id!, name: name0.isEmpty ? id! : name0);
+      await _pickArtist(a);
+      return;
+    }
+
+    if (name0.isEmpty) return;
+
+    // Auto-resolver por nombre y escoger el mejor match.
+    setState(() {
+      _artistCtrl.text = name0;
+      _artistCtrl.selection = TextSelection.collapsed(offset: name0.length);
+      _searching = true;
+      _suggestions = <ArtistHit>[];
+    });
+
+    try {
+      final hits = await DiscographyService.searchArtists(name0);
+      if (!mounted) return;
+
+      if (hits.isEmpty) {
+        setState(() => _searching = false);
+        return;
+      }
+
+      final qNorm = _normQ(name0);
+      ArtistHit best = hits.first;
+      for (final h in hits) {
+        if (_normQ(h.name) == qNorm) {
+          best = h;
+          break;
+        }
+      }
+      await _pickArtist(best);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _searching = false);
+    }
+  }
+
 
   void _clearAll({bool keepFocus = true}) {
     _debounce?.cancel();

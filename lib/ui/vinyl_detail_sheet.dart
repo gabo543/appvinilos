@@ -127,14 +127,22 @@ class _VinylStorePricesSheetState extends State<_VinylStorePricesSheet> {
               final best2 = sorted.take(2).toList();
               final min = sorted.first.price;
               final max = sorted.last.price;
+              final n = sorted.length;
+              final median = (n % 2 == 1)
+                  ? sorted[n ~/ 2].price
+                  : (sorted[(n ~/ 2) - 1].price + sorted[n ~/ 2].price) / 2.0;
+
+              final a = _fmt(min);
+              final m = _fmt(median);
+              final b = _fmt(max);
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    (min == max)
-                        ? '${context.tr('Precio')}: €${_fmt(min)}'
-                        : '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
+                    (a == b && a == m)
+                        ? '${context.tr('Precio')}: €$a'
+                        : '${context.tr('Rango')}: €$a / €$m / €$b',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
@@ -450,8 +458,13 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     if (loadingPrice) return '€ …';
     final pr = priceRange;
     if (pr == null) return '€ —';
-    if ((pr.min - pr.max).abs() < 0.005) return '€ ${_fmtMoney(pr.min)}';
-    return '€ ${_fmtMoney(pr.min)} - ${_fmtMoney(pr.max)}';
+
+    final a = _fmtMoney(pr.min);
+    final m = _fmtMoney(pr.median);
+    final b = _fmtMoney(pr.max);
+
+    if (a == b && a == m) return '€ $a';
+    return '€ $a / $m / $b';
   }
 
   String _priceUpdatedMini() {
