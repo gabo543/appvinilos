@@ -243,9 +243,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => AlbumTracksScreen(
-                                  releaseGroupId: it.releaseGroupId,
-                                  albumTitle: it.title,
-                                  cover250: it.cover250,
+                                  album: AlbumItem(
+                                    releaseGroupId: it.releaseGroupId,
+                                    title: it.title,
+                                    year: it.year,
+                                    cover250: it.cover250,
+                                    cover500: it.cover500,
+                                  ),
+                                  artistName: it.artistName,
                                 ),
                               ),
                             );

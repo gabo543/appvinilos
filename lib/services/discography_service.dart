@@ -484,8 +484,8 @@ class DiscographyService {
   static Future<List<SimilarArtistHit>> getSimilarArtistsByArtistId(
     String artistId, {
     int limit = 20,
-    int _tagLimit = 2,
-    int _perTag = 12,
+    int tagLimit = 2,
+    int perTag = 12,
   }) async {
     final id = artistId.trim();
     if (id.isEmpty) return <SimilarArtistHit>[];
@@ -528,7 +528,7 @@ class DiscographyService {
     };
 
     final filtered = tags.where((t) => !broad.contains(t.name.toLowerCase())).toList();
-    final picked = (filtered.isNotEmpty ? filtered : tags).take(_tagLimit).toList();
+    final picked = (filtered.isNotEmpty ? filtered : tags).take(tagLimit).toList();
 
     // 2) Buscar artistas por tag y combinar
     final Map<String, _SimilarAgg> agg = <String, _SimilarAgg>{};
@@ -539,7 +539,7 @@ class DiscographyService {
           : 'tag:${_escLucene(tg.name)}';
 
       final url = Uri.parse(
-        '$_mbBase/artist/?query=${Uri.encodeQueryComponent(tagTerm)}&fmt=json&limit=$_perTag',
+        '$_mbBase/artist/?query=${Uri.encodeQueryComponent(tagTerm)}&fmt=json&limit=$perTag',
       );
       final res = await _get(url);
       if (res.statusCode != 200) continue;
