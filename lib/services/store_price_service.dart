@@ -259,13 +259,16 @@ class StorePriceService {
     required String artist,
     required String album,
   }) async {
-    final q = '${artist.trim()} ${album.trim()} vinyl'.trim();
-    if (q.isEmpty) return const [];
+    final a = artist.trim();
+    final al = album.trim();
+    if (a.isEmpty || al.isEmpty) return const [];
+
+    final q = '$a $al vinyl'.trim();
 
     final offers = <StoreOffer>[];
     final results = await Future.wait<StoreOffer?>([
       _fetchIMusicQuery(q),
-      _fetchMuzikerQuery(q),
+      _fetchMuzikerArtistAlbum(artist: a, album: al, fallbackQuery: q),
       _fetchLevykauppaXQuery(q),
     ]);
     for (final r in results) {
@@ -318,6 +321,11 @@ class StorePriceService {
   }
 
   static List<double> _extractEuroPrices(String html) {
+    // Muchas tiendas muestran precios con:
+    // - coma decimal (24,90 €)
+    // - punto decimal (24.90 €)
+    // - sin decimales (24 €)
+    // - separador de miles (1 234,56 €)
     final h = html.replaceAll('&nbsp;', ' ').replaceAll('&euro;', '€');
     final prices = <double>[];
 
@@ -326,13 +334,18 @@ class StorePriceService {
       if (v != null && v > 0) prices.add(v);
     }
 
-    final r1 = RegExp(r'(\d{1,5}(?:[\.,]\d{2}))\s*€');
+    // Número con posible separador de miles y 0-2 decimales.
+    // Ej: 24,90 | 24.90 | 24 | 1 234,56
+    final numRx = r'(\d{1,3}(?:[\s\.]\d{3})*(?:[\.,]\d{1,2})?|\d{1,5}(?:[\.,]\d{1,2})?)';
+
+    // Soporta símbolo € y el literal EUR.
+    final r1 = RegExp('$numRx\\s*(?:€|EUR)', caseSensitive: false);
     for (final m in r1.allMatches(h)) {
       final g = m.group(1);
       if (g != null) add(g);
     }
 
-    final r2 = RegExp(r'€\s*(\d{1,5}(?:[\.,]\d{2}))');
+    final r2 = RegExp('(?:€|EUR)\\s*$numRx', caseSensitive: false);
     for (final m in r2.allMatches(h)) {
       final g = m.group(1);
       if (g != null) add(g);
@@ -343,6 +356,8 @@ class StorePriceService {
 
   static double? _parseNumber(String s) {
     var t = s.trim();
+    // Quita separadores de miles comunes.
+    t = t.replaceAll(' ', '');
     // Normaliza separadores: 1.234,56 => 1234.56
     if (t.contains('.') && t.contains(',')) {
       // asumimos . miles, , decimal
@@ -353,25 +368,33 @@ class StorePriceService {
     return double.tryParse(t);
   }
 
-  static double? _minPrice(String html) {
+  static double? _minPrice(String html, {double minValid = 0}) {
     final list = _extractEuroPrices(html);
     if (list.isEmpty) return null;
     list.sort();
+    if (minValid > 0) {
+      final filtered = list.where((v) => v >= minValid).toList()..sort();
+      if (filtered.isNotEmpty) return filtered.first;
+    }
     return list.first;
   }
 
   /// Devuelve el primer precio detectado en el HTML (según orden de aparición).
   /// Útil para páginas de búsqueda con múltiples resultados, donde "min" podría
   /// pertenecer a otro producto.
-  static double? _firstPriceInHtml(String html) {
+  static double? _firstPriceInHtml(String html, {double minValid = 0}) {
     final h = html.replaceAll('&nbsp;', ' ').replaceAll('&euro;', '€');
+    final numRx = r'(\d{1,3}(?:[\s\.]\d{3})*(?:[\.,]\d{1,2})?|\d{1,5}(?:[\.,]\d{1,2})?)';
     final m = RegExp(
-      r'€\s*(\d{1,5}(?:[\.,]\d{2}))|(\d{1,5}(?:[\.,]\d{2}))\s*€',
+      '(?:€|EUR)\\s*($numRx)|($numRx)\\s*(?:€|EUR)',
       caseSensitive: false,
     ).firstMatch(h);
     final g = (m?.group(1) ?? m?.group(2))?.trim();
     if (g == null || g.isEmpty) return null;
-    return _parseNumber(g);
+    final v = _parseNumber(g);
+    if (v == null) return null;
+    if (minValid > 0 && v < minValid) return null;
+    return v;
   }
 
   static String? _firstHref(String html, RegExp rx, {String? prefix}) {
@@ -441,6 +464,176 @@ class StorePriceService {
 
   // ------------------ Muziker ------------------
 
+  static String _muzikerSlug(String input) {
+    // Muziker usa slugs ASCII (ej: "bombay-s-jayashri-lp-vinyylilevyt").
+    // Sin dependencia externa: normalizamos los diacríticos más comunes.
+    final lower = input.toLowerCase().trim();
+    final out = StringBuffer();
+
+    for (final r in lower.runes) {
+      final ch = String.fromCharCode(r);
+      switch (ch) {
+        case 'á':
+        case 'à':
+        case 'â':
+        case 'ä':
+        case 'ã':
+        case 'å':
+          out.write('a');
+          break;
+        case 'é':
+        case 'è':
+        case 'ê':
+        case 'ë':
+          out.write('e');
+          break;
+        case 'í':
+        case 'ì':
+        case 'î':
+        case 'ï':
+          out.write('i');
+          break;
+        case 'ó':
+        case 'ò':
+        case 'ô':
+        case 'ö':
+        case 'õ':
+          out.write('o');
+          break;
+        case 'ú':
+        case 'ù':
+        case 'û':
+        case 'ü':
+          out.write('u');
+          break;
+        case 'ñ':
+          out.write('n');
+          break;
+        case 'ç':
+          out.write('c');
+          break;
+        case '&':
+          out.write(' and ');
+          break;
+        default:
+          // a-z0-9 => keep, resto => espacio
+          if ((r >= 97 && r <= 122) || (r >= 48 && r <= 57)) {
+            out.write(ch);
+          } else {
+            out.write(' ');
+          }
+      }
+    }
+
+    return out
+        .toString()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .replaceAll(' ', '-');
+  }
+
+  static List<String> _tokens(String s) {
+    final t = _normKey(s);
+    if (t.isEmpty) return const [];
+    return t.split(' ').where((e) => e.trim().isNotEmpty).toList(growable: false);
+  }
+
+  static int _scoreTokens(String haystackNormalized, List<String> tokens) {
+    var score = 0;
+    for (final tok in tokens) {
+      if (tok.length < 2) continue;
+      if (haystackNormalized.contains(tok)) score++;
+    }
+    return score;
+  }
+
+  static ({String url, double price})? _bestFromMuzikerListing(String html, {required String album}) {
+    final albumTokens = _tokens(album);
+    if (albumTokens.isEmpty) return null;
+
+    final hrefRx = RegExp(r'''href=["'](/[^"']+)["']''', caseSensitive: false);
+
+    int bestScore = 0;
+    double bestPrice = 0;
+    String? bestUrl;
+
+    for (final m in hrefRx.allMatches(html)) {
+      final path = m.group(1);
+      if (path == null || path.isEmpty) continue;
+
+      // Filtrado rápido de links que claramente no son productos.
+      if (!path.startsWith('/')) continue;
+      if (path.startsWith('/search') || path.startsWith('/haku')) continue;
+      if (path.contains('page=')) continue;
+      if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.webp') || path.endsWith('.svg')) {
+        continue;
+      }
+      if (path.contains('/cookies') || path.contains('/faq') || path.contains('/blog')) continue;
+
+      final start = m.start;
+      final end = (start + 900) > html.length ? html.length : (start + 900);
+      final snippet = html.substring(start, end);
+
+      // Evita capturar "5 €" (cupones) o "0 €" (envío).
+      if (!snippet.contains('€') && !snippet.toLowerCase().contains('eur')) continue;
+      if (!RegExp(r'(vinyyl|vinyl|lp)', caseSensitive: false).hasMatch(snippet)) continue;
+
+      final snNorm = _normKey(snippet);
+      final score = _scoreTokens(snNorm, albumTokens);
+      if (score <= 0) continue;
+
+      final p = _minPrice(snippet, minValid: 7);
+      if (p == null) continue;
+
+      final fullUrl = 'https://www.muziker.fi$path';
+      if (bestUrl == null || score > bestScore || (score == bestScore && p < bestPrice)) {
+        bestScore = score;
+        bestPrice = p;
+        bestUrl = fullUrl;
+      }
+    }
+
+    if (bestUrl == null) return null;
+    return (url: bestUrl!, price: bestPrice);
+  }
+
+  static Future<StoreOffer?> _fetchMuzikerArtistAlbum({
+    required String artist,
+    required String album,
+    required String fallbackQuery,
+  }) async {
+    // ✅ Estrategia 1 (más estable): página SEO por artista
+    // Ej: https://www.muziker.fi/fletcher-lp-vinyylilevyt
+    final slug = _muzikerSlug(artist);
+    if (slug.isNotEmpty) {
+      final base = 'https://www.muziker.fi/$slug-lp-vinyylilevyt';
+      final pages = <String>[base, '$base?page=2', '$base?page=3'];
+
+      for (final u in pages) {
+        final res = await _get(u);
+        if (res == null) continue;
+        final html = res.body;
+
+        final hit = _bestFromMuzikerListing(html, album: album);
+        if (hit != null) {
+          // Intentamos entrar al producto para nota/canonical (si falla, devolvemos el URL hallado igual).
+          final res2 = await _get(hit.url);
+          if (res2 != null) {
+            final html2 = res2.body;
+            final p2 = _minPrice(html2, minValid: 7) ?? hit.price;
+            final can2 = _extractCanonical(html2) ?? hit.url;
+            final note2 = _extractMuzikerNote(html2);
+            return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
+          }
+          return StoreOffer(store: 'Muziker.fi', price: hit.price, currency: 'EUR', url: hit.url);
+        }
+      }
+    }
+
+    // ✅ Estrategia 2: búsqueda (best-effort)
+    return _fetchMuzikerQuery(fallbackQuery);
+  }
+
   static Future<StoreOffer?> _fetchMuziker(String barcode) async {
     final tries = <String>[
       'https://www.muziker.fi/search?q=$barcode',
@@ -457,12 +650,20 @@ class StorePriceService {
 
       // Si ya es una página de producto (contiene el barcode + precio)
       if (html.contains(barcode)) {
-        final p = _minPrice(html);
+        // Muziker a veces muestra "0 € envío" o "5 € descuento"; evitamos falsos mínimos.
+        final p = _minPrice(html, minValid: 7);
         if (p != null) {
           final can = _extractCanonical(html) ?? u;
           final note = _extractMuzikerNote(html);
           return StoreOffer(store: 'Muziker.fi', price: p, currency: 'EUR', url: can, note: note);
         }
+      }
+
+      // En páginas de búsqueda/listado, tomamos el primer precio "razonable".
+      final pList = _firstPriceInHtml(html, minValid: 7);
+      if (pList != null) {
+        final can = _extractCanonical(html) ?? u;
+        return StoreOffer(store: 'Muziker.fi', price: pList, currency: 'EUR', url: can);
       }
 
       // Intenta extraer primer link de producto y entrar.
@@ -481,7 +682,7 @@ class StorePriceService {
       final res2 = await _get(candidate);
       if (res2 == null) continue;
       final html2 = res2.body;
-      final p2 = _minPrice(html2);
+      final p2 = _minPrice(html2, minValid: 7);
       if (p2 == null) continue;
       final can2 = _extractCanonical(html2) ?? candidate;
       // Si no contiene barcode, igual lo devolvemos (best-effort)
@@ -507,8 +708,8 @@ class StorePriceService {
       if (res == null) continue;
       final html = res.body;
 
-      // En páginas de listado, usamos el primer precio visible.
-      final pList = _firstPriceInHtml(html);
+      // En páginas de listado, usamos el primer precio "razonable" (evita 0 € / 5 € descuento).
+      final pList = _firstPriceInHtml(html, minValid: 7);
 
       // Intenta extraer primer link de producto y entrar (preferible).
       final productUrl = _firstHref(
@@ -526,7 +727,7 @@ class StorePriceService {
         final res2 = await _get(candidate);
         if (res2 != null) {
           final html2 = res2.body;
-          final p2 = _minPrice(html2);
+          final p2 = _minPrice(html2, minValid: 7);
           if (p2 != null) {
             final can2 = _extractCanonical(html2) ?? candidate;
             final note2 = _extractMuzikerNote(html2);

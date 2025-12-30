@@ -734,7 +734,7 @@ Future<void> _loadViewMode() async {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
           child: Container(
             color: Theme.of(context).colorScheme.surface,
-            child: VinylDetailSheet(vinyl: v),
+            child: VinylDetailSheet(vinyl: v, showPrices: false),
           ),
         ),
       ),

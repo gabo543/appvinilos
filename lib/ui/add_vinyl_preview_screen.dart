@@ -53,7 +53,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     if (_loadingPrice) return '€ …';
     final pr = _priceRange;
     if (pr == null) return '€ —';
-    // Mostramos en formato pedido: € A - B
+    if ((pr.min - pr.max).abs() < 0.005) return '€ ${_fmtMoney(pr.min)}';
     return '€ ${_fmtMoney(pr.min)} - ${_fmtMoney(pr.max)}';
   }
 

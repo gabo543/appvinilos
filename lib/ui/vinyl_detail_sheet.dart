@@ -132,7 +132,9 @@ class _VinylStorePricesSheetState extends State<_VinylStorePricesSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
+                    (min == max)
+                        ? '${context.tr('Precio')}: €${_fmt(min)}'
+                        : '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
@@ -177,7 +179,15 @@ class _VinylStorePricesSheetState extends State<_VinylStorePricesSheet> {
 
 class VinylDetailSheet extends StatefulWidget {
   final Map<String, dynamic> vinyl;
-  VinylDetailSheet({super.key, required this.vinyl});
+  /// Si es false, oculta completamente todo lo relacionado a precios/alertas.
+  /// Útil para "Vinilos" y "Favoritos" (ya los tienes, no aporta mostrar precios).
+  final bool showPrices;
+
+  VinylDetailSheet({
+    super.key,
+    required this.vinyl,
+    this.showPrices = true,
+  });
 
   @override
   State<VinylDetailSheet> createState() => _VinylDetailSheetState();
@@ -338,8 +348,10 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   void initState() {
     super.initState();
     _loadTracks();
-    _loadPrice();
-    _loadAlert();
+    if (widget.showPrices) {
+      _loadPrice();
+      _loadAlert();
+    }
   }
 
   Future<void> _loadAlert() async {
@@ -438,6 +450,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     if (loadingPrice) return '€ …';
     final pr = priceRange;
     if (pr == null) return '€ —';
+    if ((pr.min - pr.max).abs() < 0.005) return '€ ${_fmtMoney(pr.min)}';
     return '€ ${_fmtMoney(pr.min)} - ${_fmtMoney(pr.max)}';
   }
 
@@ -527,7 +540,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final t = Theme.of(context);
     final dark = t.brightness == Brightness.dark;
     final fg = dark ? Colors.white : Colors.black;
-    final sub = dark ? Color(0xFFBDBDBD) : Colors.black54;
+    final sub = dark ? const Color(0xFFBDBDBD) : Colors.black54;
     final artista = (widget.vinyl['artista'] as String?) ?? '';
     final album = (widget.vinyl['album'] as String?) ?? '';
     final aNo = int.tryParse((widget.vinyl['artistNo'] ?? '').toString()) ?? 0;
@@ -547,95 +560,227 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Header (carátula + título + acciones)
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _cover(),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    '$artista\n$album',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: fg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        album.isEmpty ? '—' : album,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900, color: fg),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        artista.isEmpty ? '—' : artista,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: sub),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _chip(context, icon: Icons.numbers, label: 'Orden', value: code),
+                          if (year.isNotEmpty) _chip(context, icon: Icons.calendar_month, label: 'Año', value: year),
+                          if (widget.showPrices) _pricePill(context),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  tooltip: context.tr('Editar'),
-                  onPressed: _editMeta,
-                  icon: Icon(Icons.edit, color: fg),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: Icon(Icons.close, color: fg),
+                Column(
+                  children: [
+                    IconButton(
+                      tooltip: context.tr('Editar'),
+                      onPressed: _editMeta,
+                      icon: Icon(Icons.edit, color: fg),
+                    ),
+                    IconButton(
+                      tooltip: context.tr('Cerrar'),
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(Icons.close, color: fg),
+                    ),
+                  ],
                 ),
               ],
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 12),
 
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: [
-                _pill(context, 'Orden', code),
-                _pill(context, 'Año', year.isEmpty ? '—' : year),
-                _pricePill(context),
-                _pill(context, 'Género', genre.isEmpty ? '—' : genre),
-                _pill(context, 'País', country.isEmpty ? '—' : country),
-                if (condition.isNotEmpty) _pill(context, 'Condición', condition),
-                if (format.isNotEmpty) _pill(context, 'Formato', format),
-                if (wishlistStatus.isNotEmpty) _pill(context, 'Wishlist', wishlistStatus),
-              ],
+            Expanded(
+              child: ListView(
+                children: [
+                  // Ficha / Metadatos
+                  _sectionCard(
+                    context,
+                    title: context.tr('Detalles'),
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _pill(context, 'Género', genre.isEmpty ? '—' : genre),
+                        _pill(context, 'País', country.isEmpty ? '—' : country),
+                        if (condition.isNotEmpty) _pill(context, 'Condición', condition),
+                        if (format.isNotEmpty) _pill(context, 'Formato', format),
+                        if (wishlistStatus.isNotEmpty) _pill(context, 'Wishlist', wishlistStatus),
+                      ],
+                    ),
+                  ),
+
+                  if (bio.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _sectionCard(
+                      context,
+                      title: context.tr('Reseña'),
+                      child: Text(
+                        bio,
+                        style: t.textTheme.bodyMedium?.copyWith(color: fg, height: 1.35),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+                  _sectionCard(
+                    context,
+                    title: context.tr('Canciones'),
+                    trailing: TextButton.icon(
+                      onPressed: _loadTracks,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: Text(context.tr('Actualizar')),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (loadingTracks) const LinearProgressIndicator(),
+                        if (!loadingTracks && msg != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(context.tr(msg!), style: TextStyle(color: sub)),
+                          ),
+                        if (!loadingTracks && tracks.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          ..._buildTrackTiles(context, tracks, fg: fg, sub: sub),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-
-            SizedBox(height: 10),
-
-            if (bio.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: dark ? Colors.white12 : Colors.black12),
-                ),
-                child: Text(bio, style: TextStyle(color: fg)),
-              ),
-
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(context.tr('Canciones'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: fg)),
-                ),
-                IconButton(onPressed: _loadTracks, icon: Icon(Icons.refresh, color: fg)),
-              ],
-            ),
-
-            if (loadingTracks) LinearProgressIndicator(),
-            if (!loadingTracks && msg != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(context.tr(msg!), style: TextStyle(color: sub)),
-              ),
-
-            if (!loadingTracks && tracks.isNotEmpty)
-              Expanded(
-                child: ListView.separated(
-                  itemCount: tracks.length,
-                  separatorBuilder: (_, __) => Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final t = tracks[i];
-                    return ListTile(
-                      dense: true,
-                      title: Text('${t.number}. ${t.title}', style: TextStyle(color: fg)),
-                      trailing: Text(t.length ?? '', style: TextStyle(color: sub)),
-                    );
-                  },
-                ),
-              ),
           ],
         ),
+      ),
+    );
+  }
+
+  List<Widget> _buildTrackTiles(BuildContext context, List<TrackItem> items, {required Color fg, required Color sub}) {
+    final out = <Widget>[];
+    for (int i = 0; i < items.length; i++) {
+      final tr = items[i];
+      out.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 34,
+                child: Text(
+                  '${tr.number}.',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: sub, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  tr.title,
+                  style: TextStyle(color: fg, fontWeight: FontWeight.w700),
+                ),
+              ),
+              if ((tr.length ?? '').trim().isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Text(tr.length!.trim(), style: TextStyle(color: sub, fontWeight: FontWeight.w700)),
+              ],
+            ],
+          ),
+        ),
+      );
+      if (i != items.length - 1) {
+        out.add(Divider(height: 10, color: Theme.of(context).dividerColor.withValues(alpha: 0.5)));
+      }
+    }
+    return out;
+  }
+
+  Widget _sectionCard(
+    BuildContext context, {
+    required String title,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final fg = dark ? Colors.white : Colors.black;
+    final bg = dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05);
+    final bd = dark ? Colors.white12 : Colors.black12;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: bd),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900, color: fg),
+                ),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(BuildContext context, {required IconData icon, required String label, required String value}) {
+    final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final fg = dark ? Colors.white : Colors.black;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: dark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: dark ? Colors.white12 : Colors.black12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: fg),
+          const SizedBox(width: 6),
+          Text('${context.tr(label)}: $value', style: TextStyle(fontWeight: FontWeight.w800, color: fg)),
+        ],
       ),
     );
   }
@@ -659,9 +804,6 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final t = Theme.of(context);
     final dark = t.brightness == Brightness.dark;
     final fg = dark ? Colors.white : Colors.black;
-    final id = int.tryParse((widget.vinyl['id'] ?? '').toString()) ?? 0;
-    final hasAlert = _priceAlert != null && id > 0;
-
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: _openStorePrices,
@@ -679,33 +821,6 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
             const SizedBox(width: 6),
             Text('${_priceLabel()} ${_priceUpdatedMini()}'.trim(),
                 style: TextStyle(fontWeight: FontWeight.w700, color: fg)),
-            const SizedBox(width: 4),
-            Tooltip(
-              message: context.tr('Actualizar precio'),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: loadingPrice ? null : () => _loadPrice(forceRefresh: true),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(Icons.refresh, size: 18, color: fg),
-                ),
-              ),
-            ),
-            if (id > 0) ...[
-              const SizedBox(width: 6),
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: _editPriceAlert,
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
-                    size: 18,
-                    color: fg,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),

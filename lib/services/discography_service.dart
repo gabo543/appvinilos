@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 
 class ArtistHit {
@@ -14,6 +15,46 @@ class ArtistHit {
     this.score,
   });
 }
+
+class SimilarArtistHit {
+  final String id;
+  final String name;
+  final String? country;
+  /// Score combinado (0..1 aprox). Mientras más alto, más similar.
+  final double score;
+  /// Tags compartidos usados para la similitud.
+  final List<String> tags;
+
+  SimilarArtistHit({
+    required this.id,
+    required this.name,
+    this.country,
+    required this.score,
+    required this.tags,
+  });
+}
+
+class _TagCount {
+  final String name;
+  final int count;
+
+  _TagCount(this.name, this.count);
+}
+
+class _SimilarAgg {
+  String name;
+  String? country;
+  double score;
+  final Set<String> tags;
+
+  _SimilarAgg({
+    required this.name,
+    required this.country,
+    required this.score,
+    required Set<String> tags,
+  }) : tags = tags;
+}
+
 
 class AlbumItem {
   final String releaseGroupId;
@@ -31,6 +72,38 @@ class AlbumItem {
   });
 }
 
+class ExploreAlbumHit {
+  final String releaseGroupId;
+  final String title;
+  final String artistName;
+  final String? year;
+  final String cover250;
+  final String cover500;
+
+  ExploreAlbumHit({
+    required this.releaseGroupId,
+    required this.title,
+    required this.artistName,
+    required this.cover250,
+    required this.cover500,
+    this.year,
+  });
+}
+
+class ExploreAlbumPage {
+  final List<ExploreAlbumHit> items;
+  final int total;
+  final int offset;
+  final int limit;
+
+  ExploreAlbumPage({
+    required this.items,
+    required this.total,
+    required this.offset,
+    required this.limit,
+  });
+}
+
 class TrackItem {
   final int number;
   final String title;
@@ -40,6 +113,18 @@ class TrackItem {
     required this.number,
     required this.title,
     this.length,
+  });
+}
+
+class SongHit {
+  final String id;
+  final String title;
+  final int? score;
+
+  SongHit({
+    required this.id,
+    required this.title,
+    this.score,
   });
 }
 
@@ -58,6 +143,18 @@ class ArtistInfo {
 class DiscographyService {
   static const _mbBase = 'https://musicbrainz.org/ws/2';
   static DateTime _lastCall = DateTime.fromMillisecondsSinceEpoch(0);
+
+  static const _luceneSpecial = '+-!(){}[]^"~*?:\\/&|';
+
+  static String _escLucene(String s) {
+    final sb = StringBuffer();
+    for (final rune in s.runes) {
+      final ch = String.fromCharCode(rune);
+      if (_luceneSpecial.contains(ch)) sb.write('\\');
+      sb.write(ch);
+    }
+    return sb.toString();
+  }
 
   static Future<void> _throttle() async {
     final now = DateTime.now();
@@ -80,9 +177,217 @@ class DiscographyService {
     return http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
   }
 
+  // ==================================================
+  // 🧭 EXPLORAR ÁLBUMES (GÉNERO + RANGO DE AÑOS)
+  // ==================================================
+  /// Devuelve una página de álbumes (release-groups) filtrados por:
+  /// - tag (género)
+  /// - firstreleasedate (rango de años)
+  ///
+  /// Nota: MusicBrainz usa tags comunitarios; los resultados dependen de cómo
+  /// estén etiquetados los release-groups.
+  static Future<ExploreAlbumPage> exploreAlbumsByGenreAndYear({
+    required String genre,
+    required int yearFrom,
+    required int yearTo,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final g = genre.trim();
+    if (g.isEmpty) {
+      return ExploreAlbumPage(items: const <ExploreAlbumHit>[], total: 0, offset: offset, limit: limit);
+    }
+
+    var y1 = yearFrom;
+    var y2 = yearTo;
+    if (y1 <= 0 && y2 <= 0) {
+      // Si el usuario no pone año, dejamos abierto (pero normalmente lo usará).
+      y1 = 0;
+      y2 = 0;
+    } else {
+      if (y1 <= 0) y1 = y2;
+      if (y2 <= 0) y2 = y1;
+      if (y2 < y1) {
+        final tmp = y1;
+        y1 = y2;
+        y2 = tmp;
+      }
+    }
+
+    final genreTerm = g.contains(' ') ? 'tag:"${_escLucene(g)}"' : 'tag:${_escLucene(g)}';
+    final typeTerm = 'primarytype:album';
+    final dateTerm = (y1 > 0 && y2 > 0)
+        ? 'firstreleasedate:[${y1.toString().padLeft(4, '0')}-01-01 TO ${y2.toString().padLeft(4, '0')}-12-31]'
+        : '';
+
+    final lucene = [genreTerm, typeTerm, if (dateTerm.isNotEmpty) dateTerm].join(' AND ');
+    final url = Uri.parse(
+      '$_mbBase/release-group/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$limit&offset=$offset',
+    );
+    final res = await _get(url);
+    if (res.statusCode != 200) {
+      return ExploreAlbumPage(items: const <ExploreAlbumHit>[], total: 0, offset: offset, limit: limit);
+    }
+
+    final data = jsonDecode(res.body);
+    final total = (data['count'] as int?) ?? 0;
+    final groups = (data['release-groups'] as List?) ?? [];
+
+    final out = <ExploreAlbumHit>[];
+    for (final g in groups) {
+      if (g is! Map) continue;
+      // Solo álbumes.
+      final pt = (g['primary-type'] ?? g['primaryType'] ?? '').toString().toLowerCase();
+      if (pt.isNotEmpty && pt != 'album') continue;
+
+      final id = (g['id'] ?? '').toString().trim();
+      final title = (g['title'] ?? '').toString().trim();
+      if (id.isEmpty || title.isEmpty) continue;
+
+      final date = (g['first-release-date'] ?? '').toString();
+      final year = date.length >= 4 ? date.substring(0, 4) : null;
+
+      // Artist credit suele venir como lista.
+      String artistName = '';
+      final ac = g['artist-credit'];
+      if (ac is List && ac.isNotEmpty) {
+        final first = ac.first;
+        if (first is Map) {
+          final name = (first['name'] ?? '').toString().trim();
+          if (name.isNotEmpty) artistName = name;
+          final art = first['artist'];
+          if (artistName.isEmpty && art is Map) {
+            artistName = (art['name'] ?? '').toString().trim();
+          }
+        }
+      } else if (ac is Map) {
+        artistName = (ac['name'] ?? '').toString().trim();
+      }
+      artistName = artistName.isEmpty ? '—' : artistName;
+
+      out.add(
+        ExploreAlbumHit(
+          releaseGroupId: id,
+          title: title,
+          artistName: artistName,
+          year: year,
+          cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+          cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+        ),
+      );
+    }
+
+    return ExploreAlbumPage(items: out, total: total, offset: offset, limit: limit);
+  }
+
   // ============================================
   // 🎵 BUSCAR CANCIÓN (para filtrar discografía)
   // ============================================
+  /// Sugerencias de canciones (autocomplete) para un artista.
+  ///
+  /// Devuelve una lista corta y deduplicada de títulos (con su recording id)
+  /// para poder aplicar el filtro con un click.
+  static Future<List<SongHit>> searchSongSuggestions({
+    required String artistId,
+    required String songQuery,
+    int limit = 8,
+  }) async {
+    final arid = artistId.trim();
+    final q = songQuery.trim();
+    if (arid.isEmpty || q.isEmpty) return <SongHit>[];
+
+    const specialChars = '+-!(){}[]^"~*?:\\/&|';
+    String esc(String s) {
+      final sb = StringBuffer();
+      for (final rune in s.runes) {
+        final ch = String.fromCharCode(rune);
+        if (specialChars.contains(ch)) sb.write('\\');
+        sb.write(ch);
+      }
+      return sb.toString();
+    }
+
+    final tokens = q.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
+    if (tokens.isEmpty) return <SongHit>[];
+
+    late final String recPart;
+    if (tokens.length == 1) {
+      final term = esc(tokens.first);
+      // Con 1 letra ya queremos sugerencias: siempre wildcard.
+      recPart = 'recording:${term}*';
+    } else {
+      final phrase = esc(q);
+      recPart = 'recording:"$phrase"';
+    }
+
+    final lucene = '$recPart AND arid:$arid';
+    final url = Uri.parse(
+      '$_mbBase/recording/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$limit',
+    );
+    final res = await _get(url);
+    if (res.statusCode != 200) return <SongHit>[];
+
+    final data = jsonDecode(res.body);
+    final recs = (data['recordings'] as List?) ?? [];
+
+    final out = <SongHit>[];
+    final seen = <String>{};
+    for (final r in recs) {
+      if (r is! Map) continue;
+      final id = (r['id'] ?? '').toString().trim();
+      final title = (r['title'] ?? '').toString().trim();
+      if (id.isEmpty || title.isEmpty) continue;
+
+      final k = title.toLowerCase();
+      if (seen.contains(k)) continue;
+      seen.add(k);
+
+      out.add(
+        SongHit(
+          id: id,
+          title: title,
+          score: (r['score'] as num?)?.toInt(),
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Resuelve release-groups (preferentemente "Album") para un recording id.
+  ///
+  /// Esto es más preciso que buscar por texto cuando el usuario selecciona
+  /// una opción del dropdown.
+  static Future<Set<String>> getAlbumReleaseGroupsForRecordingId({
+    required String recordingId,
+  }) async {
+    final rid = recordingId.trim();
+    if (rid.isEmpty) return <String>{};
+
+    try {
+      final u = Uri.parse('$_mbBase/recording/$rid?inc=releases+release-groups&fmt=json');
+      final rr = await _get(u);
+      if (rr.statusCode != 200) return <String>{};
+      final d = jsonDecode(rr.body);
+      final releases = (d is Map ? (d['releases'] as List?) : null) ?? [];
+      final out = <String>{};
+      for (final rel in releases) {
+        if (rel is! Map) continue;
+        final rg = rel['release-group'];
+        if (rg is Map) {
+          final id = (rg['id'] ?? '').toString().trim();
+          final pt = (rg['primary-type'] ?? '').toString().trim();
+          if (id.isNotEmpty && (pt.isEmpty || pt.toLowerCase() == 'album')) out.add(id);
+        } else if (rg is String) {
+          final id = rg.trim();
+          if (id.isNotEmpty) out.add(id);
+        }
+      }
+      return out;
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
   /// Devuelve IDs de release-groups (álbumes) donde aparece una canción.
   ///
   /// En UI esto se usa para filtrar la lista de álbumes SIN descargar todos
@@ -96,61 +401,50 @@ class DiscographyService {
     final q = songQuery.trim();
     if (arid.isEmpty || q.isEmpty) return <String>{};
 
-    // MusicBrainz Search (recording) con filtro por artista.
-    // Nota: `inc=` puede ser ignorado por el endpoint de búsqueda en algunos casos,
-    // por eso abajo tenemos un fallback para resolver release-group desde release.
-    final lucene = 'recording:"$q" AND arid:$arid';
+    // Estrategia robusta (evita que el endpoint de búsqueda ignore `inc=`):
+    // 1) Buscar recordings (top match) filtrado por artista.
+    // 2) Hacer 1 lookup al recording id para obtener releases + release-groups.
+    const specialChars = '+-!(){}[]^"~*?:\\/&|';
+    String esc(String s) {
+      final sb = StringBuffer();
+      for (final rune in s.runes) {
+        final ch = String.fromCharCode(rune);
+        if (specialChars.contains(ch)) sb.write('\\');
+        sb.write(ch);
+      }
+      return sb.toString();
+    }
+
+    final tokens = q.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
+    if (tokens.isEmpty) return <String>{};
+
+    late final String recPart;
+    if (tokens.length == 1) {
+      final term = esc(tokens.first);
+      recPart = tokens.first.length >= 3 ? 'recording:${term}*' : 'recording:$term';
+    } else {
+      final phrase = esc(q);
+      final terms = tokens.map(esc).toList();
+      recPart = '(recording:"$phrase" OR recording:(${terms.join(' AND ')}))';
+    }
+
+    final lucene = '$recPart AND arid:$arid';
     final url = Uri.parse(
-      '$_mbBase/recording/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$limit&inc=releases+release-groups',
+      '$_mbBase/recording/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$limit',
     );
     final res = await _get(url);
     if (res.statusCode != 200) return <String>{};
 
     final data = jsonDecode(res.body);
     final recs = (data['recordings'] as List?) ?? [];
-    final out = <String>{};
-    final fallbackReleaseIds = <String>{};
+    if (recs.isEmpty) return <String>{};
 
-    for (final r in recs) {
-      final releases = (r is Map ? (r['releases'] as List?) : null) ?? [];
-      for (final rel in releases) {
-        if (rel is! Map) continue;
-        final rg = rel['release-group'];
-        if (rg is Map) {
-          final id = (rg['id'] ?? '').toString().trim();
-          if (id.isNotEmpty) out.add(id);
-        } else if (rg is String) {
-          final id = rg.trim();
-          if (id.isNotEmpty) out.add(id);
-        } else {
-          // fallback: resolver por releaseId si el search no trae release-group.
-          final rid = (rel['id'] ?? '').toString().trim();
-          if (rid.isNotEmpty) fallbackReleaseIds.add(rid);
-        }
-      }
-    }
+    // Tomamos el mejor match (1er resultado). Para la UI es suficiente.
+    final best = recs.first;
+    final rid = (best is Map ? (best['id'] ?? '').toString().trim() : '');
+    if (rid.isEmpty) return <String>{};
 
-    // Si ya tenemos release-group IDs, listo.
-    if (out.isNotEmpty || fallbackReleaseIds.isEmpty) return out;
-
-    // Fallback: resolver los release-groups desde algunos releases.
-    // Limitamos para no disparar demasiadas llamadas (la UI pide respuesta rápida).
-    final idsToResolve = fallbackReleaseIds.take(12);
-    for (final rid in idsToResolve) {
-      try {
-        final u = Uri.parse('$_mbBase/release/$rid?inc=release-groups&fmt=json');
-        final rr = await _get(u);
-        if (rr.statusCode != 200) continue;
-        final d = jsonDecode(rr.body);
-        final rg = d is Map ? d['release-group'] : null;
-        final rgid = rg is Map ? (rg['id'] ?? '').toString().trim() : '';
-        if (rgid.isNotEmpty) out.add(rgid);
-      } catch (_) {
-        // ignore
-      }
-    }
-
-    return out;
+    return getAlbumReleaseGroupsForRecordingId(recordingId: rid);
   }
 
   // ===============================
@@ -179,6 +473,135 @@ class DiscographyService {
     }).toList()
       ..sort((a, b) => (b.score ?? 0).compareTo(a.score ?? 0));
   }
+
+  // ============================================
+  // ✨ ARTISTAS SIMILARES (por tags de MusicBrainz)
+  // ============================================
+  /// Aproximación "sin API keys":
+  /// 1) toma los tags principales del artista (ej: progressive rock, art rock)
+  /// 2) busca otros artistas con esos tags
+  /// 3) combina resultados y rankea
+  static Future<List<SimilarArtistHit>> getSimilarArtistsByArtistId(
+    String artistId, {
+    int limit = 20,
+    int _tagLimit = 2,
+    int _perTag = 12,
+  }) async {
+    final id = artistId.trim();
+    if (id.isEmpty) return <SimilarArtistHit>[];
+
+    // 1) Tags del artista
+    final infoUrl = Uri.parse('$_mbBase/artist/$id?inc=tags&fmt=json');
+    final infoRes = await _get(infoUrl);
+    if (infoRes.statusCode != 200) return <SimilarArtistHit>[];
+
+    final data = jsonDecode(infoRes.body);
+    final rawTags = (data['tags'] as List?) ?? const <dynamic>[];
+
+    final tags = <_TagCount>[];
+    for (final t in rawTags) {
+      if (t is! Map) continue;
+      final name = (t['name'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      // evita "1990s", "70s", etc.
+      if (RegExp(r'\d').hasMatch(name)) continue;
+      final c = (t['count'] is int) ? (t['count'] as int) : int.tryParse((t['count'] ?? '0').toString()) ?? 0;
+      tags.add(_TagCount(name, c));
+    }
+    if (tags.isEmpty) return <SimilarArtistHit>[];
+
+    tags.sort((a, b) => b.count.compareTo(a.count));
+
+    // Filtra tags ultra genéricos si hay alternativas.
+    const broad = <String>{
+      'rock',
+      'pop',
+      'electronic',
+      'metal',
+      'jazz',
+      'classical',
+      'hip hop',
+      'rap',
+      'folk',
+      'punk',
+      'indie',
+    };
+
+    final filtered = tags.where((t) => !broad.contains(t.name.toLowerCase())).toList();
+    final picked = (filtered.isNotEmpty ? filtered : tags).take(_tagLimit).toList();
+
+    // 2) Buscar artistas por tag y combinar
+    final Map<String, _SimilarAgg> agg = <String, _SimilarAgg>{};
+
+    for (final tg in picked) {
+      final tagTerm = tg.name.contains(' ')
+          ? 'tag:"${_escLucene(tg.name)}"'
+          : 'tag:${_escLucene(tg.name)}';
+
+      final url = Uri.parse(
+        '$_mbBase/artist/?query=${Uri.encodeQueryComponent(tagTerm)}&fmt=json&limit=$_perTag',
+      );
+      final res = await _get(url);
+      if (res.statusCode != 200) continue;
+
+      final d = jsonDecode(res.body);
+      final artists = (d['artists'] as List?) ?? const <dynamic>[];
+
+      // Peso del tag: suavizado por raíz para que no domine un tag con count gigante.
+      final tagWeight = tg.count <= 0 ? 1.0 : math.sqrt(tg.count.toDouble());
+
+      for (final a in artists) {
+        if (a is! Map) continue;
+        final aid = (a['id'] ?? '').toString().trim();
+        if (aid.isEmpty) continue;
+        if (aid == id) continue;
+
+        final name = (a['name'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+
+        final country = (a['country'] ?? '').toString().trim();
+        final mbScoreNum = (a['score'] is num) ? (a['score'] as num).toDouble() : double.tryParse((a['score'] ?? '0').toString()) ?? 0.0;
+        final base = (mbScoreNum / 100.0).clamp(0.0, 1.0);
+
+        final inc = base * tagWeight;
+
+        final cur = agg[aid];
+        if (cur == null) {
+          agg[aid] = _SimilarAgg(
+            name: name,
+            country: country.isEmpty ? null : country,
+            score: inc,
+            tags: <String>{tg.name},
+          );
+        } else {
+          cur.score += inc;
+          cur.tags.add(tg.name);
+          if ((cur.country == null || cur.country!.isEmpty) && country.isNotEmpty) {
+            cur.country = country;
+          }
+        }
+      }
+    }
+
+    if (agg.isEmpty) return <SimilarArtistHit>[];
+
+    final out = agg.entries.map((e) {
+      final v = e.value;
+      final tagList = v.tags.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      return SimilarArtistHit(
+        id: e.key,
+        name: v.name,
+        country: v.country,
+        score: v.score,
+        tags: tagList,
+      );
+    }).toList();
+
+    out.sort((a, b) => b.score.compareTo(a.score));
+    if (out.length > limit) return out.take(limit).toList();
+    return out;
+  }
+
 
   // ==================================================
   // ✅ COMPATIBILIDAD (ARREGLA TU ERROR DE COMPILACIÓN)

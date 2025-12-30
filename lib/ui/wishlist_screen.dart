@@ -22,12 +22,12 @@ class WishlistScreen extends StatefulWidget {
 class _StorePricesSheet extends StatefulWidget {
   final String artista;
   final String album;
-  final String barcode;
+  final String? barcode;
 
   const _StorePricesSheet({
     required this.artista,
     required this.album,
-    required this.barcode,
+    this.barcode,
   });
 
   @override
@@ -40,12 +40,18 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
   @override
   void initState() {
     super.initState();
-    _future = StorePriceService.fetchOffersByBarcodeCached(widget.barcode);
+        final b = (widget.barcode ?? '').trim();
+    _future = b.isNotEmpty
+        ? StorePriceService.fetchOffersByBarcodeCached(b)
+        : StorePriceService.fetchOffersByQueryCached(artist: widget.artista, album: widget.album);
   }
 
   void _refresh() {
     setState(() {
-      _future = StorePriceService.fetchOffersByBarcodeCached(widget.barcode, forceRefresh: true);
+            final b = (widget.barcode ?? '').trim();
+      _future = b.isNotEmpty
+          ? StorePriceService.fetchOffersByBarcodeCached(b, forceRefresh: true)
+          : StorePriceService.fetchOffersByQueryCached(artist: widget.artista, album: widget.album, forceRefresh: true);
     });
   }
 
@@ -78,10 +84,19 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      'EAN/UPC: ${widget.barcode}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                                        Builder(builder: (_) {
+                      final b = (widget.barcode ?? '').trim();
+                      if (b.isNotEmpty) {
+                        return Text(
+                          'EAN/UPC: $b',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        );
+                      }
+                      return Text(
+                        context.tr('Búsqueda por texto (artista + álbum)'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -123,7 +138,9 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
+                    (min == max)
+                        ? '${context.tr('Precio')}: €${_fmt(min)}'
+                        : '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
@@ -239,15 +256,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final artista = (w['artista'] ?? '').toString();
     final album = (w['album'] ?? '').toString();
 
-    var barcode = (w['barcode'] ?? '').toString().trim();
-    if (barcode.isEmpty) {
-      final entered = await _askBarcode();
-      if (!mounted) return;
-      if (entered == null || entered.trim().isEmpty) return;
-      barcode = entered.trim();
-      await VinylDb.instance.updateWishlistBarcode(id, barcode);
-      _reload();
-    }
+    final barcode = (w['barcode'] ?? '').toString().trim();
 
     if (!mounted) return;
     showModalBottomSheet(
@@ -257,10 +266,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
       builder: (_) => _StorePricesSheet(
         artista: artista,
         album: album,
-        barcode: barcode,
+        barcode: barcode.isEmpty ? null : barcode,
       ),
-    );
-  }
+    );  }
 
   void _reload() {
     setState(() {
@@ -272,31 +280,43 @@ class _WishlistScreenState extends State<WishlistScreen> {
   void _ensureAutoPrices(List<Map<String, dynamic>> items) {
     for (final w in items) {
       final barcode = (w['barcode'] ?? '').toString().trim();
-      if (barcode.isEmpty) continue;
-      if (_prefetchedBarcodes.contains(barcode)) continue;
-      _prefetchedBarcodes.add(barcode);
-      _queueFetchOffers(barcode);
+      final artist = (w['artista'] ?? '').toString().trim();
+      final album = (w['album'] ?? '').toString().trim();
+      final key = _offerKeyForItem(artist: artist, album: album, barcode: barcode);
+      if (key == null) continue;
+      if (_prefetchedBarcodes.contains(key)) continue;
+      _prefetchedBarcodes.add(key);
+      _queueFetchOffers(key, barcode: barcode, artist: artist, album: album);
     }
   }
 
-  void _queueFetchOffers(String barcode, {bool forceRefresh = false}) {
-    final b = barcode.trim();
-    if (b.isEmpty) return;
+  void _queueFetchOffers(
+    String key, {
+    String? barcode,
+    required String artist,
+    required String album,
+    bool forceRefresh = false,
+  }) {
+    final k = key.trim();
+    if (k.isEmpty) return;
 
     // Si ya hay una carga en curso y no es forceRefresh, evitamos duplicar.
-    if (!forceRefresh && (_offersLoading[b] == true)) return;
+    if (!forceRefresh && (_offersLoading[k] == true)) return;
 
-    _offersLoading[b] = true;
+    _offersLoading[k] = true;
     if (mounted) setState(() {});
 
     _prefetchQueue = _prefetchQueue.then((_) async {
       try {
-        final offers = await StorePriceService.fetchOffersByBarcodeCached(b, forceRefresh: forceRefresh);
-        _offersByBarcode[b] = offers;
+        final b = (barcode ?? '').trim();
+        final offers = b.isNotEmpty
+            ? await StorePriceService.fetchOffersByBarcodeCached(b, forceRefresh: forceRefresh)
+            : await StorePriceService.fetchOffersByQueryCached(artist: artist, album: album, forceRefresh: forceRefresh);
+        _offersByBarcode[k] = offers;
       } catch (_) {
-        _offersByBarcode[b] = const <StoreOffer>[];
+        _offersByBarcode[k] = const <StoreOffer>[];
       } finally {
-        _offersLoading[b] = false;
+        _offersLoading[k] = false;
         if (mounted) setState(() {});
       }
     });
@@ -310,6 +330,28 @@ class _WishlistScreenState extends State<WishlistScreen> {
     if (s.contains('muziker')) return 'Muziker';
     if (s.contains('levy')) return 'Äx';
     return store;
+  }
+
+
+  String _normOfferKey(String s) {
+    return s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  /// Key estable para cache en memoria/UI:
+  /// - si hay barcode => b:<barcode>
+  /// - si no => q:<artist_norm>||<album_norm>
+  String? _offerKeyForItem({required String artist, required String album, String? barcode}) {
+    final b = (barcode ?? '').trim();
+    if (b.isNotEmpty) return 'b:$b';
+
+    final a = _normOfferKey(artist);
+    final al = _normOfferKey(album);
+    if (a.isEmpty || al.isEmpty) return null;
+    return 'q:$a||$al';
   }
 
   Widget _offerPill(String text, {bool compact = false}) {
@@ -336,12 +378,12 @@ class _WishlistScreenState extends State<WishlistScreen> {
     );
   }
 
-  Widget _pricePills(String barcode, {bool compact = false}) {
-    final b = barcode.trim();
-    if (b.isEmpty) return const SizedBox.shrink();
+    Widget _pricePills(String key, {bool compact = false}) {
+    final k = key.trim();
+    if (k.isEmpty) return const SizedBox.shrink();
 
-    final offers = _offersByBarcode[b];
-    final loading = _offersLoading[b] == true;
+    final offers = _offersByBarcode[k];
+    final loading = _offersLoading[k] == true;
 
     if (offers == null) {
       // Aún no se cargó (se cargará automáticamente).
@@ -377,16 +419,21 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final sorted = [...list]..sort((a, c) => a.price.compareTo(c.price));
     final best2 = sorted.take(2).toList();
 
+    final rangeText = (sorted.length <= 1)
+        ? '€${_fmtEur(sorted.first.price)}'
+        : '€${_fmtEur(sorted.first.price)} - ${_fmtEur(sorted.last.price)}';
+
     return Wrap(
       spacing: 6,
       runSpacing: 6,
       children: [
-        for (final o in best2)
-          _offerPill('€${_fmtEur(o.price)} · ${_shortStore(o.store)}', compact: compact),
+        _offerPill(rangeText, compact: compact),
+        for (final o in best2) _offerPill('€${_fmtEur(o.price)} · ${_shortStore(o.store)}', compact: compact),
         if (sorted.length > 2) _offerPill('+${sorted.length - 2}', compact: compact),
       ],
     );
   }
+
 
   /// Badge de estado para Wishlist (se ve bien tanto en tema claro como oscuro).
   Widget _statusChip(BuildContext context, String status) {
@@ -700,6 +747,7 @@ Widget _placeholder() {
     final year = (w['year'] ?? '').toString().trim();
     final status = (w['status'] ?? '').toString().trim();
     final barcode = (w['barcode'] ?? '').toString().trim();
+    final offerKey = _offerKeyForItem(artist: artista, album: album, barcode: barcode);
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -759,9 +807,9 @@ Widget _placeholder() {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                       ),
-                      if (barcode.isNotEmpty) ...[
+                      if (offerKey != null) ...[
                         const SizedBox(height: 8),
-                        _pricePills(barcode),
+                        _pricePills(offerKey!),
                       ],
                     ],
                   ),
@@ -847,6 +895,7 @@ Widget _placeholder() {
     final year = (w['year'] ?? '').toString().trim();
     final status = (w['status'] ?? '').toString().trim();
     final barcode = (w['barcode'] ?? '').toString().trim();
+    final offerKey = _offerKeyForItem(artist: artista, album: album, barcode: barcode);
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
 
@@ -896,9 +945,9 @@ Widget _placeholder() {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  if (barcode.isNotEmpty) ...[
+                  if (offerKey != null) ...[
                     SizedBox(height: 8),
-                    _pricePills(barcode, compact: true),
+                    _pricePills(offerKey!, compact: true),
                   ],
                   SizedBox(height: 10),
                   Row(

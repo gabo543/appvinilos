@@ -11,10 +11,14 @@ import '../services/store_price_service.dart';
 import 'widgets/app_cover_image.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
+import 'explore_screen.dart';
+import 'similar_artists_screen.dart';
 import '../l10n/app_strings.dart';
 
 class DiscographyScreen extends StatefulWidget {
-  DiscographyScreen({super.key});
+  DiscographyScreen({super.key, this.initialArtist});
+
+  final ArtistHit? initialArtist;
 
   @override
   State<DiscographyScreen> createState() => _DiscographyScreenState();
@@ -42,10 +46,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   // 🎵 Buscador por canción (filtra álbumes)
   final TextEditingController songCtrl = TextEditingController();
+  final FocusNode _songFocus = FocusNode();
   Timer? _songDebounce;
+  Timer? _songSuggestDebounce;
+  bool _loadingSongSuggestions = false;
+  List<SongHit> _songSuggestions = <SongHit>[];
+  int _songSuggestSeq = 0;
   bool searchingSongs = false;
   Set<String> _songMatchReleaseGroups = <String>{};
   String _lastSongQueryNorm = '';
+  String _selectedSongRecordingId = '';
+  String _selectedSongTitleNorm = '';
   int _songReqSeq = 0;
   final Map<String, Set<String>> _songCache = <String, Set<String>>{};
 
@@ -68,6 +79,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     _fav.clear();
     _wish.clear();
     _busy.clear();
+    _priceEnabledByReleaseGroup.clear();
     _offersByReleaseGroup.clear();
     _offersInFlight.clear();
 
@@ -79,13 +91,19 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   void _clearSongFilter({bool setText = false}) {
     _songDebounce?.cancel();
+    _songSuggestDebounce?.cancel();
     if (setText) songCtrl.clear();
     setState(() {
       searchingSongs = false;
       _songMatchReleaseGroups = <String>{};
+      _loadingSongSuggestions = false;
+      _songSuggestions = <SongHit>[];
     });
     _lastSongQueryNorm = '';
+    _selectedSongRecordingId = '';
+    _selectedSongTitleNorm = '';
     _songReqSeq++;
+    _songSuggestSeq++;
   }
 
   bool searchingArtists = false;
@@ -103,15 +121,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   final Map<String, bool> _busy = {};
 
   // 💶 Precios en lista (discografía) - tiendas (iMusic, Muziker, Äx)
-  bool _showPrices = false;
+  // Se activan por álbum (icono € en cada card), no global.
+  final Map<String, bool> _priceEnabledByReleaseGroup = {};
   final Map<String, List<StoreOffer>?> _offersByReleaseGroup = {};
   final Map<String, Future<List<StoreOffer>>?> _offersInFlight = {};
 
   String _k(String artist, String album) => '${artist.trim()}||${album.trim()}';
 
   String _priceLabelForOffers(List<StoreOffer> offers) {
-    // Formato pedido: mostrar 2 mejores precios.
-    // Ej: "€ 18.49 • 20.99"
+    // Formato: mostrar rango mín–máx.
     String fmt(double v) {
       final r = v.roundToDouble();
       if ((v - r).abs() < 0.005) return r.toInt().toString();
@@ -119,15 +137,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
 
     if (offers.isEmpty) return '€ —';
-    final a = fmt(offers[0].price);
-    if (offers.length == 1) return '€ $a';
-    final b = fmt(offers[1].price);
+    final min = offers.first.price;
+    final max = offers.last.price;
+    final a = fmt(min);
+    final b = fmt(max);
     if (a == b) return '€ $a';
-    return '€ $a • $b';
+    return '€ $a - $b';
   }
 
   void _ensureOffersLoaded(String artistName, AlbumItem al) {
-    if (!_showPrices) return;
     final rgid = al.releaseGroupId.trim();
     if (rgid.isEmpty) return;
     if (_offersByReleaseGroup.containsKey(rgid)) return;
@@ -190,17 +208,45 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Cierra el dropdown de sugerencias de canciones cuando el campo pierde foco.
+    _songFocus.addListener(() {
+      if (!mounted) return;
+      if (!_songFocus.hasFocus) {
+        if (_songSuggestions.isNotEmpty || _loadingSongSuggestions) {
+          setState(() {
+            _songSuggestions = <SongHit>[];
+            _loadingSongSuggestions = false;
+          });
+        }
+      }
+    });
+    // Si nos pasan un artista inicial (por ejemplo desde 'Similares'), lo cargamos directo.
+    if (widget.initialArtist != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _pickArtist(widget.initialArtist!);
+      });
+    }
+
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _songDebounce?.cancel();
+    _songSuggestDebounce?.cancel();
     artistCtrl.dispose();
     songCtrl.dispose();
     _artistFocus.dispose();
+    _songFocus.dispose();
     super.dispose();
   }
 
   void _onSongTextChanged(String _) {
     _songDebounce?.cancel();
+    _songSuggestDebounce?.cancel();
 
     final a = pickedArtist;
     if (a == null) return;
@@ -208,32 +254,81 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final raw = songCtrl.text.trim();
     final qNorm = _normQ(raw);
 
-    // Si está vacío o muy corto, quitamos el filtro.
-    if (qNorm.isEmpty || qNorm.length < 2) {
+    // Si el usuario empezó a editar después de haber seleccionado una sugerencia,
+    // desactivamos el filtro y mostramos todo hasta que vuelva a seleccionar.
+    if (_selectedSongRecordingId.isNotEmpty && qNorm != _selectedSongTitleNorm) {
       _songReqSeq++; // invalida requests en vuelo
-      if (_lastSongQueryNorm.isNotEmpty) {
+      _selectedSongRecordingId = '';
+      _selectedSongTitleNorm = '';
+      if (_songMatchReleaseGroups.isNotEmpty || searchingSongs) {
         setState(() {
           searchingSongs = false;
           _songMatchReleaseGroups = <String>{};
         });
       }
-      _lastSongQueryNorm = qNorm;
-      return;
     }
 
-    // Evita re-consultar por el mismo texto normalizado.
-    if (qNorm == _lastSongQueryNorm && _songMatchReleaseGroups.isNotEmpty) {
-      return;
+    // -----------------
+    // Autocomplete (desde 1 letra)
+    // -----------------
+    if (qNorm.isEmpty) {
+      if (_songSuggestions.isNotEmpty || _loadingSongSuggestions) {
+        setState(() {
+          _songSuggestions = <SongHit>[];
+          _loadingSongSuggestions = false;
+        });
+      }
+    } else {
+      final mySuggestSeq = ++_songSuggestSeq;
+      // Muestra loading solo si el dropdown está visible.
+      if (_songFocus.hasFocus) {
+        setState(() => _loadingSongSuggestions = true);
+      }
+      _songSuggestDebounce = Timer(const Duration(milliseconds: 240), () async {
+        if (!mounted) return;
+        if (mySuggestSeq != _songSuggestSeq) return;
+        if (!_songFocus.hasFocus) return;
+        final currentNorm = _normQ(songCtrl.text.trim());
+        if (currentNorm != qNorm) return;
+
+        try {
+          final hits = await DiscographyService.searchSongSuggestions(
+            artistId: a.id,
+            songQuery: raw,
+            limit: 8,
+          );
+          if (!mounted) return;
+          if (mySuggestSeq != _songSuggestSeq) return;
+          if (!_songFocus.hasFocus) return;
+          setState(() {
+            _songSuggestions = hits;
+            _loadingSongSuggestions = false;
+          });
+        } catch (_) {
+          if (!mounted) return;
+          if (mySuggestSeq != _songSuggestSeq) return;
+          setState(() {
+            _songSuggestions = <SongHit>[];
+            _loadingSongSuggestions = false;
+          });
+        }
+      });
     }
 
+    // El filtro NO se aplica por texto suelto.
+    // Se aplica solo al seleccionar una opción del dropdown.
     _lastSongQueryNorm = qNorm;
+  }
 
-    // Nuevo “version” para invalidar respuestas de requests anteriores.
+  Future<void> _applySongFilterByRecording(SongHit hit) async {
+    final a = pickedArtist;
+    if (a == null) return;
+
     final mySeq = ++_songReqSeq;
-
-    final cacheKey = '${a.id}||$qNorm';
+    final cacheKey = '${a.id}||rid:${hit.id}';
     final cached = _songCache[cacheKey];
     if (cached != null) {
+      if (!mounted) return;
       setState(() {
         searchingSongs = false;
         _songMatchReleaseGroups = cached;
@@ -241,36 +336,76 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       return;
     }
 
-    // Evita que la UI muestre “sin resultados” mientras estamos esperando el debounce.
+    if (!mounted) return;
     setState(() {
       searchingSongs = true;
       _songMatchReleaseGroups = <String>{};
     });
 
-    _songDebounce = Timer(const Duration(milliseconds: 360), () async {
+    try {
+      final ids = await DiscographyService.getAlbumReleaseGroupsForRecordingId(
+        recordingId: hit.id,
+      );
       if (!mounted) return;
-      try {
-        final ids = await DiscographyService.searchAlbumReleaseGroupsBySong(
-          artistId: a.id,
-          songQuery: raw,
-        );
-        if (!mounted) return;
-        if (mySeq != _songReqSeq) return; // respuesta vieja
+      if (mySeq != _songReqSeq) return;
+      _songCache[cacheKey] = ids;
+      setState(() {
+        searchingSongs = false;
+        _songMatchReleaseGroups = ids;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      if (mySeq != _songReqSeq) return;
+      setState(() {
+        searchingSongs = false;
+        _songMatchReleaseGroups = <String>{};
+      });
+    }
+  }
 
-        _songCache[cacheKey] = ids;
-        setState(() {
-          searchingSongs = false;
-          _songMatchReleaseGroups = ids;
-        });
-      } catch (_) {
-        if (!mounted) return;
-        if (mySeq != _songReqSeq) return;
-        setState(() {
-          searchingSongs = false;
-          _songMatchReleaseGroups = <String>{};
-        });
-      }
+  void _selectSongSuggestion(SongHit hit) {
+    final title = hit.title.trim();
+    songCtrl.text = title;
+    songCtrl.selection = TextSelection.collapsed(offset: title.length);
+    _lastSongQueryNorm = _normQ(title);
+    _selectedSongRecordingId = hit.id;
+    _selectedSongTitleNorm = _normQ(title);
+
+    // Cerrar dropdown + teclado.
+    setState(() {
+      _songSuggestions = <SongHit>[];
+      _loadingSongSuggestions = false;
     });
+    FocusScope.of(context).unfocus();
+
+    // Aplicar filtro con el recording id (más preciso).
+    _applySongFilterByRecording(hit);
+  }
+
+  Widget _highlightSongTitle(String text, String query) {
+    final q = query.trim();
+    if (q.isEmpty) return Text(text);
+    final tl = text.toLowerCase();
+    final ql = q.toLowerCase();
+    final idx = tl.indexOf(ql);
+    if (idx < 0) return Text(text);
+
+    final before = text.substring(0, idx);
+    final mid = text.substring(idx, idx + q.length);
+    final after = text.substring(idx + q.length);
+    final base = Theme.of(context).textTheme.bodyMedium;
+    final on = Theme.of(context).colorScheme.onSurface;
+
+    return RichText(
+      text: TextSpan(
+        style: base?.copyWith(color: on),
+        children: [
+          TextSpan(text: before),
+          TextSpan(text: mid, style: base?.copyWith(color: on, fontWeight: FontWeight.w900)),
+          TextSpan(text: after),
+        ],
+      ),
+    );
   }
 
   void _snack(String t) {
@@ -717,9 +852,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
     final songRaw = songCtrl.text.trim();
     final songNorm = _normQ(songRaw);
-    final songFilterActive = (pickedArtist != null && songNorm.length >= 2);
+    final songFilterActive = (pickedArtist != null && _selectedSongRecordingId.isNotEmpty);
+    final showUnfilteredWhileSearching = songFilterActive && searchingSongs && _songMatchReleaseGroups.isEmpty;
 
-    final visibleAlbums = !songFilterActive
+    final visibleAlbums = (!songFilterActive || showUnfilteredWhileSearching)
         ? albums
         : albums.where((al) {
             final rgid = al.releaseGroupId.trim();
@@ -734,14 +870,34 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         title: appBarTitleTextScaled(context.tr('Discografías'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
         actions: [
-          if ((pickedArtist != null || albums.isNotEmpty) && artistName.trim().isNotEmpty)
-            IconButton(
-              tooltip: _showPrices ? context.tr('Ocultar precios') : context.tr('Mostrar precios'),
-              icon: Icon(Icons.euro_symbol),
-              onPressed: () {
-                setState(() => _showPrices = !_showPrices);
-              },
-            ),
+          IconButton(
+            tooltip: context.tr('Buscar'),
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              // Llevar el foco al buscador de artista.
+              FocusScope.of(context).requestFocus(_artistFocus);
+            },
+          ),
+          IconButton(
+            tooltip: context.tr('Explorar'),
+            icon: const Icon(Icons.explore),
+            onPressed: () {
+              _dismissKeyboard();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExploreScreen()),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: context.tr('Similares'),
+            icon: const Icon(Icons.hub_outlined),
+            onPressed: () {
+              _dismissKeyboard();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SimilarArtistsScreen()),
+              );
+            },
+          ),
         ],
       ),
       body: Padding(
@@ -775,6 +931,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             if (pickedArtist != null && artistResults.isEmpty) ...[
               TextField(
                 controller: songCtrl,
+                focusNode: _songFocus,
                 onChanged: (v) {
                   setState(() {});
                   _onSongTextChanged(v);
@@ -792,6 +949,43 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                         ),
                 ),
               ),
+              if (_songFocus.hasFocus && songCtrl.text.trim().isNotEmpty && (_loadingSongSuggestions || _songSuggestions.isNotEmpty)) ...[
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: Material(
+                    elevation: 2,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: _loadingSongSuggestions
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 14),
+                              child: Center(child: CircularProgressIndicator()),
+                            )
+                          : ListView.separated(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              itemCount: _songSuggestions.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (_, i) {
+                                final hit = _songSuggestions[i];
+                                return ListTile(
+                                  dense: true,
+                                  leading: const Icon(Icons.music_note),
+                                  title: _highlightSongTitle(hit.title, songCtrl.text.trim()),
+                                  onTap: () => _selectSongSuggestion(hit),
+                                );
+                              },
+                            ),
+                    ),
+                  ),
+                ),
+              ],
               SizedBox(height: 8),
               if (searchingSongs) LinearProgressIndicator(),
               if (songFilterActive && !searchingSongs)
@@ -856,19 +1050,19 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                               IconData favIcon = fav ? Icons.star : Icons.star_border;
                               IconData wishIcon = inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined;
 
-                              // 💶 Precios (lazy): solo si el usuario activó el icono €
-                              if (_showPrices) {
+                              // 💶 Precios (lazy): se activan por álbum (icono € en cada card)
+                              final rgid = al.releaseGroupId.trim();
+                              final priceEnabled = rgid.isNotEmpty && (_priceEnabledByReleaseGroup[rgid] ?? false);
+                              final priceDisabled = rgid.isEmpty || artistName.trim().isEmpty;
+                              if (priceEnabled) {
                                 _ensureOffersLoaded(artistName, al);
                               }
 
-                              final rgid = al.releaseGroupId.trim();
                               final hasOffers = rgid.isNotEmpty && _offersByReleaseGroup.containsKey(rgid);
                               final offers = rgid.isEmpty ? null : _offersByReleaseGroup[rgid];
-                              final priceLabel = !_showPrices
+                              final priceLabel = !priceEnabled
                                   ? null
-                                  : (!hasOffers
-                                      ? '€ …'
-                                      : _priceLabelForOffers(offers ?? const []));
+                                  : (!hasOffers ? '€ …' : _priceLabelForOffers(offers ?? const []));
 
                               Widget actionItem({
                                 required IconData icon,
@@ -876,8 +1070,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                 required VoidCallback? onTap,
                                 required bool disabled,
                                 required String tooltip,
+                                bool active = false,
                               }) {
-                                final color = disabled ? Theme.of(context).colorScheme.onSurfaceVariant : null;
+                                final color = disabled
+                                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                                    : (active ? Theme.of(context).colorScheme.primary : null);
                                 return Tooltip(
                                   message: tooltip,
                                   child: InkWell(
@@ -1008,6 +1205,24 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                   final st = await _askWishlistStatus();
                                                   if (!mounted || st == null) return;
                                                   await _addWishlist(artistName, al, st);
+                                                },
+                                              ),
+                                              actionItem(
+                                                icon: Icons.euro_symbol,
+                                                label: '€',
+                                                tooltip: priceEnabled ? context.tr('Ocultar precio') : context.tr('Ver precio'),
+                                                disabled: priceDisabled,
+                                                active: priceEnabled,
+                                                onTap: () {
+                                                  if (rgid.isEmpty) return;
+                                                  setState(() {
+                                                    final next = !(_priceEnabledByReleaseGroup[rgid] ?? false);
+                                                    _priceEnabledByReleaseGroup[rgid] = next;
+                                                  });
+                                                  if (!priceEnabled) {
+                                                    // Al activar, disparar carga.
+                                                    _ensureOffersLoaded(artistName, al);
+                                                  }
                                                 },
                                               ),
                                               if (busy)
