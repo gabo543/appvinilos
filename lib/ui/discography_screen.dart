@@ -1363,8 +1363,6 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                     ),
                                   ],
                                 ),
-                                            ],
-                                          ),
                                         );
                                       },
                                     ),
@@ -1376,7 +1374,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                     onNext: () => setState(() => _albumPage = (page + 1).clamp(1, totalPages)),
                                   ),
                                 ],
-                              )))),
+                              ))),
               ),
           ],
         ),
