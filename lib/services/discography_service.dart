@@ -56,6 +56,12 @@ class _SimilarAgg {
   }) : tags = tags;
 }
 
+class _CacheEntry<T> {
+  final T value;
+  final DateTime ts;
+  const _CacheEntry(this.value, this.ts);
+}
+
 
 class AlbumItem {
   final String releaseGroupId;
@@ -145,6 +151,11 @@ class DiscographyService {
   static const _mbBase = 'https://musicbrainz.org/ws/2';
   static DateTime _lastCall = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // Cache in-memory para que "Similares" sea más estable y rápido.
+  static const Duration _similarTtl = Duration(hours: 12);
+  static final Map<String, _CacheEntry<List<SimilarArtistHit>>> _similarCache = {};
+  static final Map<String, _CacheEntry<List<_TagCount>>> _artistTagsCache = {};
+
   static const _luceneSpecial = '+-!(){}[]^"~*?:\\/&|';
 
   static String _escLucene(String s) {
@@ -173,9 +184,33 @@ class DiscographyService {
         'Accept': 'application/json',
       };
 
-  static Future<http.Response> _get(Uri url) async {
-    await _throttle();
-    return http.get(url, headers: _headers()).timeout(const Duration(seconds: 15));
+  static bool _isRetryableStatus(int code) {
+    // MusicBrainz / Wikipedia / etc pueden devolver errores temporales.
+    return code == 408 || code == 429 || (code >= 500 && code <= 599);
+  }
+
+  static Future<http.Response> _get(Uri url, {int retries = 2}) async {
+    http.Response? last;
+    for (var attempt = 0; attempt <= retries; attempt++) {
+      await _throttle();
+      try {
+        final res = await http
+            .get(url, headers: _headers())
+            .timeout(const Duration(seconds: 15));
+        last = res;
+        if (res.statusCode == 200) return res;
+        if (!_isRetryableStatus(res.statusCode)) return res;
+      } catch (_) {
+        // continua a reintentar
+      }
+
+      if (attempt < retries) {
+        // backoff suave (sin explotar tiempos), además del throttle.
+        await Future.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
+    }
+    // Si todo falló y no tenemos respuesta, devolvemos una respuesta vacía.
+    return last ?? http.Response('', 599);
   }
 
   static Map<String, String> _headersPlain() => {
@@ -183,9 +218,24 @@ class DiscographyService {
         'Accept': 'text/plain',
       };
 
-  static Future<http.Response> _getPlain(Uri url) async {
-    await _throttle();
-    return http.get(url, headers: _headersPlain()).timeout(const Duration(seconds: 20));
+  static Future<http.Response> _getPlain(Uri url, {int retries = 1}) async {
+    http.Response? last;
+    for (var attempt = 0; attempt <= retries; attempt++) {
+      await _throttle();
+      try {
+        final res = await http
+            .get(url, headers: _headersPlain())
+            .timeout(const Duration(seconds: 20));
+        last = res;
+        if (res.statusCode == 200) return res;
+        if (!_isRetryableStatus(res.statusCode)) return res;
+      } catch (_) {}
+
+      if (attempt < retries) {
+        await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+      }
+    }
+    return last ?? http.Response('', 599);
   }
 
   // ==================================================
@@ -532,6 +582,144 @@ class DiscographyService {
     return getAlbumReleaseGroupsForRecordingId(recordingId: rid);
   }
 
+  /// Variante más robusta: devuelve IDs de release-groups (álbumes) donde aparece
+  /// una canción, uniendo resultados de múltiples recordings.
+  ///
+  /// Problema común: una misma canción puede existir como distintos `recordingId`
+  /// (remaster, live, single edit, etc.). Si filtramos solo por 1 recordingId,
+  /// a veces la UI no encuentra el track en ningún álbum o solo en algunos.
+  ///
+  /// Estrategia:
+  /// 1) Buscar recordings por (título + artista)
+  /// 2) Tomar varios `recordingId` candidatos (incluyendo el preferido si viene)
+  /// 3) Hacer lookups (capados) para obtener release-groups y unirlos
+  static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
+    required String artistId,
+    required String songQuery,
+    String? preferredRecordingId,
+    int searchLimit = 18,
+    int maxLookups = 5,
+  }) async {
+    final arid = artistId.trim();
+    final q = songQuery.trim();
+    if (arid.isEmpty || q.isEmpty) return <String>{};
+
+    const specialChars = '+-!(){}[]^"~*?:\\/&|';
+    String esc(String s) {
+      final sb = StringBuffer();
+      for (final rune in s.runes) {
+        final ch = String.fromCharCode(rune);
+        if (specialChars.contains(ch)) sb.write('\\');
+        sb.write(ch);
+      }
+      return sb.toString();
+    }
+
+    String norm(String s) {
+      var out = s.toLowerCase().trim();
+      const rep = {
+        'á': 'a',
+        'à': 'a',
+        'ä': 'a',
+        'â': 'a',
+        'é': 'e',
+        'è': 'e',
+        'ë': 'e',
+        'ê': 'e',
+        'í': 'i',
+        'ì': 'i',
+        'ï': 'i',
+        'î': 'i',
+        'ó': 'o',
+        'ò': 'o',
+        'ö': 'o',
+        'ô': 'o',
+        'ú': 'u',
+        'ù': 'u',
+        'ü': 'u',
+        'û': 'u',
+        'ñ': 'n',
+      };
+      rep.forEach((k, v) => out = out.replaceAll(k, v));
+      out = out.replaceAll(RegExp(r'[^a-z0-9 ]'), ' ');
+      out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
+      return out;
+    }
+
+    final tokens = q.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
+    if (tokens.isEmpty) return <String>{};
+
+    late final String recPart;
+    if (tokens.length == 1) {
+      final term = esc(tokens.first);
+      // Desde 1 letra, wildcard.
+      recPart = 'recording:${term}*';
+    } else {
+      final phrase = esc(q);
+      final terms = tokens.map(esc).toList();
+      recPart = '(recording:"$phrase" OR recording:(${terms.join(' AND ')}))';
+    }
+
+    final lucene = '$recPart AND arid:$arid';
+    final url = Uri.parse(
+      '$_mbBase/recording/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$searchLimit',
+    );
+
+    final res = await _get(url);
+    if (res.statusCode != 200) return <String>{};
+
+    final data = jsonDecode(res.body);
+    final recs = (data['recordings'] as List?) ?? [];
+    if (recs.isEmpty) {
+      // Igual intentamos con el recording preferido si viene.
+      if ((preferredRecordingId ?? '').trim().isNotEmpty) {
+        return getAlbumReleaseGroupsForRecordingId(recordingId: preferredRecordingId!.trim());
+      }
+      return <String>{};
+    }
+
+    final want = norm(q);
+    final candidates = <String>[];
+    final seen = <String>{};
+
+    void addCandidate(String id) {
+      final rid = id.trim();
+      if (rid.isEmpty) return;
+      if (seen.contains(rid)) return;
+      seen.add(rid);
+      candidates.add(rid);
+    }
+
+    if ((preferredRecordingId ?? '').trim().isNotEmpty) {
+      addCandidate(preferredRecordingId!.trim());
+    }
+
+    for (final r in recs) {
+      if (r is! Map) continue;
+      final id = (r['id'] ?? '').toString().trim();
+      final title = (r['title'] ?? '').toString().trim();
+      if (id.isEmpty || title.isEmpty) continue;
+
+      // Filtramos candidatos por título para no meter cosas raras.
+      final tNorm = norm(title);
+      if (want.isNotEmpty && !tNorm.contains(want)) {
+        // Si el usuario escribió poco, igual dejamos pasar algunos matches.
+        if (want.length >= 4) continue;
+      }
+      addCandidate(id);
+      if (candidates.length >= maxLookups) break;
+    }
+
+    if (candidates.isEmpty) return <String>{};
+
+    final out = <String>{};
+    for (final rid in candidates.take(maxLookups)) {
+      final ids = await getAlbumReleaseGroupsForRecordingId(recordingId: rid);
+      out.addAll(ids);
+    }
+    return out;
+  }
+
   // ===============================
   // 🔍 BUSCAR ARTISTAS (AUTOCOMPLETE)
   // ===============================
@@ -559,6 +747,109 @@ class DiscographyService {
       ..sort((a, b) => (b.score ?? 0).compareTo(a.score ?? 0));
   }
 
+  static bool _cacheValid(DateTime ts, Duration ttl) {
+    return DateTime.now().difference(ts) <= ttl;
+  }
+
+  static List<_TagCount> _parseTagCounts(dynamic rawTags) {
+    final out = <_TagCount>[];
+    final list = (rawTags as List?) ?? const <dynamic>[];
+    for (final t in list) {
+      if (t is! Map) continue;
+      final name = (t['name'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      if (RegExp(r'\d').hasMatch(name)) continue; // evita "1990s"
+      final c = (t['count'] is int)
+          ? (t['count'] as int)
+          : int.tryParse((t['count'] ?? '').toString()) ?? 0;
+      out.add(_TagCount(name, c));
+    }
+    out.sort((a, b) => b.count.compareTo(a.count));
+    return out;
+  }
+
+  static Future<List<_TagCount>> _fallbackTagsFromReleaseGroups(String artistId) async {
+    // Si el artista no tiene tags, intentamos sacarlos desde sus álbumes.
+    final url = Uri.parse('$_mbBase/release-group/?artist=$artistId&fmt=json&limit=25');
+    final res = await _get(url);
+    if (res.statusCode != 200) return const <_TagCount>[];
+
+    dynamic data;
+    try {
+      data = jsonDecode(res.body);
+    } catch (_) {
+      return const <_TagCount>[];
+    }
+
+    final groups = (data['release-groups'] as List?) ?? const <dynamic>[];
+    final ids = <String>[];
+    for (final g in groups) {
+      if (g is! Map) continue;
+      final pt = (g['primary-type'] ?? '').toString().toLowerCase();
+      if (pt != 'album') continue;
+      final id = (g['id'] ?? '').toString().trim();
+      if (id.isEmpty) continue;
+      ids.add(id);
+      if (ids.length >= 4) break;
+    }
+    if (ids.isEmpty) return const <_TagCount>[];
+
+    final score = <String, int>{};
+    for (final rgid in ids) {
+      final u = Uri.parse('$_mbBase/release-group/$rgid?inc=tags&fmt=json');
+      final r = await _get(u);
+      if (r.statusCode != 200) continue;
+      dynamic j;
+      try {
+        j = jsonDecode(r.body);
+      } catch (_) {
+        continue;
+      }
+      final tags = _parseTagCounts(j['tags']);
+      for (final tg in tags.take(8)) {
+        // suma suave (si hay varios álbumes, se refuerzan)
+        score[tg.name] = (score[tg.name] ?? 0) + (tg.count <= 0 ? 1 : tg.count);
+      }
+    }
+
+    final out = score.entries
+        .map((e) => _TagCount(e.key, e.value))
+        .toList()
+      ..sort((a, b) => b.count.compareTo(a.count));
+    return out;
+  }
+
+  static Future<List<_TagCount>> _getArtistTagsWithFallback(String artistId) async {
+    final cached = _artistTagsCache[artistId];
+    if (cached != null && _cacheValid(cached.ts, _similarTtl)) {
+      return cached.value;
+    }
+
+    // 1) tags directos del artista
+    final infoUrl = Uri.parse('$_mbBase/artist/$artistId?inc=tags&fmt=json');
+    final infoRes = await _get(infoUrl);
+    List<_TagCount> tags = const <_TagCount>[];
+    if (infoRes.statusCode == 200) {
+      try {
+        final data = jsonDecode(infoRes.body);
+        tags = _parseTagCounts(data['tags']);
+      } catch (_) {
+        tags = const <_TagCount>[];
+      }
+    }
+
+    // 2) fallback: tags desde release-groups
+    if (tags.isEmpty) {
+      tags = await _fallbackTagsFromReleaseGroups(artistId);
+    }
+
+    // Evitar cachear vacíos (permite reintentar si fue un fallo temporal).
+    if (tags.isNotEmpty) {
+      _artistTagsCache[artistId] = _CacheEntry(tags, DateTime.now());
+    }
+    return tags;
+  }
+
   // ============================================
   // ✨ ARTISTAS SIMILARES (por tags de MusicBrainz)
   // ============================================
@@ -575,27 +866,15 @@ class DiscographyService {
     final id = artistId.trim();
     if (id.isEmpty) return <SimilarArtistHit>[];
 
-    // 1) Tags del artista
-    final infoUrl = Uri.parse('$_mbBase/artist/$id?inc=tags&fmt=json');
-    final infoRes = await _get(infoUrl);
-    if (infoRes.statusCode != 200) return <SimilarArtistHit>[];
-
-    final data = jsonDecode(infoRes.body);
-    final rawTags = (data['tags'] as List?) ?? const <dynamic>[];
-
-    final tags = <_TagCount>[];
-    for (final t in rawTags) {
-      if (t is! Map) continue;
-      final name = (t['name'] ?? '').toString().trim();
-      if (name.isEmpty) continue;
-      // evita "1990s", "70s", etc.
-      if (RegExp(r'\d').hasMatch(name)) continue;
-      final c = (t['count'] is int) ? (t['count'] as int) : int.tryParse((t['count'] ?? '0').toString()) ?? 0;
-      tags.add(_TagCount(name, c));
+    final cacheKey = '$id|$limit|$tagLimit|$perTag';
+    final cached = _similarCache[cacheKey];
+    if (cached != null && _cacheValid(cached.ts, _similarTtl)) {
+      return cached.value;
     }
-    if (tags.isEmpty) return <SimilarArtistHit>[];
 
-    tags.sort((a, b) => b.count.compareTo(a.count));
+    // 1) Tags del artista (con fallback desde release-groups)
+    final tags = await _getArtistTagsWithFallback(id);
+    if (tags.isEmpty) return <SimilarArtistHit>[];
 
     // Filtra tags ultra genéricos si hay alternativas.
     const broad = <String>{
@@ -613,7 +892,8 @@ class DiscographyService {
     };
 
     final filtered = tags.where((t) => !broad.contains(t.name.toLowerCase())).toList();
-    final picked = (filtered.isNotEmpty ? filtered : tags).take(tagLimit).toList();
+    final safeTagLimit = math.max(1, tagLimit);
+    final picked = (filtered.isNotEmpty ? filtered : tags).take(safeTagLimit).toList();
 
     // 2) Buscar artistas por tag y combinar
     final Map<String, _SimilarAgg> agg = <String, _SimilarAgg>{};
@@ -629,7 +909,12 @@ class DiscographyService {
       final res = await _get(url);
       if (res.statusCode != 200) continue;
 
-      final d = jsonDecode(res.body);
+      dynamic d;
+      try {
+        d = jsonDecode(res.body);
+      } catch (_) {
+        continue;
+      }
       final artists = (d['artists'] as List?) ?? const <dynamic>[];
 
       // Peso del tag: suavizado por raíz para que no domine un tag con count gigante.
@@ -683,8 +968,12 @@ class DiscographyService {
     }).toList();
 
     out.sort((a, b) => b.score.compareTo(a.score));
-    if (out.length > limit) return out.take(limit).toList();
-    return out;
+    final clipped = (out.length > limit) ? out.take(limit).toList() : out;
+    // No cachear vacíos: así el usuario puede reintentar si fue un fallo temporal.
+    if (clipped.isNotEmpty) {
+      _similarCache[cacheKey] = _CacheEntry(clipped, DateTime.now());
+    }
+    return clipped;
   }
 
 

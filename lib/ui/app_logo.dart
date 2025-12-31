@@ -4,7 +4,7 @@ import '../l10n/app_strings.dart';
 // Tamaños de branding.
 // - Home mantiene su header grande.
 // - Resto de pantallas: logo del AppBar al doble (pedido).
-// Para que el título no se corte, usamos un título con FittedBox(scaleDown).
+// Para que el título no se achique, usamos ellipsis (sin scaleDown).
 const double kAppBarLogoSize = 68; // logo grande en AppBar
 const double kHomeHeaderLogoSize = 144; // mantener look grande del Home
 const double kAppBarGapLogoBack = 12;
@@ -76,8 +76,11 @@ Widget appBarLeadingLogoBack(
   );
 }
 
-/// Título para AppBar que **no se corta**.
-/// - Usa FittedBox(scaleDown) para que el texto se vea completo incluso con logo grande.
+/// Título para AppBar.
+/// - Antes usábamos FittedBox(scaleDown) para que el texto siempre “cupiera”,
+///   pero eso hacía que en pantallas con muchas acciones (ej: Vinilos/Favoritos)
+///   el título se achicara demasiado.
+/// - Ahora mantenemos un tamaño consistente y, si no entra, usamos ellipsis.
 Widget appBarTitleTextScaled(
   String title, {
   EdgeInsets padding = const EdgeInsets.only(left: 10),
@@ -87,10 +90,12 @@ Widget appBarTitleTextScaled(
     padding: padding,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: FittedBox(
-        alignment: Alignment.centerLeft,
-        fit: BoxFit.scaleDown,
-        child: Text(title, maxLines: 1, style: style),
+      child: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        style: style,
       ),
     ),
   );

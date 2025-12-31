@@ -331,7 +331,34 @@ class _SimilarArtistsScreenState extends State<SimilarArtistsScreen> {
                   : (_loadingSimilar
                       ? Center(child: Text(context.tr('Buscando similares…')))
                       : (_similar.isEmpty
-                          ? Center(child: Text(context.tr('Sin resultados')))
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(context.tr('Sin resultados')),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    alignment: WrapAlignment.center,
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: (_selected == null)
+                                            ? null
+                                            : () => _pickArtist(_selected!),
+                                        icon: const Icon(Icons.refresh),
+                                        label: Text(context.tr('Reintentar')),
+                                      ),
+                                      OutlinedButton.icon(
+                                        onPressed: () => _clearAll(),
+                                        icon: const Icon(Icons.swap_horiz),
+                                        label: Text(context.tr('Cambiar')),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            )
                           : ListView.separated(
                               itemCount: _similar.length,
                               separatorBuilder: (_, __) => const Divider(height: 1),

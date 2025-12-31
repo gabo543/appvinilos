@@ -48,14 +48,15 @@ class PriceRange {
   }
 }
 
-/// Rango de precios (mín/mediana/máx) basado en tiendas europeas.
+/// Rango de precios (mín/mediana/máx) basado en tiendas.
 ///
-/// Importante: se eliminó Discogs.
+/// Importante: en esta app el precio se toma solo desde:
+/// - iMusic.fi
+/// - Muziker.fi
 ///
 /// Estrategia:
-/// - Si hay barcode (EAN/UPC): consulta iMusic.fi, Muziker.fi y Levykauppa Äx.
-/// - Si no: hace una búsqueda por texto (artista + álbum) en esas mismas
-///   tiendas (best-effort, menos preciso).
+/// - Si hay barcode (EAN/UPC): consulta esas 2 tiendas.
+/// - Si no: hace una búsqueda por texto (artista + álbum) (best-effort).
 class PriceRangeService {
   static double _median(List<StoreOffer> sorted) {
     if (sorted.isEmpty) return 0;

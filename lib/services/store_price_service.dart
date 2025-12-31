@@ -66,6 +66,22 @@ class StorePriceService {
   // sin spamear una misma tienda).
   static final Map<String, DateTime> _lastFetchByHost = {};
 
+  // ✅ Solo usamos estas 2 tiendas.
+  // (El resto se eliminó para evitar precios erróneos y cambios de HTML.)
+  static bool _isAllowedStore(String store) {
+    final s = store.toLowerCase();
+    return s.contains('imusic') || s.contains('muziker');
+  }
+
+  static List<StoreOffer> _onlyAllowed(List<StoreOffer> offers) {
+    final out = <StoreOffer>[];
+    for (final o in offers) {
+      if (_isAllowedStore(o.store)) out.add(o);
+    }
+    out.sort((a, c) => a.price.compareTo(c.price));
+    return out;
+  }
+
   static String _cacheKey(String barcode) => '$_prefsPrefix${barcode.trim()}';
 
   static String _normKey(String s) {
@@ -128,9 +144,9 @@ class StorePriceService {
                 if (o != null) offers.add(o);
               }
             }
-            offers.sort((a, c) => a.price.compareTo(c.price));
-            _memCache[key] = offers;
-            return offers;
+            final filtered = _onlyAllowed(offers);
+            _memCache[key] = filtered;
+            return filtered;
           }
         }
       } catch (_) {
@@ -141,7 +157,7 @@ class StorePriceService {
     if (_inflight.containsKey(key)) return _inflight[key]!;
 
     final fut = () async {
-      final offers = await fetchOffersByBarcode(b);
+      final offers = _onlyAllowed(await fetchOffersByBarcode(b));
       _memCache[key] = offers;
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -199,9 +215,9 @@ class StorePriceService {
                 if (o != null) offers.add(o);
               }
             }
-            offers.sort((a, c) => a.price.compareTo(c.price));
-            _memCache[key] = offers;
-            return offers;
+            final filtered = _onlyAllowed(offers);
+            _memCache[key] = filtered;
+            return filtered;
           }
         }
       } catch (_) {
@@ -212,7 +228,7 @@ class StorePriceService {
     if (_inflight.containsKey(key)) return _inflight[key]!;
 
     final fut = () async {
-      final offers = await fetchOffersByQuery(artist: a, album: al);
+      final offers = _onlyAllowed(await fetchOffersByQuery(artist: a, album: al));
       _memCache[key] = offers;
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -244,15 +260,13 @@ class StorePriceService {
     final results = await Future.wait<StoreOffer?>([
       _fetchIMusic(b),
       _fetchMuziker(b),
-      _fetchLevykauppaX(b),
     ]);
 
     for (final r in results) {
       if (r != null) offers.add(r);
     }
 
-    offers.sort((a, c) => a.price.compareTo(c.price));
-    return offers;
+    return _onlyAllowed(offers);
   }
 
   static Future<List<StoreOffer>> fetchOffersByQuery({
@@ -269,13 +283,11 @@ class StorePriceService {
     final results = await Future.wait<StoreOffer?>([
       _fetchIMusicQuery(q),
       _fetchMuzikerArtistAlbum(artist: a, album: al, fallbackQuery: q),
-      _fetchLevykauppaXQuery(q),
     ]);
     for (final r in results) {
       if (r != null) offers.add(r);
     }
-    offers.sort((a, c) => a.price.compareTo(c.price));
-    return offers;
+    return _onlyAllowed(offers);
   }
 
   static Future<http.Response?> _get(String url) async {
@@ -414,9 +426,9 @@ class StorePriceService {
     if (res == null) return null;
 
     final html = res.body;
-    final price = _minPrice(html);
-    if (price == null) return null;
-
+    // iMusic suele devolver muchos precios (CD, envío, accesorios). Para evitar
+    // falsos mínimos, intentamos tomar el precio cerca del primer resultado
+    // que apunte al producto con el barcode.
     // Preferimos un link /music/<barcode>/...
     final direct = _firstHref(
       html,
@@ -428,6 +440,19 @@ class StorePriceService {
       RegExp('href=["\'](/music/[^"\']+)["\']', caseSensitive: false),
       prefix: 'https://imusic.fi',
     );
+
+    double? price;
+    if (direct != null) {
+      final rel = direct.replaceFirst('https://imusic.fi', '');
+      final idx = html.indexOf(rel);
+      if (idx >= 0) {
+        final end = (idx + 1400) > html.length ? html.length : (idx + 1400);
+        final snippet = html.substring(idx, end);
+        price = _firstPriceInHtml(snippet, minValid: 7) ?? _minPrice(snippet, minValid: 7);
+      }
+    }
+    price ??= _firstPriceInHtml(html, minValid: 7) ?? _minPrice(html, minValid: 7);
+    if (price == null) return null;
 
     return StoreOffer(
       store: 'iMusic.fi',
@@ -452,10 +477,10 @@ class StorePriceService {
       if (idx >= 0) {
         final end = (idx + 900) > html.length ? html.length : (idx + 900);
         final snippet = html.substring(idx, end);
-        price = _firstPriceInHtml(snippet) ?? _minPrice(snippet);
+        price = _firstPriceInHtml(snippet, minValid: 7) ?? _minPrice(snippet, minValid: 7);
       }
     }
-    price ??= _firstPriceInHtml(html);
+    price ??= _firstPriceInHtml(html, minValid: 7) ?? _minPrice(html, minValid: 7);
     if (price == null) return null;
 
     final any = rel == null ? null : 'https://imusic.fi$rel';
@@ -755,55 +780,4 @@ class StorePriceService {
     return 'Con código $code';
   }
 
-  // ------------------ Levykauppa Äx ------------------
-
-  static Future<StoreOffer?> _fetchLevykauppaX(String barcode) async {
-    final tries = <String>[
-      'https://www.levykauppax.fi/search/?q=$barcode',
-      'https://www.levykauppax.fi/search?q=$barcode',
-      'https://www.levykauppax.fi/haku/?q=$barcode',
-      'https://www.levykauppax.fi/?q=$barcode',
-      'https://www.levykauppax.fi/index.php?search=$barcode',
-      'https://www.levykauppax.fi/index.php?hakusana=$barcode',
-    ];
-
-    for (final u in tries) {
-      final res = await _get(u);
-      if (res == null) continue;
-      final html = res.body;
-
-      final p = _minPrice(html);
-      if (p == null) continue;
-      final can = _extractCanonical(html) ?? u;
-      return StoreOffer(store: 'Levykauppa Äx', price: p, currency: 'EUR', url: can);
-    }
-
-    return null;
-  }
-
-  static Future<StoreOffer?> _fetchLevykauppaXQuery(String query) async {
-    final q = Uri.encodeQueryComponent(query);
-    final tries = <String>[
-      'https://www.levykauppax.fi/search/?q=$q',
-      'https://www.levykauppax.fi/search?q=$q',
-      'https://www.levykauppax.fi/haku/?q=$q',
-      'https://www.levykauppax.fi/?q=$q',
-      'https://www.levykauppax.fi/index.php?search=$q',
-      'https://www.levykauppax.fi/index.php?hakusana=$q',
-    ];
-
-    for (final u in tries) {
-      final res = await _get(u);
-      if (res == null) continue;
-      final html = res.body;
-
-      // En búsquedas con múltiples resultados, usa el primer precio visible.
-      final p = _firstPriceInHtml(html) ?? _minPrice(html);
-      if (p == null) continue;
-      final can = _extractCanonical(html) ?? u;
-      return StoreOffer(store: 'Levykauppa Äx', price: p, currency: 'EUR', url: can);
-    }
-
-    return null;
-  }
 }

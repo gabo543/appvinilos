@@ -401,7 +401,10 @@ ThemeData _theme5() {
       primaryTextTheme: base.primaryTextTheme.merge(proTextTheme),
       appBarTheme: base.appBarTheme.copyWith(
         toolbarHeight: 60,
+        // ✅ Tamaño único para títulos en toda la app (Vinilos/Favoritos/Deseos/...)
+        // Evita que “Vinilos” se vea más chico cuando hay muchas acciones.
         titleTextStyle: proTextTheme.titleLarge?.copyWith(
+          fontSize: 22,
           fontWeight: FontWeight.w900,
           color: cs.onSurface,
         ),

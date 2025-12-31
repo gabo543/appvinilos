@@ -22,6 +22,7 @@ import 'home/home_header.dart';
 import 'manual_vinyl_entry_screen.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
+import 'widgets/app_pager.dart';
 
 enum Vista { inicio, lista, favoritos, borrar }
 
@@ -140,6 +141,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ⭐ Cache local para favoritos (cambio instantáneo)
   final Map<int, bool> _favCache = {};
+
+  // 📄 Paginación (20 por página) en modo lista.
+  static const int _pageSize = 20;
+  int _pageVinilos = 1;
+  int _pageFavoritos = 1;
+  int _pageBorrar = 1;
 
   // 🔎 Filtros + orden (solo para "Vinilos")
   String _filterArtistQ = '';
@@ -768,7 +775,10 @@ Future<void> _loadViewMode() async {
     _debounceLocalSearch?.cancel();
     _debounceLocalSearch = Timer(Duration(milliseconds: 220), () {
       if (!mounted) return;
-      setState(() => _localQuery = _localSearchCtrl.text);
+      setState(() {
+        _localQuery = _localSearchCtrl.text;
+        _resetPagingAll();
+      });
     });
   }
 
@@ -815,6 +825,31 @@ Future<void> _loadViewMode() async {
     if (country.contains(qNorm)) return true;
 
     return false;
+  }
+
+  int _getPageForList({required bool conBorrar, required bool onlyFavorites}) {
+    if (conBorrar) return _pageBorrar;
+    if (onlyFavorites) return _pageFavoritos;
+    return _pageVinilos;
+  }
+
+  void _setPageForList({required bool conBorrar, required bool onlyFavorites, required int page}) {
+    final p = page < 1 ? 1 : page;
+    setState(() {
+      if (conBorrar) {
+        _pageBorrar = p;
+      } else if (onlyFavorites) {
+        _pageFavoritos = p;
+      } else {
+        _pageVinilos = p;
+      }
+    });
+  }
+
+  void _resetPagingAll() {
+    _pageVinilos = 1;
+    _pageFavoritos = 1;
+    _pageBorrar = 1;
   }
 
   @override
@@ -2976,8 +3011,45 @@ Widget listaCompleta({
         );
       }
 
+      // 📄 Paginación: 20 vinilos por página (en lista / grid / carátulas).
+      final int total = visibleItems.length;
+      final int totalPages = (total <= 0) ? 1 : ((total + _pageSize - 1) ~/ _pageSize);
+      final int currentStored = _getPageForList(conBorrar: conBorrar, onlyFavorites: onlyFavorites);
+      final int page = currentStored.clamp(1, totalPages);
+      if (page != currentStored) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _setPageForList(conBorrar: conBorrar, onlyFavorites: onlyFavorites, page: page);
+        });
+      }
+      final int start = (page - 1) * _pageSize;
+      final int end = (start + _pageSize < total) ? (start + _pageSize) : total;
+      final List<Map<String, dynamic>> pageItems = (total <= 0 || start >= total)
+          ? const <Map<String, dynamic>>[]
+          : visibleItems.sublist(start, end);
+
+      Widget wrapWithPager(Widget listWidget) {
+        final pager = AppPager(
+          page: page,
+          totalPages: totalPages,
+          onPrev: () => _setPageForList(conBorrar: conBorrar, onlyFavorites: onlyFavorites, page: page - 1),
+          onNext: () => _setPageForList(conBorrar: conBorrar, onlyFavorites: onlyFavorites, page: page + 1),
+        );
+        if (totalPages <= 1) return listWidget;
+        if (embedInScroll) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [listWidget, pager],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [Expanded(child: listWidget), pager],
+        );
+      }
+
       if (_viewMode == VinylViewMode.grid) {
-        return GridView.builder(
+        return wrapWithPager(GridView.builder(
           // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
           // Sin shrinkWrap/physics el Grid puede quedar sin altura
           // (o lanzar "unbounded height") y verse como "lista vacía".
@@ -2991,18 +3063,18 @@ Widget listaCompleta({
             // Un poco más vertical para dar protagonismo a la carátula
             childAspectRatio: 0.68,
           ),
-          itemCount: visibleItems.length,
+          itemCount: pageItems.length,
           itemBuilder: (context, i) {
-            final v = visibleItems[i];
+            final v = pageItems[i];
             return _gridTile(v, conBorrar: conBorrar);
           },
-        );
+        ));
       }
 
       if (_viewMode == VinylViewMode.cover) {
         final w = MediaQuery.of(context).size.width;
         final int cols = ((w / 140).floor()).clamp(2, 5).toInt();
-        return GridView.builder(
+        return wrapWithPager(GridView.builder(
           shrinkWrap: embedInScroll,
           physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(12),
@@ -3012,12 +3084,12 @@ Widget listaCompleta({
             crossAxisSpacing: 10,
             childAspectRatio: 1.0,
           ),
-          itemCount: visibleItems.length,
+          itemCount: pageItems.length,
           itemBuilder: (context, i) {
-            final v = visibleItems[i];
+            final v = pageItems[i];
             return _coverOnlyTile(v, conBorrar: conBorrar);
           },
-        );
+        ));
       }
 
       // 📚 Cuando se ordena A–Z en "Vinilos", agrupamos por letra (A, B, C...) como en “Contactos”.
@@ -3025,7 +3097,7 @@ Widget listaCompleta({
       if (showAlphaHeaders) {
         final rows = <_AlphaRow>[];
         String last = '';
-        for (final v in visibleItems) {
+        for (final v in pageItems) {
           final letter = _alphaBucketFromArtist((v['artista'] as String?) ?? '');
           if (letter != last) {
             rows.add(_AlphaRow.header(letter));
@@ -3033,7 +3105,7 @@ Widget listaCompleta({
           }
           rows.add(_AlphaRow.item(v));
         }
-        return ListView.builder(
+        return wrapWithPager(ListView.builder(
           shrinkWrap: embedInScroll,
           physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -3045,22 +3117,22 @@ Widget listaCompleta({
             }
             return _vinylListCard(r.payload!, conBorrar: conBorrar);
           },
-        );
+        ));
       }
 
-      return ListView.builder(
+      return wrapWithPager(ListView.builder(
         // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
         // Sin shrinkWrap/physics el ListView puede quedar sin altura
         // y verse como "lista vacía".
         shrinkWrap: embedInScroll,
         physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: visibleItems.length,
+        itemCount: pageItems.length,
         itemBuilder: (context, i) {
-          final v = visibleItems[i];
+          final v = pageItems[i];
           return _vinylListCard(v, conBorrar: conBorrar);
         },
-      );
+      ));
     },
   );
 }

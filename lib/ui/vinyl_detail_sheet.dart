@@ -6,7 +6,7 @@ import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
 
-/// Bottom sheet con los precios (iMusic / Muziker / Levykauppa Äx).
+/// Bottom sheet con los precios (iMusic / Muziker).
 ///
 /// - Si hay barcode (EAN/UPC), lo usa (más preciso).
 /// - Si no, busca por texto (artista + álbum) en las mismas tiendas.
@@ -124,29 +124,22 @@ class _VinylStorePricesSheetState extends State<_VinylStorePricesSheet> {
               }
 
               final sorted = [...offers]..sort((a, b) => a.price.compareTo(b.price));
-              final best2 = sorted.take(2).toList();
               final min = sorted.first.price;
               final max = sorted.last.price;
-              final n = sorted.length;
-              final median = (n % 2 == 1)
-                  ? sorted[n ~/ 2].price
-                  : (sorted[(n ~/ 2) - 1].price + sorted[n ~/ 2].price) / 2.0;
-
               final a = _fmt(min);
-              final m = _fmt(median);
               final b = _fmt(max);
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    (a == b && a == m)
+                    (a == b)
                         ? '${context.tr('Precio')}: €$a'
-                        : '${context.tr('Rango')}: €$a / €$m / €$b',
+                        : '${context.tr('Rango')}: €$a - €$b',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
-                  ...best2.map(
+                  ...sorted.map(
                     (o) => ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -154,22 +147,6 @@ class _VinylStorePricesSheetState extends State<_VinylStorePricesSheet> {
                       trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w900)),
                     ),
                   ),
-                  if (sorted.length > best2.length) ...[
-                    const Divider(),
-                    Text(
-                      context.tr('Más resultados'),
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 6),
-                    ...sorted.skip(2).map(
-                      (o) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 6),
                   Text(
                     context.tr('Los precios pueden cambiar y algunas tiendas pueden bloquear la consulta automática.'),
@@ -460,11 +437,10 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     if (pr == null) return '€ —';
 
     final a = _fmtMoney(pr.min);
-    final m = _fmtMoney(pr.median);
     final b = _fmtMoney(pr.max);
 
-    if (a == b && a == m) return '€ $a';
-    return '€ $a / $m / $b';
+    if (a == b) return '€ $a';
+    return '€ $a - $b';
   }
 
   String _priceUpdatedMini() {

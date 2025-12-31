@@ -13,6 +13,7 @@ import 'album_tracks_screen.dart';
 import 'app_logo.dart';
 import 'explore_screen.dart';
 import 'similar_artists_screen.dart';
+import 'widgets/app_pager.dart';
 import '../l10n/app_strings.dart';
 
 class DiscographyScreen extends StatefulWidget {
@@ -25,6 +26,10 @@ class DiscographyScreen extends StatefulWidget {
 }
 
 class _DiscographyScreenState extends State<DiscographyScreen> {
+
+  // 📄 Paginación (20 por página) para la lista de álbumes.
+  static const int _pageSize = 20;
+  int _albumPage = 1;
 
   int _asInt(dynamic v) {
     if (v is int) return v;
@@ -72,6 +77,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       pickedArtist = null;
       albums = [];
       loadingAlbums = false;
+      _albumPage = 1;
     });
     _lastAutoPickedQuery = '';
     _exists.clear();
@@ -98,6 +104,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       _songMatchReleaseGroups = <String>{};
       _loadingSongSuggestions = false;
       _songSuggestions = <SongHit>[];
+      _albumPage = 1;
     });
     _lastSongQueryNorm = '';
     _selectedSongRecordingId = '';
@@ -120,7 +127,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   final Map<String, bool> _wish = {};
   final Map<String, bool> _busy = {};
 
-  // 💶 Precios en lista (discografía) - tiendas (iMusic, Muziker, Äx)
+  // 💶 Precios en lista (discografía) - tiendas (iMusic, Muziker)
   // Se activan por álbum (icono € en cada card), no global.
   final Map<String, bool> _priceEnabledByReleaseGroup = {};
   final Map<String, List<StoreOffer>?> _offersByReleaseGroup = {};
@@ -129,7 +136,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   String _k(String artist, String album) => '${artist.trim()}||${album.trim()}';
 
   String _priceLabelForOffers(List<StoreOffer> offers) {
-    // Formato: min / mediana / máx.
+    // Formato: min - max (solo 2 precios visibles).
     String fmt(double v) {
       final r = v.roundToDouble();
       if ((v - r).abs() < 0.005) return r.toInt().toString();
@@ -140,16 +147,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final sorted = [...offers]..sort((a, b) => a.price.compareTo(b.price));
     final min = sorted.first.price;
     final max = sorted.last.price;
-    final n = sorted.length;
-    final median = (n % 2 == 1)
-        ? sorted[n ~/ 2].price
-        : (sorted[(n ~/ 2) - 1].price + sorted[n ~/ 2].price) / 2.0;
-
     final a = fmt(min);
-    final m = fmt(median);
     final b = fmt(max);
-    if (a == b && a == m) return '€ $a';
-    return '€ $a / $m / $b';
+    if (a == b) return '€ $a';
+    return '€ $a - $b';
   }
 
   void _ensureOffersLoaded(String artistName, AlbumItem al) {
@@ -331,11 +332,40 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final a = pickedArtist;
     if (a == null) return;
 
+    // Usamos búsqueda robusta por título + artista, pero priorizando el recordingId
+    // seleccionado (más preciso). Esto evita falsos negativos típicos de remasters/live.
+    await _applySongFilterByText(
+      hit.title,
+      preferredRecordingId: hit.id,
+      markAsSelected: true,
+    );
+  }
+
+  Future<void> _applySongFilterByText(
+    String songTitle, {
+    String? preferredRecordingId,
+    bool markAsSelected = false,
+  }) async {
+    final a = pickedArtist;
+    if (a == null) return;
+
+    final raw = songTitle.trim();
+    final qNorm = _normQ(raw);
+    if (qNorm.isEmpty) {
+      _clearSongFilter(setText: true);
+      return;
+    }
+
     final mySeq = ++_songReqSeq;
-    final cacheKey = '${a.id}||rid:${hit.id}';
+    final cacheKey = '${a.id}||song:$qNorm';
     final cached = _songCache[cacheKey];
     if (cached != null) {
       if (!mounted) return;
+      // Activamos el filtro aunque venga de caché.
+      if (markAsSelected || _selectedSongRecordingId.isEmpty) {
+        _selectedSongRecordingId = (preferredRecordingId ?? 'text');
+        _selectedSongTitleNorm = qNorm;
+      }
       setState(() {
         searchingSongs = false;
         _songMatchReleaseGroups = cached;
@@ -347,11 +377,16 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     setState(() {
       searchingSongs = true;
       _songMatchReleaseGroups = <String>{};
+      _albumPage = 1;
     });
 
     try {
-      final ids = await DiscographyService.getAlbumReleaseGroupsForRecordingId(
-        recordingId: hit.id,
+      final ids = await DiscographyService.searchAlbumReleaseGroupsBySongRobust(
+        artistId: a.id,
+        songQuery: raw,
+        preferredRecordingId: preferredRecordingId,
+        searchLimit: 18,
+        maxLookups: 5,
       );
       if (!mounted) return;
       if (mySeq != _songReqSeq) return;
@@ -360,6 +395,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         searchingSongs = false;
         _songMatchReleaseGroups = ids;
       });
+
+      // Si el usuario no seleccionó sugerencia, igual activamos el filtro.
+      if (markAsSelected || _selectedSongRecordingId.isEmpty) {
+        _selectedSongRecordingId = (preferredRecordingId ?? 'text');
+        _selectedSongTitleNorm = qNorm;
+      }
     } catch (_) {
       if (!mounted) return;
       if (mySeq != _songReqSeq) return;
@@ -367,6 +408,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         searchingSongs = false;
         _songMatchReleaseGroups = <String>{};
       });
+      if (markAsSelected || _selectedSongRecordingId.isEmpty) {
+        _selectedSongRecordingId = (preferredRecordingId ?? 'text');
+        _selectedSongTitleNorm = qNorm;
+      }
     }
   }
 
@@ -382,6 +427,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     setState(() {
       _songSuggestions = <SongHit>[];
       _loadingSongSuggestions = false;
+      _albumPage = 1;
     });
     FocusScope.of(context).unfocus();
 
@@ -505,6 +551,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       artistResults = [];
       albums = [];
       loadingAlbums = true;
+      _albumPage = 1;
 
       // limpiezas cache (para evitar estados viejos)
       _exists.clear();
@@ -869,6 +916,21 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             return rgid.isNotEmpty && _songMatchReleaseGroups.contains(rgid);
           }).toList();
 
+    // 📄 Paginación (20 por página)
+    final totalAlbums = visibleAlbums.length;
+    final totalPages = (totalAlbums <= 0) ? 1 : ((totalAlbums + _pageSize - 1) ~/ _pageSize);
+    final page = _albumPage.clamp(1, totalPages);
+    if (page != _albumPage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _albumPage = page);
+      });
+    }
+    final start = (page - 1) * _pageSize;
+    final end = (start + _pageSize < totalAlbums) ? (start + _pageSize) : totalAlbums;
+    final pageAlbums = (totalAlbums <= 0 || start >= totalAlbums)
+        ? const <AlbumItem>[]
+        : visibleAlbums.sublist(start, end);
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: kAppBarToolbarHeight,
@@ -946,9 +1008,27 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
               TextField(
                 controller: songCtrl,
                 focusNode: _songFocus,
+                textInputAction: TextInputAction.search,
                 onChanged: (v) {
                   setState(() {});
                   _onSongTextChanged(v);
+                },
+                onSubmitted: (v) {
+                  // Aplicar filtro también cuando el usuario presiona Enter/Search.
+                  final raw = v.trim();
+                  if (raw.isEmpty) {
+                    _clearSongFilter(setText: true);
+                    return;
+                  }
+                  _songSuggestDebounce?.cancel();
+                  _songSuggestSeq++;
+                  setState(() {
+                    _songSuggestions = <SongHit>[];
+                    _loadingSongSuggestions = false;
+                    _albumPage = 1;
+                  });
+                  FocusScope.of(context).unfocus();
+                  _applySongFilterByText(raw, markAsSelected: true);
                 },
                 decoration: InputDecoration(
                   labelText: context.tr('Canción'),
@@ -956,10 +1036,35 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                   prefixIcon: Icon(Icons.music_note),
                   suffixIcon: songCtrl.text.trim().isEmpty
                       ? null
-                      : IconButton(
-                          tooltip: context.tr('Limpiar'),
-                          icon: Icon(Icons.close),
-                          onPressed: () => _clearSongFilter(setText: true),
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: context.tr('Filtrar'),
+                              icon: const Icon(Icons.search),
+                              onPressed: () {
+                                final raw = songCtrl.text.trim();
+                                if (raw.isEmpty) {
+                                  _clearSongFilter(setText: true);
+                                  return;
+                                }
+                                _songSuggestDebounce?.cancel();
+                                _songSuggestSeq++;
+                                setState(() {
+                                  _songSuggestions = <SongHit>[];
+                                  _loadingSongSuggestions = false;
+                                  _albumPage = 1;
+                                });
+                                FocusScope.of(context).unfocus();
+                                _applySongFilterByText(raw, markAsSelected: true);
+                              },
+                            ),
+                            IconButton(
+                              tooltip: context.tr('Limpiar'),
+                              icon: const Icon(Icons.close),
+                              onPressed: () => _clearSongFilter(setText: true),
+                            ),
+                          ],
                         ),
                 ),
               ),
@@ -1040,10 +1145,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                         ? Center(child: Text(context.tr('Busca un artista para ver su discografía.')))
                         : (songFilterActive && !searchingSongs && visibleAlbums.isEmpty
                             ? Center(child: Text(context.tr('No encontré esa canción en álbumes.')))
-                            : ListView.builder(
-                            itemCount: visibleAlbums.length,
-                            itemBuilder: (_, i) {
-                              final al = visibleAlbums[i];
+                            : Column(
+                                children: [
+                                  Expanded(
+                                    child: ListView.builder(
+                                      itemCount: pageAlbums.length,
+                                      itemBuilder: (_, i) {
+                                        final al = pageAlbums[i];
                               final key = _k(artistName, al.title);
 
                               if (artistName.isNotEmpty && !_exists.containsKey(key) && _busy[key] != true) {
@@ -1112,9 +1220,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                 );
                               }
 
-                              return Card(
-                                child: Column(
-                                  children: [
+                                        return Card(
+                                          child: Column(
+                                            children: [
                                     ListTile(
                                       leading: AppCoverImage(
                                         pathOrUrl: al.cover250,
@@ -1255,9 +1363,20 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                     ),
                                   ],
                                 ),
-                              );
-                            },
-                          ))),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  AppPager(
+                                    page: page,
+                                    totalPages: totalPages,
+                                    onPrev: () => setState(() => _albumPage = (page - 1).clamp(1, totalPages)),
+                                    onNext: () => setState(() => _albumPage = (page + 1).clamp(1, totalPages)),
+                                  ),
+                                ],
+                              )))),
               ),
           ],
         ),

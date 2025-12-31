@@ -11,6 +11,7 @@ import 'vinyl_detail_sheet.dart';
 import 'app_logo.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
+import 'widgets/app_pager.dart';
 
 class WishlistScreen extends StatefulWidget {
   final bool showOnlyPurchased;
@@ -132,7 +133,6 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
               }
 
               final sorted = [...offers]..sort((a, b) => a.price.compareTo(b.price));
-              final best2 = sorted.take(2).toList();
               final min = sorted.first.price;
               final max = sorted.last.price;
 
@@ -142,11 +142,11 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
                   Text(
                     (min == max)
                         ? '${context.tr('Precio')}: €${_fmt(min)}'
-                        : '${context.tr('Rango')}: €${_fmt(min)} — €${_fmt(max)}',
+                        : '${context.tr('Rango')}: €${_fmt(min)} - €${_fmt(max)}',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
-                  ...best2.map(
+                  ...sorted.map(
                     (o) => ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -154,22 +154,6 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
                       trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w900)),
                     ),
                   ),
-                  if (sorted.length > best2.length) ...[
-                    const Divider(),
-                    Text(
-                      context.tr('Más resultados'),
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 6),
-                    ...sorted.skip(2).map(
-                      (o) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 6),
                   Text(
                     context.tr('Los precios pueden cambiar y algunas tiendas pueden bloquear la consulta automática.'),
@@ -188,6 +172,10 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
 class _WishlistScreenState extends State<WishlistScreen> {
   late Future<List<Map<String, dynamic>>> _future;
   bool _grid = false;
+
+  // 📄 Paginación (20 por página)
+  static const int _pageSize = 20;
+  int _page = 1;
 
   // price alerts (wishlist)
   final Map<int, Map<String, dynamic>> _wishAlerts = {};
@@ -330,7 +318,6 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final s = store.toLowerCase();
     if (s.contains('imusic')) return 'iMusic';
     if (s.contains('muziker')) return 'Muziker';
-    if (s.contains('levy')) return 'Äx';
     return store;
   }
 
@@ -419,28 +406,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
 
     final sorted = [...list]..sort((a, c) => a.price.compareTo(c.price));
-    final best2 = sorted.take(2).toList();
-
-    final n = sorted.length;
-    final median = (n % 2 == 1)
-        ? sorted[n ~/ 2].price
-        : (sorted[(n ~/ 2) - 1].price + sorted[n ~/ 2].price) / 2.0;
-
     final a = _fmtEur(sorted.first.price);
-    final m = _fmtEur(median);
     final b = _fmtEur(sorted.last.price);
 
-    final rangeText = (a == b && a == m) ? '€$a' : '€$a / $m / $b';
-
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        _offerPill(rangeText, compact: compact),
-        for (final o in best2) _offerPill('€${_fmtEur(o.price)} · ${_shortStore(o.store)}', compact: compact),
-        if (sorted.length > 2) _offerPill('+${sorted.length - 2}', compact: compact),
-      ],
-    );
+    final rangeText = (a == b) ? '€$a' : '€$a - $b';
+    return _offerPill(rangeText, compact: compact);
   }
 
 
@@ -1110,7 +1080,10 @@ Widget _placeholder() {
           IconButton(
             tooltip: _grid ? 'Vista lista' : 'Vista grid',
             icon: Icon(_grid ? Icons.view_list : Icons.grid_view),
-            onPressed: () => setState(() => _grid = !_grid),
+            onPressed: () => setState(() {
+              _grid = !_grid;
+              _page = 1;
+            }),
           ),
         ],
       ),
@@ -1148,27 +1121,52 @@ Widget _placeholder() {
             );
           }
 
+          // 📄 Paginación (20 por página)
+          final total = items.length;
+          final totalPages = (total <= 0) ? 1 : ((total + _pageSize - 1) ~/ _pageSize);
+          final page = _page.clamp(1, totalPages);
+          if (page != _page) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _page = page);
+            });
+          }
+          final start = (page - 1) * _pageSize;
+          final end = (start + _pageSize < total) ? (start + _pageSize) : total;
+          final pageItems = (total <= 0 || start >= total) ? const <Map<String, dynamic>>[] : items.sublist(start, end);
+
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _ensureAutoPrices(items);
+            if (mounted) _ensureAutoPrices(pageItems);
           });
 
-          return _grid
-              ? GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.72,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) => _wishGridCard(items[i]),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) => _wishListCard(items[i]),
-                );
+          return Column(
+            children: [
+              Expanded(
+                child: _grid
+                    ? GridView.builder(
+                        padding: const EdgeInsets.all(12),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 0.72,
+                        ),
+                        itemCount: pageItems.length,
+                        itemBuilder: (context, i) => _wishGridCard(pageItems[i]),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: pageItems.length,
+                        itemBuilder: (context, i) => _wishListCard(pageItems[i]),
+                      ),
+              ),
+              AppPager(
+                page: page,
+                totalPages: totalPages,
+                onPrev: () => setState(() => _page = (page - 1).clamp(1, totalPages)),
+                onNext: () => setState(() => _page = (page + 1).clamp(1, totalPages)),
+              ),
+            ],
+          );
         },
       ),
     );
