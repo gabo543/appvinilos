@@ -24,6 +24,7 @@ dependencies:
   # Mantiene compatibilidad con más versiones de Flutter/Dart.
   shared_preferences: ^2.5.3
   share_plus: ^10.0.3
+  url_launcher: ^6.3.0
   mobile_scanner: ^7.1.4
   # Modo carátula: tomar foto / galería
   image_picker: ^1.1.2

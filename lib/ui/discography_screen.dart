@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../db/vinyl_db.dart';
 import '../services/backup_service.dart';
@@ -143,7 +144,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       return v.toStringAsFixed(2);
     }
 
-    if (offers.isEmpty) return '€ —';
+    if (offers.isEmpty) return '';
     final sorted = [...offers]..sort((a, b) => a.price.compareTo(b.price));
     final min = sorted.first.price;
     final max = sorted.last.price;
@@ -151,6 +152,87 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final b = fmt(max);
     if (a == b) return '€ $a';
     return '€ $a - $b';
+  }
+
+
+  Future<void> _openExternalUrl(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return;
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr('No se pudo abrir el enlace'))),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.tr('No se pudo abrir el enlace'))),
+        );
+      }
+    }
+  }
+
+  void _showPriceSources(BuildContext context, List<StoreOffer> offers) {
+    if (offers.isEmpty) return;
+
+    // Un solo link por tienda (elige el más barato).
+    final Map<String, StoreOffer> byStore = {};
+    for (final o in offers) {
+      final k = o.store.trim();
+      final prev = byStore[k];
+      if (prev == null || o.price < prev.price) byStore[k] = o;
+    }
+    final list = byStore.values.toList()..sort((a, b) => a.store.compareTo(b.store));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    context.tr('Fuentes de precio'),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ...list.map((o) {
+                  return Card(
+                    child: ListTile(
+                      title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text(o.url, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('€${o.price.toStringAsFixed(2)}'.replaceAll('.00', ''), style: const TextStyle(fontWeight: FontWeight.w900)),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.open_in_new, size: 18),
+                        ],
+                      ),
+                      onTap: () => _openExternalUrl(context, o.url),
+                    ),
+                  );
+                }).toList(),
+                const SizedBox(height: 6),
+                Text(
+                  context.tr('Los precios pueden cambiar en la tienda.'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _ensureOffersLoaded(String artistName, AlbumItem al) {
@@ -1130,7 +1212,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                     final a = artistResults[i];
                     return ListTile(
                       title: Text(a.name),
-                      subtitle: Text((a.country ?? '').trim().isEmpty ? '—' : (a.country ?? '').trim()),
+                      subtitle: Text((a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}'),
                       trailing: Icon(Icons.chevron_right),
                       onTap: () => _pickArtist(a),
                     );
@@ -1182,9 +1264,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
                               final hasOffers = rgid.isNotEmpty && _offersByReleaseGroup.containsKey(rgid);
                               final offers = rgid.isEmpty ? null : _offersByReleaseGroup[rgid];
-                              final priceLabel = !priceEnabled
-                                  ? null
-                                  : (!hasOffers ? '€ …' : _priceLabelForOffers(offers ?? const []));
+                              String? priceLabel;
+                              if (!priceEnabled) {
+                                priceLabel = null;
+                              } else if (!hasOffers) {
+                                priceLabel = '€ …';
+                              } else {
+                                final l = _priceLabelForOffers(offers ?? const []);
+                                priceLabel = l.isEmpty ? null : l;
+                              }
 
                               Widget actionItem({
                                 required IconData icon,
@@ -1246,9 +1334,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                             ),
                                           ),
                                           if (priceLabel != null)
-                                            Text(
-                                              priceLabel,
-                                              style: Theme.of(context).textTheme.labelMedium,
+                                            InkWell(
+                                              onTap: (offers != null && offers!.isNotEmpty && !(busy))
+                                                  ? () => _showPriceSources(context, offers!)
+                                                  : null,
+                                              child: Text(
+                                                priceLabel,
+                                                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                                      decoration: (offers != null && offers!.isNotEmpty && !(busy))
+                                                          ? TextDecoration.underline
+                                                          : null,
+                                                    ),
+                                              ),
                                             ),
                                         ],
                                       ),

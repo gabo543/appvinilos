@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/vinyl_add_service.dart';
 import 'add_vinyl_preview_screen.dart';
@@ -24,6 +28,7 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
   final _genreCtrl = TextEditingController();
 
   bool _loading = false;
+  String? _localCoverPath;
 
   @override
   void dispose() {
@@ -34,9 +39,55 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
     super.dispose();
   }
 
+  Future<void> _pickCoverFromGallery() async {
+    try {
+      final picker = ImagePicker();
+      final x = await picker.pickImage(source: ImageSource.gallery, imageQuality: 92);
+      if (x == null) return;
+      setState(() => _localCoverPath = x.path);
+    } catch (_) {
+      _snack('No pude abrir la galería.');
+    }
+  }
+
+  Future<void> _pickCoverFromCamera() async {
+    try {
+      final picker = ImagePicker();
+      final x = await picker.pickImage(source: ImageSource.camera, imageQuality: 92);
+      if (x == null) return;
+      setState(() => _localCoverPath = x.path);
+    } catch (_) {
+      _snack('No pude abrir la cámara.');
+    }
+  }
+
+  Future<void> _pickCoverFromFile() async {
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+        withData: false,
+      );
+      final path = res?.files.single.path;
+      if (path == null || path.trim().isEmpty) return;
+      setState(() => _localCoverPath = path);
+    } catch (_) {
+      _snack('No pude seleccionar el archivo.');
+    }
+  }
+
   void _snack(String t) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  bool get _hasLocalCover {
+    final p = (_localCoverPath ?? '').trim();
+    return p.isNotEmpty && File(p).existsSync();
+  }
+
+  void _clearCover() {
+    setState(() => _localCoverPath = null);
   }
 
   PreparedVinylAdd _overrideFields(PreparedVinylAdd base) {
@@ -47,6 +98,7 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
       album: base.album,
       coverCandidates: base.coverCandidates,
       selectedCover: base.selectedCover,
+      localCoverPath: _localCoverPath,
       artistId: base.artistId,
       year: y.isEmpty ? base.year : y,
       genre: g.isEmpty ? base.genre : g,
@@ -84,6 +136,7 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
         album: album,
         coverCandidates: const [],
         selectedCover: null,
+        localCoverPath: _localCoverPath,
         year: y.isEmpty ? null : y,
         genre: g.isEmpty ? null : g,
       );
@@ -108,6 +161,9 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final local = (_localCoverPath ?? '').trim();
+    final hasLocal = local.isNotEmpty && File(local).existsSync();
 
     return Scaffold(
       appBar: AppBar(
@@ -167,6 +223,68 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
                           labelText: context.tr('Género (opcional)'),
                           hintText: context.tr('Ej: Rock'),
                         ),
+                      ),
+                    ),
+                  ],
+                ),
+                // Carátula manual (foto/archivo)
+                Text(
+                  context.tr('Carátula (opcional)'),
+                  style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        width: 96,
+                        height: 96,
+                        color: t.colorScheme.surfaceContainerHighest,
+                        child: _hasLocalCover
+                            ? Image.file(File(_localCoverPath!), fit: BoxFit.cover)
+                            : Icon(Icons.album, size: 44),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: _loading ? null : _pickCoverFromGallery,
+                                icon: Icon(Icons.photo_library_outlined),
+                                label: Text(context.tr('Foto')),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _loading ? null : _pickCoverFromCamera,
+                                icon: Icon(Icons.photo_camera_outlined),
+                                label: Text(context.tr('Cámara')),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _loading ? null : _pickCoverFromFile,
+                                icon: Icon(Icons.folder_open_outlined),
+                                label: Text(context.tr('Archivo')),
+                              ),
+                            ],
+                          ),
+                          if (_hasLocalCover) ...[
+                            SizedBox(height: 6),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: _loading ? null : _clearCover,
+                                icon: Icon(Icons.close),
+                                label: Text(context.tr('Quitar carátula')),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],

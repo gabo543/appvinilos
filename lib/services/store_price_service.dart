@@ -54,8 +54,8 @@ class StorePriceService {
   static const _ua =
       'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36';
 
-  static const _prefsPrefix = 'store_offers::';
-  static const _prefsPrefixQuery = 'store_offers_q::';
+  static const _prefsPrefix = 'store_offers_v3::';
+  static const _prefsPrefixQuery = 'store_offers_q_v3::';
   static const _ttlOk = Duration(hours: 12);
   static const _ttlEmpty = Duration(hours: 6);
 
@@ -332,6 +332,182 @@ class StorePriceService {
     return null;
   }
 
+
+  static bool _looksLikeBadContext(String snippet) {
+    final s = _normKey(snippet);
+    const bad = <String>[
+      'shipping',
+      'delivery',
+      'toimitus',
+      'postitus',
+      'postage',
+      'discount',
+      'alennus',
+      'koodilla',
+      'code',
+      'coupon',
+      'kupon',
+      'tarjous',
+      'sale',
+    ];
+    for (final w in bad) {
+      if (s.contains(w)) return true;
+    }
+    return false;
+  }
+
+  static List<double> _extractJsonLdEuroPrices(String html) {
+    final out = <double>[];
+    final rx = RegExp(
+      r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+
+    for (final m in rx.allMatches(html)) {
+      final raw = m.group(1);
+      if (raw == null) continue;
+      final cleaned = raw.trim();
+      if (cleaned.isEmpty) continue;
+
+      dynamic data;
+      try {
+        data = jsonDecode(cleaned);
+      } catch (_) {
+        continue;
+      }
+
+      void collect(dynamic node) {
+        if (node == null) return;
+        if (node is List) {
+          for (final e in node) collect(e);
+          return;
+        }
+        if (node is Map) {
+          final map = Map<String, dynamic>.from(node);
+
+          double? asNum(dynamic v) {
+            if (v == null) return null;
+            if (v is num) return v.toDouble();
+            final s = v.toString().trim();
+            if (s.isEmpty) return null;
+            return _parseNumber(s);
+          }
+
+          final currency = (map['priceCurrency'] ?? map['pricecurrency'] ?? map['currency'])
+              ?.toString()
+              .toUpperCase()
+              .trim();
+          final hasCurrency = currency != null && currency.isNotEmpty;
+          final eurOk = !hasCurrency || currency == 'EUR' || currency == '€';
+
+          if (eurOk) {
+            final p = asNum(map['price']);
+            final lp = asNum(map['lowPrice'] ?? map['lowprice']);
+            final hp = asNum(map['highPrice'] ?? map['highprice']);
+            for (final v in <double?>[p, lp, hp]) {
+              if (v != null && v > 0) out.add(v);
+            }
+          }
+
+          // Campos comunes
+          for (final key in const ['offers', 'itemOffered', 'mainEntity', 'mainEntityOfPage', '@graph']) {
+            if (map.containsKey(key)) collect(map[key]);
+          }
+
+          // Recorrido genérico de subestructuras
+          for (final v in map.values) {
+            if (v is Map || v is List) collect(v);
+          }
+        }
+      }
+
+      collect(data);
+    }
+
+    final filtered = out.where((v) => v >= 7 && v <= 500).toList();
+    return filtered;
+  }
+
+  static double? _extractItempropEuroPrice(String html) {
+    final h = html.replaceAll('&nbsp;', ' ').replaceAll('&euro;', '€');
+
+    final m1 = RegExp(
+      r'itemprop=["\']price["\'][^>]*content=["\']([^"\']+)["\']',
+      caseSensitive: false,
+    ).firstMatch(h);
+    final c1 = m1?.group(1);
+    if (c1 != null && c1.trim().isNotEmpty) {
+      final v = _parseNumber(c1);
+      if (v != null && v >= 7 && v <= 500) return v;
+    }
+
+    final m2 = RegExp(
+      r'itemprop=["\']price["\'][^>]*>\s*([0-9][0-9\.,\s]{0,10})\s*(?:€|EUR)',
+      caseSensitive: false,
+    ).firstMatch(h);
+    final c2 = m2?.group(1);
+    if (c2 != null && c2.trim().isNotEmpty) {
+      final v = _parseNumber(c2);
+      if (v != null && v >= 7 && v <= 500) return v;
+    }
+
+    return null;
+  }
+
+  static double? _extractBestProductPrice(String html) {
+    // 1) Preferimos JSON-LD (schema.org)
+    final js = _extractJsonLdEuroPrices(html);
+    if (js.isNotEmpty) {
+      js.sort();
+      return js.first;
+    }
+
+    // 2) itemprop="price"
+    final ip = _extractItempropEuroPrice(html);
+    if (ip != null) return ip;
+
+    // 3) Fallback (muy best-effort): escaneo general,
+    // pero si hay señales claras de envío/descuento, no adivinamos.
+    if (_looksLikeBadContext(html)) return null;
+
+    final p = _minPrice(html, minValid: 7);
+    if (p != null && p >= 7 && p <= 500) return p;
+    return null;
+  }
+
+  static ({String url, int score})? _bestIMusicProductFromListing(String html, {required List<String> tokens}) {
+    if (tokens.isEmpty) return null;
+
+    final hrefRx = RegExp(r'''href=["'](/music/[^"']+)["']''', caseSensitive: false);
+
+    int bestScore = 0;
+    String? bestPath;
+
+    for (final m in hrefRx.allMatches(html)) {
+      final path = m.group(1);
+      if (path == null || path.trim().isEmpty) continue;
+
+      final start = m.start;
+      final end = (start + 900) > html.length ? html.length : (start + 900);
+      final snippet = html.substring(start, end);
+
+      if (_looksLikeBadContext(snippet)) continue;
+
+      final snNorm = _normKey(snippet);
+      final score = _scoreTokens(snNorm, tokens);
+      if (score <= 0) continue;
+
+      if (bestPath == null || score > bestScore) {
+        bestScore = score;
+        bestPath = path;
+      }
+    }
+
+    if (bestPath == null) return null;
+    return (url: 'https://imusic.fi$bestPath', score: bestScore);
+  }
+
   static List<double> _extractEuroPrices(String html) {
     // Muchas tiendas muestran precios con:
     // - coma decimal (24,90 €)
@@ -421,70 +597,94 @@ class StorePriceService {
   // ------------------ iMusic ------------------
 
   static Future<StoreOffer?> _fetchIMusic(String barcode) async {
-    final url = 'https://imusic.fi/page/search?query=$barcode';
-    final res = await _get(url);
+    final b = barcode.trim();
+    if (b.isEmpty) return null;
+
+    final searchUrl = 'https://imusic.fi/page/search?query=$b';
+    final res = await _get(searchUrl);
     if (res == null) return null;
 
     final html = res.body;
-    // iMusic suele devolver muchos precios (CD, envío, accesorios). Para evitar
-    // falsos mínimos, intentamos tomar el precio cerca del primer resultado
-    // que apunte al producto con el barcode.
-    // Preferimos un link /music/<barcode>/...
-    final direct = _firstHref(
+
+    // 1) Preferimos un link directo donde el barcode esté en el path.
+    String? productUrl = _firstHref(
       html,
-      RegExp('href=["\'](/music/$barcode/[^"\']+)["\']', caseSensitive: false),
-      prefix: 'https://imusic.fi',
-    );
-    final any = _firstHref(
-      html,
-      RegExp('href=["\'](/music/[^"\']+)["\']', caseSensitive: false),
+      RegExp('href=["\'](/music/$b/[^"\']+)["\']', caseSensitive: false),
       prefix: 'https://imusic.fi',
     );
 
-    double? price;
-    if (direct != null) {
-      final rel = direct.replaceFirst('https://imusic.fi', '');
-      final idx = html.indexOf(rel);
-      if (idx >= 0) {
-        final end = (idx + 1400) > html.length ? html.length : (idx + 1400);
-        final snippet = html.substring(idx, end);
-        price = _firstPriceInHtml(snippet, minValid: 7) ?? _minPrice(snippet, minValid: 7);
+    // 2) Fallback: si en el snippet del resultado aparece el barcode, tomamos ese link.
+    if (productUrl == null) {
+      final hrefRx = RegExp(r'''href=["'](/music/[^"']+)["']''', caseSensitive: false);
+      for (final m in hrefRx.allMatches(html)) {
+        final path = m.group(1);
+        if (path == null || path.trim().isEmpty) continue;
+        final start = m.start;
+        final end = (start + 900) > html.length ? html.length : (start + 900);
+        final snippet = html.substring(start, end);
+        if (snippet.contains(b)) {
+          productUrl = 'https://imusic.fi$path';
+          break;
+        }
       }
     }
-    price ??= _firstPriceInHtml(html, minValid: 7) ?? _minPrice(html, minValid: 7);
+
+    // Si no encontramos un producto claro, no adivinamos (evita precios erróneos).
+    if (productUrl == null) return null;
+
+    final res2 = await _get(productUrl);
+    if (res2 == null) return null;
+
+    final html2 = res2.body;
+
+    // Para barcode, exigimos que la página contenga el barcode.
+    if (!html2.contains(b)) return null;
+
+    final price = _extractBestProductPrice(html2);
     if (price == null) return null;
+
+    final can = _extractCanonical(html2) ?? productUrl;
 
     return StoreOffer(
       store: 'iMusic.fi',
       price: price,
       currency: 'EUR',
-      url: direct ?? any ?? url,
+      url: can,
     );
   }
 
   static Future<StoreOffer?> _fetchIMusicQuery(String query) async {
-    final q = Uri.encodeQueryComponent(query);
-    final url = 'https://imusic.fi/page/search?query=$q';
-    final res = await _get(url);
+    final qRaw = query.trim();
+    if (qRaw.isEmpty) return null;
+
+    final q = Uri.encodeQueryComponent(qRaw);
+    final searchUrl = 'https://imusic.fi/page/search?query=$q';
+    final res = await _get(searchUrl);
     if (res == null) return null;
 
     final html = res.body;
-    // Intentamos tomar el precio del primer resultado (no el mínimo del listado).
-    double? price;
-    final rel = RegExp(r'''href=["'](/music/[^"']+)["']''', caseSensitive: false).firstMatch(html)?.group(1);
-    if (rel != null && rel.isNotEmpty) {
-      final idx = html.indexOf(rel);
-      if (idx >= 0) {
-        final end = (idx + 900) > html.length ? html.length : (idx + 900);
-        final snippet = html.substring(idx, end);
-        price = _firstPriceInHtml(snippet, minValid: 7) ?? _minPrice(snippet, minValid: 7);
-      }
-    }
-    price ??= _firstPriceInHtml(html, minValid: 7) ?? _minPrice(html, minValid: 7);
+
+    // Elegimos el producto más probable según tokens (evita tomar el primer precio del listado).
+    final tokens1 = _tokens(qRaw.replaceAll(RegExp(r'\bvinyl\b', caseSensitive: false), ' '));
+    final hit = _bestIMusicProductFromListing(html, tokens: tokens1) ??
+        _bestIMusicProductFromListing(html, tokens: _tokens(qRaw));
+    if (hit == null) return null;
+
+    final res2 = await _get(hit.url);
+    if (res2 == null) return null;
+
+    final html2 = res2.body;
+    final price = _extractBestProductPrice(html2);
     if (price == null) return null;
 
-    final any = rel == null ? null : 'https://imusic.fi$rel';
-    return StoreOffer(store: 'iMusic.fi', price: price, currency: 'EUR', url: any ?? url);
+    final can = _extractCanonical(html2) ?? hit.url;
+
+    return StoreOffer(
+      store: 'iMusic.fi',
+      price: price,
+      currency: 'EUR',
+      url: can,
+    );
   }
 
   // ------------------ Muziker ------------------
@@ -641,16 +841,17 @@ class StorePriceService {
 
         final hit = _bestFromMuzikerListing(html, album: album);
         if (hit != null) {
-          // Intentamos entrar al producto para nota/canonical (si falla, devolvemos el URL hallado igual).
+          // Entramos al producto para obtener un precio fiable (evita tomar precios del listado).
           final res2 = await _get(hit.url);
-          if (res2 != null) {
-            final html2 = res2.body;
-            final p2 = _minPrice(html2, minValid: 7) ?? hit.price;
-            final can2 = _extractCanonical(html2) ?? hit.url;
-            final note2 = _extractMuzikerNote(html2);
-            return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
-          }
-          return StoreOffer(store: 'Muziker.fi', price: hit.price, currency: 'EUR', url: hit.url);
+          if (res2 == null) continue;
+          final html2 = res2.body;
+
+          final p2 = _extractBestProductPrice(html2);
+          if (p2 == null) continue;
+
+          final can2 = _extractCanonical(html2) ?? hit.url;
+          final note2 = _extractMuzikerNote(html2);
+          return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
         }
       }
     }
@@ -660,12 +861,15 @@ class StorePriceService {
   }
 
   static Future<StoreOffer?> _fetchMuziker(String barcode) async {
+    final b = barcode.trim();
+    if (b.isEmpty) return null;
+
     final tries = <String>[
-      'https://www.muziker.fi/search?q=$barcode',
-      'https://www.muziker.fi/search?query=$barcode',
-      'https://www.muziker.fi/search/?q=$barcode',
-      'https://www.muziker.fi/haku?q=$barcode',
-      'https://www.muziker.fi/?s=$barcode',
+      'https://www.muziker.fi/search?q=$b',
+      'https://www.muziker.fi/search?query=$b',
+      'https://www.muziker.fi/search/?q=$b',
+      'https://www.muziker.fi/haku?q=$b',
+      'https://www.muziker.fi/?s=$b',
     ];
 
     for (final u in tries) {
@@ -673,10 +877,9 @@ class StorePriceService {
       if (res == null) continue;
       final html = res.body;
 
-      // Si ya es una página de producto (contiene el barcode + precio)
-      if (html.contains(barcode)) {
-        // Muziker a veces muestra "0 € envío" o "5 € descuento"; evitamos falsos mínimos.
-        final p = _minPrice(html, minValid: 7);
+      // Si ya es una página de producto (contiene el barcode), intentamos extraer un precio fiable.
+      if (html.contains(b)) {
+        final p = _extractBestProductPrice(html);
         if (p != null) {
           final can = _extractCanonical(html) ?? u;
           final note = _extractMuzikerNote(html);
@@ -684,14 +887,8 @@ class StorePriceService {
         }
       }
 
-      // En páginas de búsqueda/listado, tomamos el primer precio "razonable".
-      final pList = _firstPriceInHtml(html, minValid: 7);
-      if (pList != null) {
-        final can = _extractCanonical(html) ?? u;
-        return StoreOffer(store: 'Muziker.fi', price: pList, currency: 'EUR', url: can);
-      }
-
-      // Intenta extraer primer link de producto y entrar.
+      // En páginas de búsqueda/listado NO tomamos precios del HTML (son propensos a errores).
+      // Intentamos entrar a un producto y validar que contenga el barcode.
       final productUrl = _firstHref(
         html,
         RegExp(r'''href=["'](https?://www\.muziker\.fi/[^"']+)["']''', caseSensitive: false),
@@ -707,10 +904,14 @@ class StorePriceService {
       final res2 = await _get(candidate);
       if (res2 == null) continue;
       final html2 = res2.body;
-      final p2 = _minPrice(html2, minValid: 7);
+
+      // Para barcode, exigimos que la página del producto contenga el barcode.
+      if (!html2.contains(b)) continue;
+
+      final p2 = _extractBestProductPrice(html2);
       if (p2 == null) continue;
+
       final can2 = _extractCanonical(html2) ?? candidate;
-      // Si no contiene barcode, igual lo devolvemos (best-effort)
       final note2 = _extractMuzikerNote(html2);
       return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
     }
@@ -719,7 +920,10 @@ class StorePriceService {
   }
 
   static Future<StoreOffer?> _fetchMuzikerQuery(String query) async {
-    final q = Uri.encodeQueryComponent(query);
+    final qRaw = query.trim();
+    if (qRaw.isEmpty) return null;
+
+    final q = Uri.encodeQueryComponent(qRaw);
     final tries = <String>[
       'https://www.muziker.fi/search?q=$q',
       'https://www.muziker.fi/search?query=$q',
@@ -728,15 +932,17 @@ class StorePriceService {
       'https://www.muziker.fi/?s=$q',
     ];
 
+    final tokens = _tokens(qRaw)
+        .where((t) => t.length >= 3 && t != 'vinyl' && t != 'vinyylilevyt' && t != 'lp')
+        .toList(growable: false);
+    final minScore = tokens.length <= 2 ? 1 : 2;
+
     for (final u in tries) {
       final res = await _get(u);
       if (res == null) continue;
       final html = res.body;
 
-      // En páginas de listado, usamos el primer precio "razonable" (evita 0 € / 5 € descuento).
-      final pList = _firstPriceInHtml(html, minValid: 7);
-
-      // Intenta extraer primer link de producto y entrar (preferible).
+      // En listados NO tomamos precios directos; entramos a un producto.
       final productUrl = _firstHref(
         html,
         RegExp(r'''href=["'](https?://www\.muziker\.fi/[^"']+)["']''', caseSensitive: false),
@@ -747,25 +953,23 @@ class StorePriceService {
         prefix: 'https://www.muziker.fi',
       );
       final candidate = productUrl ?? productPath;
+      if (candidate == null) continue;
 
-      if (candidate != null) {
-        final res2 = await _get(candidate);
-        if (res2 != null) {
-          final html2 = res2.body;
-          final p2 = _minPrice(html2, minValid: 7);
-          if (p2 != null) {
-            final can2 = _extractCanonical(html2) ?? candidate;
-            final note2 = _extractMuzikerNote(html2);
-            return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
-          }
-        }
+      final res2 = await _get(candidate);
+      if (res2 == null) continue;
+      final html2 = res2.body;
+
+      if (tokens.isNotEmpty) {
+        final score = _scoreTokens(_normKey(html2), tokens);
+        if (score < minScore) continue;
       }
 
-      // Fallback: usa precio del listado si existe.
-      if (pList != null) {
-        final can = _extractCanonical(html) ?? u;
-        return StoreOffer(store: 'Muziker.fi', price: pList, currency: 'EUR', url: can);
-      }
+      final p2 = _extractBestProductPrice(html2);
+      if (p2 == null) continue;
+
+      final can2 = _extractCanonical(html2) ?? candidate;
+      final note2 = _extractMuzikerNote(html2);
+      return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
     }
 
     return null;

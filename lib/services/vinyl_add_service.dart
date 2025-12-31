@@ -18,6 +18,10 @@ class PreparedVinylAdd {
   final String artist;
   final String album;
 
+  /// Carátula elegida por el usuario (foto/archivo) en el flujo manual.
+  /// Si existe, tiene prioridad sobre carátulas descargadas.
+  String? localCoverPath;
+
   /// MusicBrainz Artist ID (si lo conocemos). Útil para reseñas/país.
   final String? artistId;
 
@@ -47,6 +51,7 @@ class PreparedVinylAdd {
     required this.album,
     required this.coverCandidates,
     this.selectedCover,
+    this.localCoverPath,
     this.artistId,
     this.year,
     this.genre,
@@ -186,12 +191,21 @@ class VinylAddService {
       return AddVinylResult(ok: false, message: 'Artista y Álbum son obligatorios.');
     }
 
-    // Descargar carátula (si hay). Intentamos con la seleccionada.
+    // Carátula local (si el usuario subió foto/archivo)
     String? coverPath;
+
+    final local = (prepared.localCoverPath ?? '').trim();
+    if (local.isNotEmpty) {
+      coverPath = await _copyLocalCoverToLocal(local);
+    }
+
+    // Descargar carátula (si hay). Intentamos con la seleccionada.
     // 1) selected 500
-    final primary = (prepared.selectedCover500 ?? '').trim();
-    if (primary.isNotEmpty) {
-      coverPath = await _downloadCoverToLocal(primary);
+    if (coverPath == null) {
+      final primary = (prepared.selectedCover500 ?? '').trim();
+      if (primary.isNotEmpty) {
+        coverPath = await _downloadCoverToLocal(primary);
+      }
     }
 
     // 2) fallback 500 (release)
@@ -255,6 +269,28 @@ class VinylAddService {
       final file = File(p.join(coversDir.path, filename));
       await file.writeAsBytes(res.bodyBytes);
       return file.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String?> _copyLocalCoverToLocal(String sourcePath) async {
+    try {
+      final src = File(sourcePath);
+      if (!await src.exists()) return null;
+
+      final dir = await getApplicationDocumentsDirectory();
+      final coversDir = Directory(p.join(dir.path, 'covers'));
+      if (!await coversDir.exists()) await coversDir.create(recursive: true);
+
+      var ext = p.extension(sourcePath).replaceAll('.', '').toLowerCase();
+      if (ext.isEmpty) ext = 'jpg';
+      if (ext.length > 5) ext = 'jpg';
+
+      final filename = 'cover_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final dstPath = p.join(coversDir.path, filename);
+      final dst = await src.copy(dstPath);
+      return dst.path;
     } catch (_) {
       return null;
     }

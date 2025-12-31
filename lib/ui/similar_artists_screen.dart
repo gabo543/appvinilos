@@ -322,7 +322,7 @@ class _SimilarArtistsScreenState extends State<SimilarArtistsScreen> {
                             final a = _suggestions[i];
                             return ListTile(
                               title: Text(a.name),
-                              subtitle: Text((a.country ?? '').trim().isEmpty ? '—' : (a.country ?? '').trim()),
+                              subtitle: Text((a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}'),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () => _pickArtist(a),
                             );

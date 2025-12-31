@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -52,7 +53,7 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
   String _priceLabel() {
     if (_loadingPrice) return '€ …';
     final pr = _priceRange;
-    if (pr == null) return '€ —';
+    if (pr == null) return '';
 
     final a = _fmtMoney(pr.min);
     final b = _fmtMoney(pr.max);
@@ -250,7 +251,10 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     final cs = t.colorScheme;
     final p = widget.prepared;
 
-    final cover = _bestCover(prefer500: true);
+    final local = (p.localCoverPath ?? '').trim();
+    final hasLocal = local.isNotEmpty && File(local).existsSync();
+
+    final cover = hasLocal ? null : _bestCover(prefer500: true);
     final year = (p.year ?? '').trim();
     final genre = (p.genre ?? '').trim();
     final country = (p.country ?? '').trim();
@@ -298,13 +302,38 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                           width: 112,
                           height: 112,
                           color: cs.surfaceContainerHighest,
-                          child: cover == null
-                              ? Icon(Icons.album, size: 46)
-                              : Image.network(
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (hasLocal)
+                                Image.file(File(local), fit: BoxFit.cover)
+                              else if (cover == null)
+                                Icon(Icons.album, size: 46)
+                              else
+                                Image.network(
                                   cover,
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => Icon(Icons.album, size: 46),
                                 ),
+                              if (hasLocal)
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: Material(
+                                    color: cs.surface.withOpacity(0.85),
+                                    borderRadius: BorderRadius.circular(999),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(999),
+                                      onTap: () => setState(() => p.localCoverPath = null),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(6),
+                                        child: Icon(Icons.close, size: 18),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                       SizedBox(width: 12),
@@ -335,10 +364,11 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                                     label: Text(AppStrings.labeled(context, 'Año', year), style: TextStyle(fontWeight: FontWeight.w800)),
                                     visualDensity: VisualDensity.compact,
                                   ),
-                                Chip(
-                                  label: Text(_priceLabel(), style: TextStyle(fontWeight: FontWeight.w800)),
-                                  visualDensity: VisualDensity.compact,
-                                ),
+                                if (_priceLabel().trim().isNotEmpty)
+                                  Chip(
+                                    label: Text(_priceLabel(), style: TextStyle(fontWeight: FontWeight.w800)),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
                                 if (genre.isNotEmpty)
                                   Chip(
                                     label: Text(genre, style: TextStyle(fontWeight: FontWeight.w800)),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../db/vinyl_db.dart';
 import '../services/backup_service.dart';
@@ -151,7 +152,19 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
                       contentPadding: EdgeInsets.zero,
                       title: Text(o.store, style: const TextStyle(fontWeight: FontWeight.w800)),
                       subtitle: Text(o.note == null || o.note!.trim().isEmpty ? o.url : '${o.note}\n${o.url}'),
-                      trailing: Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('€${_fmt(o.price)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                          const SizedBox(width: 8),
+                          Icon(Icons.open_in_new, size: 18),
+                        ],
+                      ),
+                      onTap: () async {
+                        final uri = Uri.tryParse(o.url);
+                        if (uri == null) return;
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      },
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -343,7 +356,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     return 'q:$a||$al';
   }
 
-  Widget _offerPill(String text, {bool compact = false}) {
+  Widget _offerPill(String text, {bool compact = false, VoidCallback? onTap}) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.45 : 0.75);
@@ -351,8 +364,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final padV = compact ? 4.0 : 5.0;
     final padH = compact ? 7.0 : 8.0;
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
@@ -367,7 +383,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     );
   }
 
-    Widget _pricePills(String key, {bool compact = false}) {
+    Widget _pricePills(Map<String, dynamic> w, String key, {bool compact = false}) {
     final k = key.trim();
     if (k.isEmpty) return const SizedBox.shrink();
 
@@ -410,7 +426,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final b = _fmtEur(sorted.last.price);
 
     final rangeText = (a == b) ? '€$a' : '€$a - $b';
-    return _offerPill(rangeText, compact: compact);
+    return _offerPill(
+      rangeText,
+      compact: compact,
+      onTap: () => _showStorePrices(w),
+    );
   }
 
 
@@ -732,6 +752,8 @@ Widget _placeholder() {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      color: Theme.of(context).cardTheme.color ?? cs.surface,
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: cs.outlineVariant.withValues(alpha: isDark ? 0.55 : 0.35)),
@@ -788,7 +810,7 @@ Widget _placeholder() {
                       ),
                       if (offerKey != null) ...[
                         const SizedBox(height: 8),
-                        _pricePills(offerKey!),
+                        _pricePills(w, offerKey!),
                       ],
                     ],
                   ),
@@ -880,6 +902,8 @@ Widget _placeholder() {
 
     return Card(
       margin: EdgeInsets.zero,
+      color: Theme.of(context).cardTheme.color ?? cs.surface,
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: cs.outlineVariant.withValues(alpha: isDark ? 0.55 : 0.35)),
@@ -926,7 +950,7 @@ Widget _placeholder() {
                   ),
                   if (offerKey != null) ...[
                     SizedBox(height: 8),
-                    _pricePills(offerKey!, compact: true),
+                    _pricePills(w, offerKey!, compact: true),
                   ],
                   SizedBox(height: 10),
                   Row(

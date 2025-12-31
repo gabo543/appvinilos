@@ -2713,7 +2713,7 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                   ),
                 if ((p.country ?? '').trim().isNotEmpty)
                   Chip(
-                    label: Text(p.country!.trim(), style: TextStyle(fontWeight: FontWeight.w800)),
+                    label: Text('${context.tr('País')} ${p.country!.trim()}', style: TextStyle(fontWeight: FontWeight.w800)),
                     visualDensity: VisualDensity.compact,
                   ),
               ],

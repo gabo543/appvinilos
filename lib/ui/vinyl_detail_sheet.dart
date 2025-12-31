@@ -434,7 +434,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   String _priceLabel() {
     if (loadingPrice) return '€ …';
     final pr = priceRange;
-    if (pr == null) return '€ —';
+    if (pr == null) return '';
 
     final a = _fmtMoney(pr.min);
     final b = _fmtMoney(pr.max);

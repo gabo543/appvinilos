@@ -1138,6 +1138,7 @@ Future<void> _loadViewMode() async {
 
     final year = ((v['year'] ?? '').toString().trim());
     final genre = ((v['genre'] ?? '').toString().trim());
+    final country = ((v['country'] ?? '').toString().trim());
     final artista = ((v['artista'] ?? '').toString().trim());
     final album = ((v['album'] ?? '').toString().trim());
     final fav = _isFav(v);
@@ -1212,6 +1213,8 @@ Future<void> _loadViewMode() async {
 
     final card = Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      color: Theme.of(context).cardTheme.color ?? cs.surface,
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: cs.outlineVariant.withOpacity(isDark ? 0.55 : 0.35)),
@@ -1251,10 +1254,23 @@ Future<void> _loadViewMode() async {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      year.isEmpty ? '—' : year,
+                      '${context.tr('Año')} ${year.isEmpty ? '—' : year}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: cs.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${context.tr('País')} ${country.isEmpty ? '—' : country}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: cs.onSurfaceVariant,
+                          ),
                     ),
                   ],
                 ),
@@ -1589,6 +1605,8 @@ Future<void> _loadViewMode() async {
       onTap: () => _openDetail(v),
       borderRadius: BorderRadius.circular(14),
       child: Card(
+        color: Theme.of(context).cardTheme.color ?? cs.surface,
+        surfaceTintColor: Colors.transparent,
         child: Stack(
           children: [
             Padding(
@@ -3164,6 +3182,27 @@ Widget listaCompleta({
     return VinylViewMode.values[next];
   }
 
+  /// IconButton compacto para AppBar (menos ancho), para que el título no se corte.
+  ///
+  /// En Vinilos/Favoritos (pantallas con logo grande en el leading) el título
+  /// quedaba con muy poco espacio cuando había 2–3 acciones en la fila superior.
+  /// Para solucionarlo, usamos botones más compactos y los renderizamos en una
+  /// segunda fila (AppBar.bottom).
+  Widget _compactAppBarIconButton({
+    required String tooltip,
+    required Widget icon,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      icon: icon,
+      onPressed: onPressed,
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 42, height: 42),
+    );
+  }
+
 
   PreferredSizeWidget? _buildAppBar() {
     if (vista == Vista.inicio) return null;
@@ -3193,6 +3232,60 @@ Widget listaCompleta({
     // para que la flecha no quede “pegada” (por ejemplo en “Borrar”).
     final titleWidget = appBarTitleTextScaled(title, padding: const EdgeInsets.only(left: 10));
 
+    // Acciones en una segunda fila para que el título (Vinilos/Favoritos)
+    // se vea completo y no quede como "Vi..." / "Fav..." en pantallas angostas.
+    final List<Widget> bottomActions = [];
+
+    if (vista == Vista.lista && _vinylScope == VinylScope.vinilos) {
+      bottomActions.add(
+        _compactAppBarIconButton(
+          tooltip: context.tr('Agregar vinilo'),
+          icon: const Icon(Icons.add_circle_outline),
+          onPressed: _openAddVinylMenu,
+        ),
+      );
+    }
+    if (localSearchAllowed && !(vista == Vista.lista && _vinylScope == VinylScope.artistas)) {
+      bottomActions.add(
+        _compactAppBarIconButton(
+          tooltip:
+              'Vista: ${_viewModeLabel(_viewMode)} · tocar para ${_viewModeLabel(_nextViewMode(_viewMode))}',
+          icon: Icon(_viewModeIcon(_viewMode)),
+          onPressed: () async {
+            await ViewModeService.setMode(_nextViewMode(_viewMode));
+          },
+        ),
+      );
+    }
+    if (localSearchAllowed) {
+      bottomActions.add(
+        _compactAppBarIconButton(
+          tooltip: _localSearchActive ? 'Cerrar búsqueda' : 'Buscar en mi lista',
+          icon: Icon(_localSearchActive ? Icons.close : Icons.search),
+          onPressed: _toggleLocalSearch,
+        ),
+      );
+    }
+
+    final PreferredSizeWidget? bottom = (localSearchAllowed && bottomActions.isNotEmpty)
+        ? PreferredSize(
+            preferredSize: const Size.fromHeight(44),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8, bottom: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  for (int i = 0; i < bottomActions.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 6),
+                    bottomActions[i],
+                  ],
+                ],
+              ),
+            ),
+          )
+        : null;
+
     return AppBar(
       toolbarHeight: kAppBarToolbarHeight,
       leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
@@ -3212,28 +3305,8 @@ Widget listaCompleta({
       ),
       title: titleWidget,
       titleSpacing: 12,
-      actions: [
-        if (vista == Vista.lista && _vinylScope == VinylScope.vinilos)
-          IconButton(
-            tooltip: context.tr('Agregar vinilo'),
-            icon: Icon(Icons.add_circle_outline),
-            onPressed: _openAddVinylMenu,
-          ),
-        if (localSearchAllowed && !(vista == Vista.lista && _vinylScope == VinylScope.artistas))
-          IconButton(
-            tooltip: 'Vista: ${_viewModeLabel(_viewMode)} · tocar para ${_viewModeLabel(_nextViewMode(_viewMode))}',
-            icon: Icon(_viewModeIcon(_viewMode)),
-            onPressed: () async {
-              await ViewModeService.setMode(_nextViewMode(_viewMode));
-            },
-          ),
-        if (localSearchAllowed)
-          IconButton(
-            tooltip: _localSearchActive ? 'Cerrar búsqueda' : 'Buscar en mi lista',
-            icon: Icon(_localSearchActive ? Icons.close : Icons.search),
-            onPressed: _toggleLocalSearch,
-          ),
-      ],
+      actions: const [],
+      bottom: bottom,
     );
   }
 
