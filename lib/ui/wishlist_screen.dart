@@ -356,7 +356,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     return 'q:$a||$al';
   }
 
-  Widget _offerPill(String text, {bool compact = false, VoidCallback? onTap}) {
+    Widget _offerPill(String text, {bool compact = false, VoidCallback? onTap}) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.45 : 0.75);
@@ -369,21 +369,22 @@ class _WishlistScreenState extends State<WishlistScreen> {
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        text,
-        style: (Theme.of(context).textTheme.labelMedium ?? const TextStyle()).copyWith(
-          fontWeight: FontWeight.w900,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: border),
+        ),
+        child: Text(
+          text,
+          style: (Theme.of(context).textTheme.labelMedium ?? const TextStyle()).copyWith(
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
     );
   }
 
-    Widget _pricePills(Map<String, dynamic> w, String key, {bool compact = false}) {
+  Widget _pricePills(Map<String, dynamic> w, String key, {bool compact = false}) {
     final k = key.trim();
     if (k.isEmpty) return const SizedBox.shrink();
 

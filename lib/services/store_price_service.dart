@@ -359,7 +359,7 @@ class StorePriceService {
   static List<double> _extractJsonLdEuroPrices(String html) {
     final out = <double>[];
     final rx = RegExp(
-      r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+      r"""<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>""",
       caseSensitive: false,
       dotAll: true,
     );
@@ -433,7 +433,7 @@ class StorePriceService {
     final h = html.replaceAll('&nbsp;', ' ').replaceAll('&euro;', '€');
 
     final m1 = RegExp(
-      r'itemprop=["\']price["\'][^>]*content=["\']([^"\']+)["\']',
+      r"""itemprop=["\']price["\'][^>]*content=["\']([^"\']+)["\']""",
       caseSensitive: false,
     ).firstMatch(h);
     final c1 = m1?.group(1);
@@ -443,7 +443,7 @@ class StorePriceService {
     }
 
     final m2 = RegExp(
-      r'itemprop=["\']price["\'][^>]*>\s*([0-9][0-9\.,\s]{0,10})\s*(?:€|EUR)',
+      r"""itemprop=["\']price["\'][^>]*>\s*([0-9][0-9\.,\s]{0,10})\s*(?:€|EUR)""",
       caseSensitive: false,
     ).firstMatch(h);
     final c2 = m2?.group(1);
