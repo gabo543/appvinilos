@@ -323,7 +323,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final enabled = await StorePriceService.getEnabledStoreIds();
     if (enabled.isEmpty) {
       if (!mounted) return;
-      _snack('No hay tiendas activas. Actívalas en Ajustes');
+      _snack(context.tr('Precio no encontrado'));
       return;
     }
 
@@ -345,7 +345,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       setState(() {
         _pricesEnabledByKey[key] = false;
       });
-      _snack('No encontré precios para este vinilo');
+      _snack(context.tr('Precio no encontrado'));
     }
   }
 

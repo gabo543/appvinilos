@@ -416,7 +416,7 @@ class StorePriceService {
     final enabled = enabledStoreIds ?? await getEnabledStoreIds();
     if (enabled.isEmpty) return const [];
 
-    final q = '$a $al vinyl'.trim();
+    final q = '$a $al lp vinyl'.trim();
 
     final offers = <StoreOffer>[];
 
@@ -502,6 +502,134 @@ class StorePriceService {
   }
 
 
+
+
+  // ------------------ Filtro estricto de formato (solo 12" LP) ------------------
+
+  static String _stripTags(String input) {
+    var s = input;
+    s = s.replaceAll(RegExp(r'<[^>]+>'), ' ');
+    s = s.replaceAll('&nbsp;', ' ');
+    s = s.replaceAll('&euro;', '€');
+    s = s.replaceAll('&amp;', '&');
+    s = s.replaceAll('&quot;', '"');
+    s = s.replaceAll('&#39;', "'");
+    s = s.replaceAll('&apos;', "'");
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return s;
+  }
+
+  static String _extractTagText(String html, String tag) {
+    final m = RegExp('<$tag[^>]*>(.*?)</$tag>', caseSensitive: false, dotAll: true).firstMatch(html);
+    return m == null ? '' : _stripTags(m.group(1) ?? '');
+  }
+
+  static String _extractMetaContent(String html, {required String key}) {
+    final m = RegExp(
+      '(?:property|name)=[\"\']$key[\"\']\s+content=[\"\']([^\"\']+)[\"\']',
+      caseSensitive: false,
+    ).firstMatch(html);
+    return m == null ? '' : _stripTags(m.group(1) ?? '');
+  }
+
+  static List<String> _extractJsonLdNames(String html) {
+    final out = <String>[];
+    final rx = RegExp(
+      r'<script[^>]+type=[\"\']application/ld\+json[\"\'][^>]*>(.*?)</script>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+
+    for (final m in rx.allMatches(html)) {
+      final raw = (m.group(1) ?? '').trim();
+      if (raw.isEmpty) continue;
+
+      dynamic data;
+      try {
+        data = jsonDecode(raw);
+      } catch (_) {
+        continue;
+      }
+
+      void collect(dynamic node) {
+        if (node == null) return;
+        if (node is List) {
+          for (final e in node) collect(e);
+          return;
+        }
+        if (node is Map) {
+          final map = Map<String, dynamic>.from(node);
+          final name = map['name'];
+          if (name is String && name.trim().isNotEmpty) out.add(name.trim());
+          for (final v in map.values) {
+            if (v is Map || v is List) collect(v);
+          }
+        }
+      }
+
+      collect(data);
+      if (out.isNotEmpty) break;
+    }
+
+    return out;
+  }
+
+  static String _formatProbeText(String html) {
+    final parts = <String>[];
+
+    final t = _extractTagText(html, 'title');
+    if (t.isNotEmpty) parts.add(t);
+
+    final h1 = _extractTagText(html, 'h1');
+    if (h1.isNotEmpty) parts.add(h1);
+
+    final ogt = _extractMetaContent(html, key: 'og:title');
+    if (ogt.isNotEmpty) parts.add(ogt);
+
+    final names = _extractJsonLdNames(html);
+    if (names.isNotEmpty) parts.addAll(names.take(2));
+
+    // Snippet alrededor de un posible campo "Format:".
+    final fmt = RegExp(r'(?:format|formato)\s*:?\s*([^<\n]{0,60})', caseSensitive: false).firstMatch(html);
+    if (fmt != null) {
+      final g = fmt.group(0);
+      if (g != null && g.trim().isNotEmpty) parts.add(_stripTags(g));
+    }
+
+    return parts.join(' ');
+  }
+
+  static bool _containsRejectedFormat(String text) {
+    final lower = text.toLowerCase();
+    final norm = _normKey(text);
+
+    if (RegExp(r'\bep\b').hasMatch(norm)) return true;
+    if (RegExp(r'\bsingle\b').hasMatch(norm)) return true;
+
+    if (lower.contains('7"') || lower.contains('7 inch') || lower.contains('7-inch') || lower.contains('7in')) return true;
+    if (lower.contains('10"') || lower.contains('10 inch') || lower.contains('10-inch') || lower.contains('10in')) return true;
+
+    if (RegExp(r'\bcd\b').hasMatch(norm)) return true;
+    if (norm.contains('cassette') || RegExp(r'\btape\b').hasMatch(norm)) return true;
+    if (norm.contains('mp3') || norm.contains('flac')) return true;
+    if (norm.contains('dvd')) return true;
+    if (RegExp(r'\bblu\s*ray\b').hasMatch(norm) || norm.contains('bluray')) return true;
+
+    return false;
+  }
+
+  static bool _isValid12InchLP(String text) {
+    if (text.trim().isEmpty) return false;
+    if (_containsRejectedFormat(text)) return false;
+
+    final lower = text.toLowerCase();
+    final norm = _normKey(text);
+
+    final hasLp = RegExp(r'\b(lp|2lp|3lp|4lp)\b').hasMatch(norm);
+    final has12 = lower.contains('12"') || lower.contains('12 inch') || lower.contains('12-inch') || lower.contains('12in');
+
+    return hasLp || has12;
+  }
   static bool _looksLikeBadContext(String snippet) {
     final s = _normKey(snippet);
     const bad = <String>[
@@ -834,6 +962,9 @@ class StorePriceService {
 
     final html2 = res2.body;
 
+    final probe = _formatProbeText(html2);
+    if (!_isValid12InchLP(probe)) return null;
+
     final price = _extractBestProductPrice(html2);
     if (price == null) return null;
 
@@ -859,29 +990,46 @@ class StorePriceService {
 
     final html = res.body;
 
-    // Elegimos el producto más probable según tokens (evita tomar el primer precio del listado).
+    // Intentamos varios candidatos; evita caer en CD/EP/7" aunque sean buenos matches.
     final tokens1 = _tokens(qRaw.replaceAll(RegExp(r'\bvinyl\b', caseSensitive: false), ' '));
-    final hit = _bestIMusicProductFromListing(html, tokens: tokens1) ??
-        _bestIMusicProductFromListing(html, tokens: _tokens(qRaw));
-    if (hit == null) return null;
+    final tokenList = tokens1.isEmpty ? _tokens(qRaw) : tokens1;
 
-    final res2 = await _get(hit.url);
-    if (res2 == null) return null;
-
-    final html2 = res2.body;
-    final price = _extractBestProductPrice(html2);
-    if (price == null) return null;
-
-    final can = _extractCanonical(html2) ?? hit.url;
-
-    return StoreOffer(
-      storeId: 'imusic',
-      store: 'iMusic.fi',
-      price: price,
-      currency: 'EUR',
-      url: can,
+    final hits = _topLinksFromListing(
+      html,
+      hrefRx: RegExp(r'''href=["'](/music/[^"']+)["']''', caseSensitive: false),
+      tokens: tokenList,
+      baseUrl: 'https://imusic.fi',
+      requirePriceHint: false,
+      requireVinylHint: true,
+      limit: 8,
     );
+
+    for (final hit in hits) {
+      final res2 = await _get(hit.url);
+      if (res2 == null) continue;
+
+      final html2 = res2.body;
+
+      final probe = _formatProbeText(html2);
+      if (!_isValid12InchLP(probe)) continue;
+
+      final price = _extractBestProductPrice(html2) ?? hit.listingPrice;
+      if (price == null) continue;
+
+      final can = _extractCanonical(html2) ?? hit.url;
+
+      return StoreOffer(
+        storeId: 'imusic',
+        store: 'iMusic.fi',
+        price: price,
+        currency: 'EUR',
+        url: can,
+      );
+    }
+
+    return null;
   }
+
 
   // ------------------ Muziker ------------------
 
@@ -1115,6 +1263,9 @@ class StorePriceService {
           if (res2 == null) continue;
           final html2 = res2.body;
 
+          final probe = _formatProbeText(html2);
+          if (!_isValid12InchLP(probe)) continue;
+
           final p2 = _extractBestProductPrice(html2);
           if (p2 == null) continue;
 
@@ -1148,13 +1299,17 @@ class StorePriceService {
 
       // Si ya es una página de producto (contiene el barcode), intentamos extraer un precio fiable.
       if (_pageHasBarcode(html, b)) {
-        final p = _extractBestProductPrice(html);
-        if (p != null) {
-          final can = _extractCanonical(html) ?? u;
-          final note = _extractMuzikerNote(html);
-          return StoreOffer(storeId: 'muziker', store: 'Muziker.fi', price: p, currency: 'EUR', url: can, note: note);
+        final probe = _formatProbeText(html);
+        if (_isValid12InchLP(probe)) {
+          final p = _extractBestProductPrice(html);
+          if (p != null) {
+            final can = _extractCanonical(html) ?? u;
+            final note = _extractMuzikerNote(html);
+            return StoreOffer(storeId: 'muziker', store: 'Muziker.fi', price: p, currency: 'EUR', url: can, note: note);
+          }
         }
       }
+
 
       // En páginas de búsqueda/listado NO tomamos precios del HTML (son propensos a errores).
       // Probamos entrar a algunos candidatos hasta encontrar un producto que contenga el barcode.
@@ -1166,6 +1321,9 @@ class StorePriceService {
 
         // Para barcode, exigimos que la página del producto contenga el barcode.
         if (!_pageHasBarcode(html2, b)) continue;
+
+        final probe = _formatProbeText(html2);
+        if (!_isValid12InchLP(probe)) continue;
 
         final p2 = _extractBestProductPrice(html2);
         if (p2 == null) continue;
@@ -1217,6 +1375,9 @@ class StorePriceService {
           final score = _scoreTokens(_normKey(html2), tokens);
           if (score < minScore) continue;
         }
+
+        final probe = _formatProbeText(html2);
+        if (!_isValid12InchLP(probe)) continue;
 
         final p2 = _extractBestProductPrice(html2);
         if (p2 == null) continue;
@@ -1289,27 +1450,32 @@ class StorePriceService {
       if (res == null) continue;
       final html = res.body;
 
-      final best = _bestLinkFromListing(
+      final hits = _topLinksFromListing(
         html,
         hrefRx: RegExp(r'''href=["'](/en/records/item/[^"'#?]+)["']''', caseSensitive: false),
         tokens: tokens,
         baseUrl: 'https://www.hhv.de',
         requirePriceHint: true,
-        requireVinylHint: false,
+        requireVinylHint: true,
+        limit: 8,
       );
 
-      if (best == null) continue;
-      final res2 = await _get(best.url);
-      if (res2 == null) continue;
-      final html2 = res2.body;
+      for (final best in hits) {
+        final res2 = await _get(best.url);
+        if (res2 == null) continue;
+        final html2 = res2.body;
 
-      if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
+        if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
 
-      final p2 = _extractHHVPrice(html2) ?? _extractBestProductPrice(html2);
-      if (p2 == null) continue;
+        final probe = _formatProbeText(html2);
+        if (!_isValid12InchLP(probe)) continue;
 
-      final can2 = _extractCanonical(html2) ?? best.url;
-      return StoreOffer(storeId: 'hhv', store: 'HHV.de', price: p2, currency: 'EUR', url: can2);
+        final p2 = _extractHHVPrice(html2) ?? _extractBestProductPrice(html2) ?? best.listingPrice;
+        if (p2 == null) continue;
+
+        final can2 = _extractCanonical(html2) ?? best.url;
+        return StoreOffer(storeId: 'hhv', store: 'HHV.de', price: p2, currency: 'EUR', url: can2);
+      }
     }
 
     return null;
@@ -1346,26 +1512,31 @@ class StorePriceService {
       if (res == null) continue;
       final html = res.body;
 
-      final best = _bestLinkFromListing(
+      final hits = _topLinksFromListing(
         html,
         hrefRx: RegExp(r'''href=["'](/products/[^"'#?]+)["']''', caseSensitive: false),
         tokens: tokens,
         baseUrl: 'https://therecordhub.com',
         requirePriceHint: false,
-        requireVinylHint: false,
+        requireVinylHint: true,
+        limit: 8,
       );
 
-      if (best == null) continue;
-      final res2 = await _get(best.url);
-      if (res2 == null) continue;
+      for (final best in hits) {
+        final res2 = await _get(best.url);
+        if (res2 == null) continue;
 
-      final html2 = res2.body;
-      if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
+        final html2 = res2.body;
+        if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
 
-      final p2 = _extractBestProductPrice(html2);
-      if (p2 == null) continue;
-      final can2 = _extractCanonical(html2) ?? best.url;
-      return StoreOffer(storeId: 'therecordhub', store: 'TheRecordHub.com', price: p2, currency: 'EUR', url: can2);
+        final probe = _formatProbeText(html2);
+        if (!_isValid12InchLP(probe)) continue;
+
+        final p2 = _extractBestProductPrice(html2) ?? best.listingPrice;
+        if (p2 == null) continue;
+        final can2 = _extractCanonical(html2) ?? best.url;
+        return StoreOffer(storeId: 'therecordhub', store: 'TheRecordHub.com', price: p2, currency: 'EUR', url: can2);
+      }
     }
     return null;
   }
@@ -1405,32 +1576,95 @@ class StorePriceService {
       final html = res.body;
 
       // Encontrar una ficha probable (suelen ser /artist/...)
-      final best = _bestLinkFromListing(
+      final hits = _topLinksFromListing(
         html,
         hrefRx: RegExp(r'''href=["'](/artist/[^"'#?]+)["']''', caseSensitive: false),
         tokens: tokens,
         baseUrl: 'https://www.levykauppax.fi',
         requirePriceHint: false,
-        requireVinylHint: false,
+        requireVinylHint: true,
+        limit: 8,
       );
-      if (best == null) continue;
 
-      final res2 = await _get(best.url);
-      if (res2 == null) continue;
+      for (final best in hits) {
+        final res2 = await _get(best.url);
+        if (res2 == null) continue;
 
-      final html2 = res2.body;
-      if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
+        final html2 = res2.body;
+        if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
 
-      final p2 = _extractBestProductPrice(html2);
-      if (p2 == null) continue;
-      final can2 = _extractCanonical(html2) ?? best.url;
-      return StoreOffer(storeId: 'levykauppax', store: 'LevykauppaX.fi', price: p2, currency: 'EUR', url: can2);
+        final probe = _formatProbeText(html2);
+        if (!_isValid12InchLP(probe)) continue;
+
+        final p2 = _extractBestProductPrice(html2) ?? best.listingPrice;
+        if (p2 == null) continue;
+        final can2 = _extractCanonical(html2) ?? best.url;
+        return StoreOffer(storeId: 'levykauppax', store: 'LevykauppaX.fi', price: p2, currency: 'EUR', url: can2);
+      }
     }
 
     return null;
   }
 
   // ------------------ Helper: mejor link desde un listado ------------------
+
+
+  static List<_ListingHit> _topLinksFromListing(
+    String html, {
+    required RegExp hrefRx,
+    required List<String> tokens,
+    String? baseUrl,
+    bool requirePriceHint = true,
+    bool requireVinylHint = false,
+    int limit = 8,
+  }) {
+    if (html.trim().isEmpty) return const <_ListingHit>[];
+
+    final scored = <({int score, double? price, _ListingHit hit})>[];
+
+    for (final m in hrefRx.allMatches(html)) {
+      final raw = m.group(1);
+      if (raw == null || raw.trim().isEmpty) continue;
+      var url = raw.trim();
+      if (baseUrl != null && url.startsWith('/')) {
+        url = '$baseUrl$url';
+      }
+      if (!url.startsWith('http')) continue;
+
+      final start = m.start;
+      final from = (start - 600) < 0 ? 0 : (start - 600);
+      final to = (start + 900) > html.length ? html.length : (start + 900);
+      final snippet = html.substring(from, to);
+
+      if (requirePriceHint && !snippet.contains('€') && !snippet.toLowerCase().contains('eur')) {
+        continue;
+      }
+      if (requireVinylHint) {
+        final sn = snippet.toLowerCase();
+        if (!sn.contains('vinyl') && !sn.contains('lp') && !sn.contains('vinyyl')) continue;
+      }
+
+      // Evita formatos no deseados (EP, 7", CD, etc.) cuando el snippet lo delata.
+      if (_containsRejectedFormat(snippet)) continue;
+
+      final scoreSnippet = tokens.isEmpty ? 0 : _scoreTokens(_normKey(snippet), tokens);
+      if (tokens.isNotEmpty && scoreSnippet <= 0) continue;
+
+      final listingPrice = _firstPriceInHtml(snippet, minValid: 7);
+      final hit = _ListingHit(url: url, listingPrice: listingPrice);
+      scored.add((score: scoreSnippet, price: listingPrice, hit: hit));
+    }
+
+    scored.sort((a, b) {
+      final s = b.score.compareTo(a.score);
+      if (s != 0) return s;
+      final ap = a.price ?? 9e9;
+      final bp = b.price ?? 9e9;
+      return ap.compareTo(bp);
+    });
+
+    return scored.take(limit).map((e) => e.hit).toList(growable: false);
+  }
 
   static _ListingHit? _bestLinkFromListing(
     String html, {

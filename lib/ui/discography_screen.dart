@@ -288,7 +288,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     if (enabled.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('No hay tiendas activas. Actívalas en Ajustes'))),
+        SnackBar(content: Text(context.tr('Precio no encontrado'))),
       );
       return;
     }
@@ -307,7 +307,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         _priceEnabledByReleaseGroup[rgid] = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('No encontré precios para este vinilo'))),
+        SnackBar(content: Text(context.tr('Precio no encontrado'))),
       );
     }
   }
