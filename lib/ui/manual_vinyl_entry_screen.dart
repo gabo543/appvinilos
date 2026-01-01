@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/vinyl_add_service.dart';
+import '../db/vinyl_db.dart';
 import 'add_vinyl_preview_screen.dart';
 import '../l10n/app_strings.dart';
 
@@ -30,13 +32,39 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
   bool _loading = false;
   String? _localCoverPath;
 
+  // Vista previa del ID de colección (artistNo.albumNo), calculado cuando se conoce el artista.
+  String? _nextCollectionCode;
+  Timer? _debounceId;
+
+  @override
+  void initState() {
+    super.initState();
+    _artistCtrl.addListener(_onArtistChanged);
+  }
+
   @override
   void dispose() {
+    _debounceId?.cancel();
+    _artistCtrl.removeListener(_onArtistChanged);
     _artistCtrl.dispose();
     _albumCtrl.dispose();
     _yearCtrl.dispose();
     _genreCtrl.dispose();
     super.dispose();
+  }
+
+  void _onArtistChanged() {
+    _debounceId?.cancel();
+    final a = _artistCtrl.text.trim();
+    if (a.isEmpty) {
+      if (mounted) setState(() => _nextCollectionCode = null);
+      return;
+    }
+    _debounceId = Timer(const Duration(milliseconds: 260), () async {
+      final code = await VinylDb.instance.previewNextCollectionCode(a);
+      if (!mounted) return;
+      setState(() => _nextCollectionCode = code);
+    });
   }
 
   Future<void> _pickCoverFromGallery() async {
@@ -190,6 +218,14 @@ class _ManualVinylEntryScreenState extends State<ManualVinylEntryScreen> {
                   ),
                   validator: (v) => (v ?? '').trim().isEmpty ? 'El artista es obligatorio.' : null,
                 ),
+                if ((_nextCollectionCode ?? '').trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '${context.tr('ID colección')}: $_nextCollectionCode',
+                      style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                  ),
                 SizedBox(height: 10),
                 TextFormField(
                   controller: _albumCtrl,

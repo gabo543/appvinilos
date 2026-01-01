@@ -37,11 +37,39 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
 
   bool _bioExpanded = false;
 
+  // ID de colección sugerido (artistNo.albumNo) según el artista.
+  bool _loadingNextCode = false;
+  String? _nextCollectionCode;
+
   @override
   void initState() {
     super.initState();
     _loadTracks();
     _loadPrice();
+    _loadNextCollectionCode();
+  }
+
+  Future<void> _loadNextCollectionCode() async {
+    final artist = widget.prepared.artist.trim();
+    if (artist.isEmpty) return;
+    setState(() {
+      _loadingNextCode = true;
+      _nextCollectionCode = null;
+    });
+    try {
+      final code = await VinylDb.instance.previewNextCollectionCode(artist);
+      if (!mounted) return;
+      setState(() {
+        _nextCollectionCode = code;
+        _loadingNextCode = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _nextCollectionCode = null;
+        _loadingNextCode = false;
+      });
+    }
   }
 
   String _fmtMoney(double v) {
@@ -364,6 +392,19 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                                     label: Text(AppStrings.labeled(context, 'Año', year), style: TextStyle(fontWeight: FontWeight.w800)),
                                     visualDensity: VisualDensity.compact,
                                   ),
+                                if (_loadingNextCode)
+                                  Chip(
+                                    label: Text(AppStrings.labeled(context, 'ID colección', '…'), style: TextStyle(fontWeight: FontWeight.w800)),
+                                    visualDensity: VisualDensity.compact,
+                                  )
+                                else if ((_nextCollectionCode ?? '').trim().isNotEmpty)
+                                  Chip(
+                                    label: Text(
+                                      AppStrings.labeled(context, 'ID colección', _nextCollectionCode!),
+                                      style: TextStyle(fontWeight: FontWeight.w800),
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
                                 if (_priceLabel().trim().isNotEmpty)
                                   Chip(
                                     label: Text(_priceLabel(), style: TextStyle(fontWeight: FontWeight.w800)),
@@ -540,6 +581,9 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
   late final TextEditingController _yearCtrl;
   bool _saving = false;
 
+  bool _loadingNextCode = false;
+  String? _nextCollectionCode;
+
   String _condition = 'VG+';
   String _format = 'LP';
 
@@ -548,6 +592,30 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
     super.initState();
     _yearCtrl = TextEditingController(text: widget.prepared.year ?? '');
     _loadDefaults();
+    _loadNextCollectionCode();
+  }
+
+  Future<void> _loadNextCollectionCode() async {
+    final artist = widget.prepared.artist.trim();
+    if (artist.isEmpty) return;
+    setState(() {
+      _loadingNextCode = true;
+      _nextCollectionCode = null;
+    });
+    try {
+      final code = await VinylDb.instance.previewNextCollectionCode(artist);
+      if (!mounted) return;
+      setState(() {
+        _nextCollectionCode = code;
+        _loadingNextCode = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _nextCollectionCode = null;
+        _loadingNextCode = false;
+      });
+    }
   }
 
   Future<void> _loadDefaults() async {
@@ -653,6 +721,22 @@ class _CollectionAddSheetState extends State<_CollectionAddSheet> {
                     Text(p.artist, style: TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
                     SizedBox(height: 2),
                     Text(p.album, style: TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    if (_loadingNextCode)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          AppStrings.labeled(context, 'ID colección', '…'),
+                          style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      )
+                    else if ((_nextCollectionCode ?? '').trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          AppStrings.labeled(context, 'ID colección', _nextCollectionCode!),
+                          style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
                     SizedBox(height: 10),
                     TextField(
                       controller: _yearCtrl,

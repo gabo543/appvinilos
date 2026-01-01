@@ -700,6 +700,55 @@ Future<Map<String, dynamic>?> findByExact({
   // - Cada álbum del artista se numera 1..n (albumNo).
   // - El “código” que muestra la UI es: artistNo.albumNo (ej: 1.3)
 
+  /// Calcula (sin insertar) el próximo código de colección para un artista.
+  ///
+  /// Regla:
+  /// - Si el artista ya existe en `artist_orders`: usa su `artistNo` y
+  ///   `albumNo = MAX(albumNo) + 1` para ese artista.
+  /// - Si el artista no existe todavía: `artistNo = MAX(artistNo) + 1` y
+  ///   `albumNo = 1`.
+  ///
+  /// Devuelve un string tipo `1.2`. Si no hay artista, devuelve null.
+  Future<String?> previewNextCollectionCode(String artista) async {
+    final key = _makeArtistKey(artista);
+    if (key.trim().isEmpty) return null;
+
+    final d = await db;
+
+    final rows = await d.query(
+      'artist_orders',
+      columns: ['artistNo'],
+      where: 'artistKey = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+
+    final exists = rows.isNotEmpty;
+    final int artistNo;
+    if (exists) {
+      artistNo = _asInt(rows.first['artistNo']);
+    } else {
+      final r = await d.rawQuery('SELECT MAX(artistNo) as m FROM artist_orders');
+      final m = _asInt(r.first['m']);
+      artistNo = m + 1;
+    }
+
+    final int albumNo;
+    if (exists) {
+      final r = await d.rawQuery(
+        'SELECT MAX(albumNo) as m FROM vinyls WHERE artistNo = ?',
+        [artistNo],
+      );
+      final m = _asInt(r.first['m']);
+      albumNo = m + 1;
+    } else {
+      albumNo = 1;
+    }
+
+    if (artistNo <= 0 || albumNo <= 0) return null;
+    return '$artistNo.$albumNo';
+  }
+
   String _makeArtistKey(String artista) {
     return normalizeKey(artista);
   }
@@ -859,6 +908,7 @@ Future<Map<String, dynamic>?> findByExact({
     required String artista,
     required String album,
     String? year,
+    String? country,
     String? condition,
     String? format,
   }) async {
@@ -913,6 +963,7 @@ Future<Map<String, dynamic>?> findByExact({
           'album': al,
           'artistKey': newKey.isEmpty ? oldKey : newKey,
           if (year != null) 'year': year.trim().isEmpty ? null : year.trim(),
+          if (country != null) 'country': country.trim().isEmpty ? null : country.trim(),
           if (condition != null) 'condition': condition.trim().isEmpty ? null : condition.trim(),
           if (format != null) 'format': format.trim().isEmpty ? null : format.trim(),
         },

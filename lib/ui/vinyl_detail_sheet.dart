@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/discography_service.dart';
 import '../services/price_range_service.dart';
 import '../services/store_price_service.dart';
+import '../services/country_service.dart';
 import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
@@ -219,14 +220,27 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final artista0 = (widget.vinyl['artista'] as String?)?.trim() ?? '';
     final album0 = (widget.vinyl['album'] as String?)?.trim() ?? '';
     final year0 = (widget.vinyl['year'] as String?)?.trim() ?? '';
+    final country0 = (widget.vinyl['country'] as String?)?.trim() ?? '';
     final cond0 = (widget.vinyl['condition'] as String?)?.trim() ?? 'VG+';
     final fmt0 = (widget.vinyl['format'] as String?)?.trim() ?? 'LP';
 
     final artistaCtrl = TextEditingController(text: artista0);
     final albumCtrl = TextEditingController(text: album0);
     final yearCtrl = TextEditingController(text: year0);
+    final countryCtrl = TextEditingController(text: country0);
     String condition = cond0.isEmpty ? 'VG+' : cond0;
     String format = fmt0.isEmpty ? 'LP' : fmt0;
+
+    // Catálogo de países (para autocomplete). Si falla, igual permitimos texto libre.
+    List<CountryOption> allCountries = const <CountryOption>[];
+    try {
+      allCountries = await CountryService.getAllCountries();
+    } catch (_) {
+      allCountries = const <CountryOption>[];
+    }
+
+    // Sugerencias (se mantiene dentro del StatefulBuilder).
+    List<CountryOption> countrySuggestions = <CountryOption>[];
 
     final saved = await showDialog<bool>(
       context: context,
@@ -256,6 +270,56 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(labelText: context.tr('Año (opcional)')),
                     ),
+                    SizedBox(height: 12),
+                    TextField(
+                      controller: countryCtrl,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: context.tr('País (opcional)'),
+                        hintText: context.tr('Ej: Finlandia'),
+                      ),
+                      onChanged: (v) {
+                        if (allCountries.isEmpty) return;
+                        final q = v.trim();
+                        if (q.isEmpty) {
+                          setD(() => countrySuggestions = <CountryOption>[]);
+                          return;
+                        }
+                        final out = CountryService.suggest(allCountries, q, limit: 8).toList();
+                        setD(() => countrySuggestions = out);
+                      },
+                    ),
+                    if (allCountries.isNotEmpty && countrySuggestions.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(top: 6),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Theme.of(ctx).dividerColor),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 200),
+                          child: ListView.separated(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            physics: const ClampingScrollPhysics(),
+                            itemCount: countrySuggestions.length,
+                            separatorBuilder: (_, __) => Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final c = countrySuggestions[i];
+                              return ListTile(
+                                dense: true,
+                                title: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(c.code),
+                                onTap: () {
+                                  countryCtrl.text = c.name;
+                                  setD(() => countrySuggestions = <CountryOption>[]);
+                                  FocusScope.of(ctx).unfocus();
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
                     SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: condition,
@@ -298,9 +362,11 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final newArtist = artistaCtrl.text.trim();
     final newAlbum = albumCtrl.text.trim();
     final newYear = yearCtrl.text.trim();
+    final newCountry = countryCtrl.text.trim();
     artistaCtrl.dispose();
     albumCtrl.dispose();
     yearCtrl.dispose();
+    countryCtrl.dispose();
 
     if (saved != true) return;
 
@@ -310,6 +376,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
         artista: newArtist,
         album: newAlbum,
         year: newYear,
+        country: newCountry,
         condition: condition,
         format: format,
       );
@@ -318,6 +385,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       widget.vinyl['artista'] = newArtist;
       widget.vinyl['album'] = newAlbum;
       widget.vinyl['year'] = newYear;
+      widget.vinyl['country'] = newCountry;
       widget.vinyl['condition'] = condition;
       widget.vinyl['format'] = format;
       if (!mounted) return;
