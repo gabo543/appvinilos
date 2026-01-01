@@ -534,8 +534,10 @@ class StorePriceService {
 
   static List<String> _extractJsonLdNames(String html) {
     final out = <String>[];
+    // NOTE: Use a triple-quoted raw string here because a raw single-quoted
+    // string can't contain a literal single-quote character.
     final rx = RegExp(
-      r'<script[^>]+type=[\"\']application/ld\+json[\"\'][^>]*>(.*?)</script>',
+      r"""<script[^>]+type=["']application/ld\+json["'][^>]*>(.*?)</script>""",
       caseSensitive: false,
       dotAll: true,
     );
