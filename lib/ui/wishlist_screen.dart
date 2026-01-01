@@ -320,6 +320,13 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final key = _offerKeyForItem(artist: artist, album: album, barcode: barcode);
     if (key == null) return;
 
+    final enabled = await StorePriceService.getEnabledStoreIds();
+    if (enabled.isEmpty) {
+      if (!mounted) return;
+      _snack('No hay tiendas activas. Actívalas en Ajustes');
+      return;
+    }
+
     setState(() {
       _pricesEnabledByKey[key] = true;
     });
@@ -329,7 +336,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       artist: artist,
       album: album,
       barcode: barcode,
-      forceRefresh: false,
+      forceRefresh: true,
     );
     if (!mounted) return;
 

@@ -284,6 +284,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     if (rgid.isEmpty) return;
     if (artistName.trim().isEmpty) return;
 
+    final enabled = await StorePriceService.getEnabledStoreIds();
+    if (enabled.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('No hay tiendas activas. Actívalas en Ajustes'))),
+      );
+      return;
+    }
+
     // Marca el álbum como "precio solicitado" para que aparezca el label.
     setState(() {
       _priceEnabledByReleaseGroup[rgid] = true;
@@ -1496,7 +1505,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                 onTap: () => _onEuroPressed(
                                                   artistName,
                                                   al,
-                                                  forceRefresh: priceEnabled,
+                                                  forceRefresh: true,
                                                 ),
                                               ),
                                               if (busy)

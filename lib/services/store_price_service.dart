@@ -151,7 +151,7 @@ class StoreSourcesSettings {
 /// simple de HTML (puede fallar si cambian el layout o bloquean bots).
 class StorePriceService {
   static const _ua =
-      'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36';
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
   static const _prefsPrefix = 'store_offers_v3::';
   static const _prefsPrefixQuery = 'store_offers_q_v3::';
@@ -454,7 +454,7 @@ class StorePriceService {
               'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8,fi;q=0.7',
             },
           )
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 18));
 
       if (res.statusCode >= 200 && res.statusCode < 300) return res;
       return null;
@@ -477,6 +477,28 @@ class StorePriceService {
         ?.group(1);
     if (can != null && can.trim().isNotEmpty) return can.trim();
     return null;
+  }
+
+  static bool _pageHasBarcode(String html, String barcode) {
+    final b = barcode.trim();
+    if (b.isEmpty) return false;
+    // 1) Texto directo
+    if (html.contains(b)) return true;
+
+    // 2) JSON-LD (a veces el EAN/GTIN no aparece como texto visible)
+    // Buscamos el número dentro de bloques ld+json.
+    final rx = RegExp(
+      r"""<script[^>]+type=["']application/ld\+json["'][^>]*>(.*?)</script>""",
+      caseSensitive: false,
+      dotAll: true,
+    );
+    for (final m in rx.allMatches(html)) {
+      final raw = m.group(1);
+      if (raw == null) continue;
+      if (raw.contains(b)) return true;
+    }
+
+    return false;
   }
 
 
@@ -614,14 +636,12 @@ class StorePriceService {
     final ip = _extractItempropEuroPrice(html);
     if (ip != null) return ip;
 
-    // 3) Fallback (muy best-effort): escaneo general,
-    // pero si hay señales claras de envío/descuento, no adivinamos.
-    if (_looksLikeBadContext(html)) return null;
-
-    final p = _minPrice(html, minValid: 7);
-    if (p != null && p >= 7 && p <= 500) return p;
+  // 3) Fallback (best-effort): buscamos precios € evitando contextos de envío/descuento.
+    final ctx = _extractEuroPricesWithContext(html, minValid: 7);
+    if (ctx.isNotEmpty) return ctx.first;
     return null;
   }
+
 
   static ({String url, int score})? _bestIMusicProductFromListing(String html, {required List<String> tokens}) {
     if (tokens.isEmpty) return null;
@@ -687,6 +707,36 @@ class StorePriceService {
     }
 
     return prices;
+  }
+
+  static List<double> _extractEuroPricesWithContext(String html, {double minValid = 7}) {
+    final h = html.replaceAll('&nbsp;', ' ').replaceAll('&euro;', '€');
+    final out = <double>[];
+
+    // Número con posible separador de miles y 0-2 decimales.
+    final numRx = r'(\d{1,3}(?:[\s\.]\d{3})*(?:[\.,]\d{1,2})?|\d{1,5}(?:[\.,]\d{1,2})?)';
+    final rx = RegExp(
+      '(?:€|EUR)\\s*($numRx)|($numRx)\\s*(?:€|EUR)',
+      caseSensitive: false,
+    );
+
+    for (final m in rx.allMatches(h)) {
+      final g = (m.group(1) ?? m.group(2))?.trim();
+      if (g == null || g.isEmpty) continue;
+
+      final from = (m.start - 90) < 0 ? 0 : (m.start - 90);
+      final to = (m.end + 90) > h.length ? h.length : (m.end + 90);
+      final snippet = h.substring(from, to);
+      if (_looksLikeBadContext(snippet)) continue;
+
+      final v = _parseNumber(g);
+      if (v == null) continue;
+      if (v < minValid || v > 500) continue;
+      out.add(v);
+    }
+
+    out.sort();
+    return out;
   }
 
   static double? _parseNumber(String s) {
@@ -783,9 +833,6 @@ class StorePriceService {
     if (res2 == null) return null;
 
     final html2 = res2.body;
-
-    // Para barcode, exigimos que la página contenga el barcode.
-    if (!html2.contains(b)) return null;
 
     final price = _extractBestProductPrice(html2);
     if (price == null) return null;
@@ -1100,7 +1147,7 @@ class StorePriceService {
       final html = res.body;
 
       // Si ya es una página de producto (contiene el barcode), intentamos extraer un precio fiable.
-      if (html.contains(b)) {
+      if (_pageHasBarcode(html, b)) {
         final p = _extractBestProductPrice(html);
         if (p != null) {
           final can = _extractCanonical(html) ?? u;
@@ -1118,7 +1165,7 @@ class StorePriceService {
         final html2 = res2.body;
 
         // Para barcode, exigimos que la página del producto contenga el barcode.
-        if (!html2.contains(b)) continue;
+        if (!_pageHasBarcode(html2, b)) continue;
 
         final p2 = _extractBestProductPrice(html2);
         if (p2 == null) continue;
@@ -1256,7 +1303,7 @@ class StorePriceService {
       if (res2 == null) continue;
       final html2 = res2.body;
 
-      if (requireBarcodeOnProduct && !html2.contains(query.trim())) return null;
+      if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
 
       final p2 = _extractHHVPrice(html2) ?? _extractBestProductPrice(html2);
       if (p2 == null) continue;
@@ -1304,8 +1351,8 @@ class StorePriceService {
         hrefRx: RegExp(r'''href=["'](/products/[^"'#?]+)["']''', caseSensitive: false),
         tokens: tokens,
         baseUrl: 'https://therecordhub.com',
-        requirePriceHint: true,
-        requireVinylHint: true,
+        requirePriceHint: false,
+        requireVinylHint: false,
       );
 
       if (best == null) continue;
@@ -1313,7 +1360,7 @@ class StorePriceService {
       if (res2 == null) continue;
 
       final html2 = res2.body;
-      if (requireBarcodeOnProduct && !html2.contains(query.trim())) return null;
+      if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
 
       final p2 = _extractBestProductPrice(html2);
       if (p2 == null) continue;
@@ -1363,8 +1410,8 @@ class StorePriceService {
         hrefRx: RegExp(r'''href=["'](/artist/[^"'#?]+)["']''', caseSensitive: false),
         tokens: tokens,
         baseUrl: 'https://www.levykauppax.fi',
-        requirePriceHint: true,
-        requireVinylHint: true,
+        requirePriceHint: false,
+        requireVinylHint: false,
       );
       if (best == null) continue;
 
@@ -1372,7 +1419,7 @@ class StorePriceService {
       if (res2 == null) continue;
 
       final html2 = res2.body;
-      if (requireBarcodeOnProduct && !html2.contains(query.trim())) return null;
+      if (requireBarcodeOnProduct && !_pageHasBarcode(html2, query.trim())) continue;
 
       final p2 = _extractBestProductPrice(html2);
       if (p2 == null) continue;
@@ -1394,7 +1441,6 @@ class StorePriceService {
     bool requireVinylHint = false,
   }) {
     if (html.trim().isEmpty) return null;
-    final normAll = _normKey(html);
 
     _ListingHit? best;
     int bestScore = -1;
@@ -1421,12 +1467,15 @@ class StorePriceService {
         if (!sn.contains('vinyl') && !sn.contains('lp') && !sn.contains('vinyyl')) continue;
       }
 
-      final score = tokens.isEmpty ? 0 : _scoreTokens(normAll, tokens);
-      // Ajuste: cuando el snippet menciona tokens, subimos el score.
       final scoreSnippet = tokens.isEmpty ? 0 : _scoreTokens(_normKey(snippet), tokens);
-      final total = (score * 2) + (scoreSnippet * 3);
 
-      final listingPrice = _firstPriceInHtml(snippet);
+      if (tokens.isNotEmpty && scoreSnippet <= 0) continue;
+
+
+      // Score final basado en el snippet (es lo que rodea al link).
+      final total = scoreSnippet;
+
+      final listingPrice = _firstPriceInHtml(snippet, minValid: 7);
 
       if (total > bestScore) {
         bestScore = total;
