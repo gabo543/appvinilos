@@ -1437,20 +1437,6 @@ class StorePriceService {
     return best;
   }
 
-  static double? _firstPriceInHtml(String html) {
-    // Busca valores como 24,99 € o 24.99 €.
-    final m = RegExp(r'([0-9]{1,3}(?:[\.,][0-9]{2})?)\s*(?:€|EUR)', caseSensitive: false)
-        .firstMatch(html);
-    if (m == null) return null;
-    final raw = m.group(1);
-    if (raw == null) return null;
-    final norm = raw.replaceAll(',', '.').trim();
-    final v = double.tryParse(norm);
-    if (v == null) return null;
-    if (v < 3 || v > 3000) return null;
-    return v;
-  }
-
 }
 
 class _ListingHit {
