@@ -196,6 +196,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
   // store offers (auto prices)
   final Map<String, List<StoreOffer>?> _offersByBarcode = {};
   final Map<String, bool> _offersLoading = {};
+  // ✅ Solo mostramos precios cuando el usuario toca el botón €.
+  final Map<String, bool> _pricesEnabledByKey = {};
   final Set<String> _prefetchedBarcodes = {};
   Future<void> _prefetchQueue = Future.value();
 
@@ -271,7 +273,74 @@ class _WishlistScreenState extends State<WishlistScreen> {
         album: album,
         barcode: barcode.isEmpty ? null : barcode,
       ),
-    );  }
+    );
+  }
+
+  Future<List<StoreOffer>> _fetchOffersForKey(
+    String key, {
+    required String artist,
+    required String album,
+    required String barcode,
+    bool forceRefresh = false,
+  }) async {
+    final k = key.trim();
+    if (k.isEmpty) return const <StoreOffer>[];
+
+    if (!forceRefresh && _offersByBarcode.containsKey(k)) {
+      return _offersByBarcode[k] ?? const <StoreOffer>[];
+    }
+
+    if (!forceRefresh && (_offersLoading[k] == true)) {
+      return _offersByBarcode[k] ?? const <StoreOffer>[];
+    }
+
+    _offersLoading[k] = true;
+    if (mounted) setState(() {});
+
+    try {
+      final b = barcode.trim();
+      final offers = b.isNotEmpty
+          ? await StorePriceService.fetchOffersByBarcodeCached(b, forceRefresh: forceRefresh)
+          : await StorePriceService.fetchOffersByQueryCached(artist: artist, album: album, forceRefresh: forceRefresh);
+      _offersByBarcode[k] = offers;
+      return offers;
+    } catch (_) {
+      _offersByBarcode[k] = const <StoreOffer>[];
+      return const <StoreOffer>[];
+    } finally {
+      _offersLoading[k] = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _onWishEuroPressed(Map<String, dynamic> w) async {
+    final artist = (w['artista'] ?? '').toString().trim();
+    final album = (w['album'] ?? '').toString().trim();
+    final barcode = (w['barcode'] ?? '').toString().trim();
+    final key = _offerKeyForItem(artist: artist, album: album, barcode: barcode);
+    if (key == null) return;
+
+    setState(() {
+      _pricesEnabledByKey[key] = true;
+    });
+
+    final offers = await _fetchOffersForKey(
+      key,
+      artist: artist,
+      album: album,
+      barcode: barcode,
+      forceRefresh: false,
+    );
+    if (!mounted) return;
+
+    // Si no hay coincidencias en iMusic/Muziker, no mostramos nada.
+    if (offers.isEmpty) {
+      setState(() {
+        _pricesEnabledByKey[key] = false;
+      });
+      _snack('No encontré precios para este vinilo');
+    }
+  }
 
   void _reload() {
     setState(() {
@@ -388,6 +457,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final k = key.trim();
     if (k.isEmpty) return const SizedBox.shrink();
 
+    // Solo mostramos precios si el usuario lo pidió con el botón €.
+    if (_pricesEnabledByKey[k] != true) return const SizedBox.shrink();
+
     final offers = _offersByBarcode[k];
     final loading = _offersLoading[k] == true;
 
@@ -416,10 +488,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     final list = (offers ?? const <StoreOffer>[]);
     if (list.isEmpty) {
-      return Text(
-        context.tr('Sin precios'),
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-      );
+      // Si no hay coincidencias, no mostramos nada.
+      return const SizedBox.shrink();
     }
 
     final sorted = [...list]..sort((a, c) => a.price.compareTo(c.price));
@@ -809,7 +879,7 @@ Widget _placeholder() {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
                       ),
-                      if (offerKey != null) ...[
+                      if (offerKey != null && (_pricesEnabledByKey[offerKey] == true)) ...[
                         const SizedBox(height: 8),
                         _pricePills(w, offerKey!),
                       ],
@@ -835,7 +905,7 @@ Widget _placeholder() {
                     tooltip: context.tr('Buscar precios'),
                     icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 22),
                     visualDensity: VisualDensity.compact,
-                    onPressed: () => _showStorePrices(w),
+                    onPressed: () => _onWishEuroPressed(w),
                   ),
                   IconButton(
                     tooltip: context.tr('Agregar a vinilos'),
@@ -949,7 +1019,7 @@ Widget _placeholder() {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  if (offerKey != null) ...[
+                  if (offerKey != null && (_pricesEnabledByKey[offerKey] == true)) ...[
                     SizedBox(height: 8),
                     _pricePills(w, offerKey!, compact: true),
                   ],
@@ -975,7 +1045,7 @@ Widget _placeholder() {
                         tooltip: context.tr('Buscar precios'),
                         icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 20),
                         visualDensity: VisualDensity.compact,
-                        onPressed: () => _showStorePrices(w),
+                        onPressed: () => _onWishEuroPressed(w),
                       ),
                       IconButton(
                         tooltip: context.tr('Agregar a vinilos'),
@@ -1159,9 +1229,7 @@ Widget _placeholder() {
           final end = (start + _pageSize < total) ? (start + _pageSize) : total;
           final pageItems = (total <= 0 || start >= total) ? const <Map<String, dynamic>>[] : items.sublist(start, end);
 
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _ensureAutoPrices(pageItems);
-          });
+          // ✅ Precios solo bajo demanda (botón €). No precargamos automáticamente.
 
           return Column(
             children: [

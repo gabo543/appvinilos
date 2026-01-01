@@ -235,26 +235,72 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     );
   }
 
-  void _ensureOffersLoaded(String artistName, AlbumItem al) {
+  Future<List<StoreOffer>> _fetchOffersForAlbum(
+    String artistName,
+    AlbumItem al, {
+    bool forceRefresh = false,
+  }) async {
     final rgid = al.releaseGroupId.trim();
-    if (rgid.isEmpty) return;
-    if (_offersByReleaseGroup.containsKey(rgid)) return;
-    if (_offersInFlight[rgid] != null) return;
+    if (rgid.isEmpty) return const <StoreOffer>[];
 
-    _offersInFlight[rgid] = StorePriceService.fetchOffersByQueryCached(
+    if (!forceRefresh && _offersByReleaseGroup.containsKey(rgid)) {
+      return _offersByReleaseGroup[rgid] ?? const <StoreOffer>[];
+    }
+
+    final inflight = _offersInFlight[rgid];
+    if (!forceRefresh && inflight != null) {
+      try {
+        return await inflight;
+      } catch (_) {
+        return const <StoreOffer>[];
+      }
+    }
+
+    final fut = StorePriceService.fetchOffersByQueryCached(
       artist: artistName,
       album: al.title,
+      forceRefresh: forceRefresh,
     ).then((offers) {
       _offersByReleaseGroup[rgid] = offers;
-      _offersInFlight[rgid] = null;
-      if (mounted) setState(() {});
       return offers;
     }).catchError((_) {
-      _offersByReleaseGroup[rgid] = const [];
+      _offersByReleaseGroup[rgid] = const <StoreOffer>[];
+      return const <StoreOffer>[];
+    }).whenComplete(() {
       _offersInFlight[rgid] = null;
       if (mounted) setState(() {});
-      return const <StoreOffer>[];
     });
+
+    _offersInFlight[rgid] = fut;
+    return await fut;
+  }
+
+  Future<void> _onEuroPressed(
+    String artistName,
+    AlbumItem al, {
+    bool forceRefresh = false,
+  }) async {
+    final rgid = al.releaseGroupId.trim();
+    if (rgid.isEmpty) return;
+    if (artistName.trim().isEmpty) return;
+
+    // Marca el álbum como "precio solicitado" para que aparezca el label.
+    setState(() {
+      _priceEnabledByReleaseGroup[rgid] = true;
+    });
+
+    final offers = await _fetchOffersForAlbum(artistName, al, forceRefresh: forceRefresh);
+    if (!mounted) return;
+
+    // Si no hay coincidencias en iMusic/Muziker, no mostramos nada y quitamos el label.
+    if (offers.isEmpty) {
+      setState(() {
+        _priceEnabledByReleaseGroup[rgid] = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('No encontré precios para este vinilo'))),
+      );
+    }
   }
 
   // 🔎 Auto-selección (modo A): si el mejor resultado es claramente superior,
@@ -1018,45 +1064,59 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         toolbarHeight: kAppBarToolbarHeight,
         leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
         leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        // ✅ Importante: el título NO debe cortarse ("Di...") por culpa de los íconos.
+        // Por eso, las acciones van en una segunda fila (AppBar.bottom).
         title: appBarTitleTextScaled(context.tr('Discografías'), padding: const EdgeInsets.only(left: 8)),
         titleSpacing: 12,
-        actions: [
-          IconButton(
-            tooltip: context.tr('Buscar'),
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              // Llevar el foco al buscador de artista.
-              FocusScope.of(context).requestFocus(_artistFocus);
-            },
-          ),
-          IconButton(
-            tooltip: context.tr('Explorar'),
-            icon: const Icon(Icons.explore),
-            onPressed: () {
-              _dismissKeyboard();
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ExploreScreen()),
-              );
-            },
-          ),
-          IconButton(
-            tooltip: context.tr('Similares'),
-            icon: const Icon(Icons.hub_outlined),
-            onPressed: () {
-              _dismissKeyboard();
-              final a = pickedArtist;
-              final name = (a?.name ?? artistCtrl.text.trim());
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => SimilarArtistsScreen(
-                    initialArtistName: name.isEmpty ? null : name,
-                    initialArtistId: a?.id,
-                  ),
+        actions: const <Widget>[],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(44),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 8, 8),
+            child: Row(
+              children: [
+                const Spacer(),
+                IconButton(
+                  tooltip: context.tr('Buscar'),
+                  icon: const Icon(Icons.search),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    FocusScope.of(context).requestFocus(_artistFocus);
+                  },
                 ),
-              );
-            },
+                IconButton(
+                  tooltip: context.tr('Explorar'),
+                  icon: const Icon(Icons.explore),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _dismissKeyboard();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ExploreScreen()),
+                    );
+                  },
+                ),
+                IconButton(
+                  tooltip: context.tr('Similares'),
+                  icon: const Icon(Icons.hub_outlined),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _dismissKeyboard();
+                    final a = pickedArtist;
+                    final name = (a?.name ?? artistCtrl.text.trim());
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SimilarArtistsScreen(
+                          initialArtistName: name.isEmpty ? null : name,
+                          initialArtistId: a?.id,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(12),
@@ -1259,7 +1319,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                               final priceEnabled = rgid.isNotEmpty && (_priceEnabledByReleaseGroup[rgid] ?? false);
                               final priceDisabled = rgid.isEmpty || artistName.trim().isEmpty;
                               if (priceEnabled) {
-                                _ensureOffersLoaded(artistName, al);
+                                // Dispara carga (sin bloquear UI) si aún no está en cache.
+                                _fetchOffersForAlbum(artistName, al, forceRefresh: false);
                               }
 
                               final hasOffers = rgid.isNotEmpty && _offersByReleaseGroup.containsKey(rgid);
@@ -1429,20 +1490,14 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                               actionItem(
                                                 icon: Icons.euro_symbol,
                                                 label: '€',
-                                                tooltip: priceEnabled ? context.tr('Ocultar precio') : context.tr('Ver precio'),
+                                                tooltip: priceEnabled ? context.tr('Actualizar precios') : context.tr('Buscar precios'),
                                                 disabled: priceDisabled,
-                                                active: priceEnabled,
-                                                onTap: () {
-                                                  if (rgid.isEmpty) return;
-                                                  setState(() {
-                                                    final next = !(_priceEnabledByReleaseGroup[rgid] ?? false);
-                                                    _priceEnabledByReleaseGroup[rgid] = next;
-                                                  });
-                                                  if (!priceEnabled) {
-                                                    // Al activar, disparar carga.
-                                                    _ensureOffersLoaded(artistName, al);
-                                                  }
-                                                },
+                                                active: priceEnabled && (offers != null && offers.isNotEmpty),
+                                                onTap: () => _onEuroPressed(
+                                                  artistName,
+                                                  al,
+                                                  forceRefresh: priceEnabled,
+                                                ),
                                               ),
                                               if (busy)
                                                 Padding(

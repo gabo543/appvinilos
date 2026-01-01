@@ -35,6 +35,8 @@ class AppStrings {
   "Alerta guardada ✅": "Alert saved ✅",
   "Alerta eliminada ✅": "Alert removed ✅",
   "Alertas de precio": "Price alerts",
+  "Tiendas de precios": "Price stores",
+  "Activar/desactivar tiendas para comparar precios.": "Enable/disable stores to compare prices.",
   "Aplicar": "Apply",
   "Apunta al código de barras del vinilo.": "Point at the record's barcode.",
   "Aquí aparecerán los vinilos que borres para que puedas recuperarlos.": "Deleted records will appear here so you can restore them.",

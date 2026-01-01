@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StoreOffer {
+  /// Identificador estable para switches en Ajustes.
+  /// Ej: "imusic", "muziker", "hhv", "therecordhub", "recordshopx", "levykauppax".
+  final String storeId;
   final String store;
   final double price;
   final String currency;
@@ -12,6 +15,7 @@ class StoreOffer {
   final String? note;
 
   const StoreOffer({
+    required this.storeId,
     required this.store,
     required this.price,
     required this.currency,
@@ -20,6 +24,7 @@ class StoreOffer {
   });
 
   Map<String, dynamic> toJson() => {
+        'storeId': storeId,
         'store': store,
         'price': price,
         'currency': currency,
@@ -28,6 +33,7 @@ class StoreOffer {
       };
 
   static StoreOffer? fromJson(Map<String, dynamic> m) {
+    final storeId = (m['storeId'] as String?)?.trim();
     final store = (m['store'] as String?)?.trim();
     final price = (m['price'] as num?)?.toDouble();
     final currency = (m['currency'] as String?)?.trim();
@@ -36,13 +42,106 @@ class StoreOffer {
     if (store == null || store.isEmpty || price == null || currency == null || currency.isEmpty || url == null || url.isEmpty) {
       return null;
     }
+    final inferredId = StorePriceService.inferStoreId(store);
     return StoreOffer(
+      storeId: (storeId == null || storeId.isEmpty) ? inferredId : storeId,
       store: store,
       price: price,
       currency: currency,
       url: url,
       note: (note == null || note.isEmpty) ? null : note,
     );
+  }
+}
+
+class StoreSourceDef {
+  final String id;
+  final String name;
+  final String description;
+  final bool enabledByDefault;
+
+  const StoreSourceDef({
+    required this.id,
+    required this.name,
+    required this.description,
+    this.enabledByDefault = true,
+  });
+}
+
+/// Switches de tiendas (Ajustes). Persisten en SharedPreferences.
+class StoreSourcesSettings {
+  static const _prefPrefix = 'price_store_enabled::';
+
+  static const List<StoreSourceDef> stores = <StoreSourceDef>[
+    StoreSourceDef(
+      id: 'imusic',
+      name: 'iMusic.fi',
+      description: 'Tienda europea con buen catálogo.',
+      enabledByDefault: true,
+    ),
+    StoreSourceDef(
+      id: 'muziker',
+      name: 'Muziker.fi',
+      description: 'Tienda (Finlandia) con LP/vinyl.',
+      enabledByDefault: true,
+    ),
+    StoreSourceDef(
+      id: 'hhv',
+      name: 'HHV.de',
+      description: 'Tienda alemana con catálogo grande.',
+      enabledByDefault: true,
+    ),
+    StoreSourceDef(
+      id: 'therecordhub',
+      name: 'TheRecordHub.com',
+      description: 'Tienda online (Europa).',
+      enabledByDefault: true,
+    ),
+    StoreSourceDef(
+      id: 'levykauppax',
+      name: 'LevykauppaX.fi',
+      description: 'Finlandia (a veces bloquea consultas automáticas).',
+      enabledByDefault: true,
+    ),
+  ];
+
+  static Future<bool> isEnabled(String storeId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final def = stores.firstWhere(
+      (s) => s.id == storeId,
+      orElse: () => const StoreSourceDef(id: 'x', name: 'x', description: '', enabledByDefault: true),
+    );
+    return prefs.getBool('$_prefPrefix$storeId') ?? def.enabledByDefault;
+  }
+
+  static Future<Map<String, bool>> enabledMap() async {
+    final prefs = await SharedPreferences.getInstance();
+    final out = <String, bool>{};
+    for (final s in stores) {
+      out[s.id] = prefs.getBool('$_prefPrefix${s.id}') ?? s.enabledByDefault;
+    }
+    return out;
+  }
+
+  static Future<List<String>> enabledIds() async {
+    final m = await enabledMap();
+    final out = <String>[];
+    for (final s in stores) {
+      if (m[s.id] == true) out.add(s.id);
+    }
+    return out;
+  }
+
+  static Future<void> setEnabled(String storeId, bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('$_prefPrefix$storeId', enabled);
+  }
+
+  static Future<void> resetToDefaults() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final s in stores) {
+      await prefs.setBool('$_prefPrefix${s.id}', s.enabledByDefault);
+    }
   }
 }
 
@@ -66,23 +165,45 @@ class StorePriceService {
   // sin spamear una misma tienda).
   static final Map<String, DateTime> _lastFetchByHost = {};
 
-  // ✅ Solo usamos estas 2 tiendas.
-  // (El resto se eliminó para evitar precios erróneos y cambios de HTML.)
-  static bool _isAllowedStore(String store) {
-    final s = store.toLowerCase();
-    return s.contains('imusic') || s.contains('muziker');
+  // ------------------ Fuentes (enchufables) ------------------
+  // Se controlan desde Ajustes con switches.
+  //
+  // Importante: algunas tiendas pueden bloquear scraping. Por eso el usuario
+  // puede desactivar fuentes que no le funcionen bien.
+
+  static String inferStoreId(String storeName) {
+    final s = storeName.toLowerCase();
+    if (s.contains('imusic')) return 'imusic';
+    if (s.contains('muziker')) return 'muziker';
+    if (s.contains('hhv')) return 'hhv';
+    if (s.contains('therecordhub') || s.contains('record hub')) return 'therecordhub';
+    if (s.contains('levykauppa') || s.contains('levykauppax') || s.contains('x.fi')) return 'levykauppax';
+    if (s.contains('recordshopx')) return 'recordshopx';
+    return s.replaceAll(RegExp(r'[^a-z0-9]+'), '').trim();
   }
 
-  static List<StoreOffer> _onlyAllowed(List<StoreOffer> offers) {
+  static Future<List<String>> getEnabledStoreIds() => StoreSourcesSettings.enabledIds();
+
+  static Future<void> setStoreEnabled(String id, bool enabled) => StoreSourcesSettings.setEnabled(id, enabled);
+
+  static Future<void> resetStoresToDefault() => StoreSourcesSettings.resetToDefaults();
+
+  static String _sig(List<String> enabledIds) {
+    final ids = [...enabledIds]..sort();
+    return ids.join(',');
+  }
+
+  static List<StoreOffer> _filterAndSort(List<StoreOffer> offers, List<String> enabledIds) {
+    final allowed = enabledIds.toSet();
     final out = <StoreOffer>[];
     for (final o in offers) {
-      if (_isAllowedStore(o.store)) out.add(o);
+      if (allowed.contains(o.storeId)) out.add(o);
     }
-    out.sort((a, c) => a.price.compareTo(c.price));
+    out.sort((a, b) => a.price.compareTo(b.price));
     return out;
   }
 
-  static String _cacheKey(String barcode) => '$_prefsPrefix${barcode.trim()}';
+  static String _cacheKey(String barcode, String sig) => '$_prefsPrefix${barcode.trim()}::$sig';
 
   static String _normKey(String s) {
     final t = s
@@ -93,9 +214,9 @@ class StorePriceService {
     return t;
   }
 
-  static String _cacheKeyQuery({required String artist, required String album}) {
+  static String _cacheKeyQuery({required String artist, required String album, required String sig}) {
     final k = _normKey('$artist||$album');
-    return '$_prefsPrefixQuery$k';
+    return '$_prefsPrefixQuery$k::$sig';
   }
 
   static bool _isFresh(int ts, Duration ttl) {
@@ -122,7 +243,9 @@ class StorePriceService {
     final b = barcode.trim();
     if (b.isEmpty) return const [];
 
-    final key = _cacheKey(b);
+    final enabled = await getEnabledStoreIds();
+    final sig = _sig(enabled);
+    final key = _cacheKey(b, sig);
     if (!forceRefresh && _memCache.containsKey(key)) {
       return _memCache[key] ?? const [];
     }
@@ -144,7 +267,7 @@ class StorePriceService {
                 if (o != null) offers.add(o);
               }
             }
-            final filtered = _onlyAllowed(offers);
+            final filtered = _filterAndSort(offers, enabled);
             _memCache[key] = filtered;
             return filtered;
           }
@@ -157,7 +280,7 @@ class StorePriceService {
     if (_inflight.containsKey(key)) return _inflight[key]!;
 
     final fut = () async {
-      final offers = _onlyAllowed(await fetchOffersByBarcode(b));
+      final offers = _filterAndSort(await fetchOffersByBarcode(b, enabledStoreIds: enabled), enabled);
       _memCache[key] = offers;
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -192,7 +315,9 @@ class StorePriceService {
     final al = album.trim();
     if (a.isEmpty || al.isEmpty) return const [];
 
-    final key = _cacheKeyQuery(artist: a, album: al);
+    final enabled = await getEnabledStoreIds();
+    final sig = _sig(enabled);
+    final key = _cacheKeyQuery(artist: a, album: al, sig: sig);
 
     if (!forceRefresh && _memCache.containsKey(key)) {
       return _memCache[key] ?? const [];
@@ -215,7 +340,7 @@ class StorePriceService {
                 if (o != null) offers.add(o);
               }
             }
-            final filtered = _onlyAllowed(offers);
+            final filtered = _filterAndSort(offers, enabled);
             _memCache[key] = filtered;
             return filtered;
           }
@@ -228,7 +353,7 @@ class StorePriceService {
     if (_inflight.containsKey(key)) return _inflight[key]!;
 
     final fut = () async {
-      final offers = _onlyAllowed(await fetchOffersByQuery(artist: a, album: al));
+      final offers = _filterAndSort(await fetchOffersByQuery(artist: a, album: al, enabledStoreIds: enabled), enabled);
       _memCache[key] = offers;
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -251,43 +376,65 @@ class StorePriceService {
     }
   }
 
-  static Future<List<StoreOffer>> fetchOffersByBarcode(String barcode) async {
+  static Future<List<StoreOffer>> fetchOffersByBarcode(
+    String barcode, {
+    List<String>? enabledStoreIds,
+  }) async {
     final b = (barcode).trim();
     if (b.isEmpty) return const [];
 
+    final enabled = enabledStoreIds ?? await getEnabledStoreIds();
+    if (enabled.isEmpty) return const [];
+
     final offers = <StoreOffer>[];
 
-    final results = await Future.wait<StoreOffer?>([
-      _fetchIMusic(b),
-      _fetchMuziker(b),
-    ]);
+    final futures = <Future<StoreOffer?>>[];
+    if (enabled.contains('imusic')) futures.add(_fetchIMusic(b));
+    if (enabled.contains('muziker')) futures.add(_fetchMuziker(b));
+    if (enabled.contains('hhv')) futures.add(_fetchHHVByBarcode(b));
+    if (enabled.contains('therecordhub')) futures.add(_fetchRecordHubByBarcode(b));
+    if (enabled.contains('levykauppax')) futures.add(_fetchLevykauppaXByBarcode(b));
+
+    final results = await Future.wait<StoreOffer?>(futures);
 
     for (final r in results) {
       if (r != null) offers.add(r);
     }
 
-    return _onlyAllowed(offers);
+    return _filterAndSort(offers, enabled);
   }
 
   static Future<List<StoreOffer>> fetchOffersByQuery({
     required String artist,
     required String album,
+    List<String>? enabledStoreIds,
   }) async {
     final a = artist.trim();
     final al = album.trim();
     if (a.isEmpty || al.isEmpty) return const [];
 
+    final enabled = enabledStoreIds ?? await getEnabledStoreIds();
+    if (enabled.isEmpty) return const [];
+
     final q = '$a $al vinyl'.trim();
 
     final offers = <StoreOffer>[];
-    final results = await Future.wait<StoreOffer?>([
-      _fetchIMusicQuery(q),
-      _fetchMuzikerArtistAlbum(artist: a, album: al, fallbackQuery: q),
-    ]);
+
+    final futures = <Future<StoreOffer?>>[];
+    if (enabled.contains('imusic')) futures.add(_fetchIMusicQuery(q));
+    if (enabled.contains('muziker')) {
+      futures.add(_fetchMuzikerArtistAlbum(artist: a, album: al, fallbackQuery: q));
+    }
+    if (enabled.contains('hhv')) futures.add(_fetchHHVByQuery(q, artist: a, album: al));
+    if (enabled.contains('therecordhub')) futures.add(_fetchRecordHubByQuery(q, artist: a, album: al));
+    if (enabled.contains('levykauppax')) futures.add(_fetchLevykauppaXByQuery(q, artist: a, album: al));
+
+    final results = await Future.wait<StoreOffer?>(futures);
     for (final r in results) {
       if (r != null) offers.add(r);
     }
-    return _onlyAllowed(offers);
+
+    return _filterAndSort(offers, enabled);
   }
 
   static Future<http.Response?> _get(String url) async {
@@ -646,6 +793,7 @@ class StorePriceService {
     final can = _extractCanonical(html2) ?? productUrl;
 
     return StoreOffer(
+      storeId: 'imusic',
       store: 'iMusic.fi',
       price: price,
       currency: 'EUR',
@@ -680,6 +828,7 @@ class StorePriceService {
     final can = _extractCanonical(html2) ?? hit.url;
 
     return StoreOffer(
+      storeId: 'imusic',
       store: 'iMusic.fi',
       price: price,
       currency: 'EUR',
@@ -822,6 +971,79 @@ class StorePriceService {
     return (url: bestUrl!, price: bestPrice);
   }
 
+  static ({String url, double price})? _bestFromMuzikerListingByTokens(String html, {required List<String> tokens}) {
+    final t = tokens.where((e) => e.trim().length >= 2).toList(growable: false);
+    if (t.isEmpty) return null;
+
+    final hrefRx = RegExp(r'''href=["'](/[^"']+)["']''', caseSensitive: false);
+
+    int bestScore = 0;
+    double bestPrice = 0;
+    String? bestUrl;
+
+    for (final m in hrefRx.allMatches(html)) {
+      final path = m.group(1);
+      if (path == null || path.isEmpty) continue;
+
+      // Filtrado rápido de links que claramente no son productos.
+      if (!path.startsWith('/')) continue;
+      if (path.startsWith('/search') || path.startsWith('/haku')) continue;
+      if (path.contains('page=')) continue;
+      if (path.contains('?')) continue;
+      if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.webp') || path.endsWith('.svg')) {
+        continue;
+      }
+      if (path.contains('/cookies') || path.contains('/faq') || path.contains('/blog')) continue;
+
+      final start = m.start;
+      final end = (start + 900) > html.length ? html.length : (start + 900);
+      final snippet = html.substring(start, end);
+
+      // Evita capturar "5 €" (cupones) o "0 €" (envío).
+      if (!snippet.contains('€') && !snippet.toLowerCase().contains('eur')) continue;
+      if (!RegExp(r'(vinyyl|vinyl|lp)', caseSensitive: false).hasMatch(snippet)) continue;
+
+      final snNorm = _normKey(snippet);
+      final score = _scoreTokens(snNorm, t);
+      if (score <= 0) continue;
+
+      final p = _minPrice(snippet, minValid: 7);
+      if (p == null) continue;
+
+      final fullUrl = 'https://www.muziker.fi$path';
+      if (bestUrl == null || score > bestScore || (score == bestScore && p < bestPrice)) {
+        bestScore = score;
+        bestPrice = p;
+        bestUrl = fullUrl;
+      }
+    }
+
+    if (bestUrl == null) return null;
+    return (url: bestUrl!, price: bestPrice);
+  }
+
+  static List<String> _candidateMuzikerProductUrls(String html, {int limit = 8}) {
+    final out = <String>[];
+    final seen = <String>{};
+    final hrefRx = RegExp(r'''href=["'](/[^"']+)["']''', caseSensitive: false);
+    for (final m in hrefRx.allMatches(html)) {
+      final path = m.group(1);
+      if (path == null || path.isEmpty) continue;
+      if (!path.startsWith('/')) continue;
+      if (path.startsWith('/search') || path.startsWith('/haku')) continue;
+      if (path.contains('page=')) continue;
+      if (path.contains('?')) continue;
+      if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.webp') || path.endsWith('.svg')) continue;
+      if (path.contains('/cookies') || path.contains('/faq') || path.contains('/blog')) continue;
+      final url = 'https://www.muziker.fi$path';
+      if (seen.add(url)) {
+        out.add(url);
+        if (out.length >= limit) break;
+      }
+    }
+    return out;
+  }
+
   static Future<StoreOffer?> _fetchMuzikerArtistAlbum({
     required String artist,
     required String album,
@@ -851,7 +1073,7 @@ class StorePriceService {
 
           final can2 = _extractCanonical(html2) ?? hit.url;
           final note2 = _extractMuzikerNote(html2);
-          return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
+          return StoreOffer(storeId: 'muziker', store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
         }
       }
     }
@@ -883,37 +1105,28 @@ class StorePriceService {
         if (p != null) {
           final can = _extractCanonical(html) ?? u;
           final note = _extractMuzikerNote(html);
-          return StoreOffer(store: 'Muziker.fi', price: p, currency: 'EUR', url: can, note: note);
+          return StoreOffer(storeId: 'muziker', store: 'Muziker.fi', price: p, currency: 'EUR', url: can, note: note);
         }
       }
 
       // En páginas de búsqueda/listado NO tomamos precios del HTML (son propensos a errores).
-      // Intentamos entrar a un producto y validar que contenga el barcode.
-      final productUrl = _firstHref(
-        html,
-        RegExp(r'''href=["'](https?://www\.muziker\.fi/[^"']+)["']''', caseSensitive: false),
-      );
-      final productPath = _firstHref(
-        html,
-        RegExp(r'''href=["'](/[^"']+)["']''', caseSensitive: false),
-        prefix: 'https://www.muziker.fi',
-      );
-      final candidate = productUrl ?? productPath;
-      if (candidate == null) continue;
+      // Probamos entrar a algunos candidatos hasta encontrar un producto que contenga el barcode.
+      final candidates = _candidateMuzikerProductUrls(html, limit: 8);
+      for (final candidate in candidates) {
+        final res2 = await _get(candidate);
+        if (res2 == null) continue;
+        final html2 = res2.body;
 
-      final res2 = await _get(candidate);
-      if (res2 == null) continue;
-      final html2 = res2.body;
+        // Para barcode, exigimos que la página del producto contenga el barcode.
+        if (!html2.contains(b)) continue;
 
-      // Para barcode, exigimos que la página del producto contenga el barcode.
-      if (!html2.contains(b)) continue;
+        final p2 = _extractBestProductPrice(html2);
+        if (p2 == null) continue;
 
-      final p2 = _extractBestProductPrice(html2);
-      if (p2 == null) continue;
-
-      final can2 = _extractCanonical(html2) ?? candidate;
-      final note2 = _extractMuzikerNote(html2);
-      return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
+        final can2 = _extractCanonical(html2) ?? candidate;
+        final note2 = _extractMuzikerNote(html2);
+        return StoreOffer(storeId: 'muziker', store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
+      }
     }
 
     return null;
@@ -942,34 +1155,29 @@ class StorePriceService {
       if (res == null) continue;
       final html = res.body;
 
-      // En listados NO tomamos precios directos; entramos a un producto.
-      final productUrl = _firstHref(
-        html,
-        RegExp(r'''href=["'](https?://www\.muziker\.fi/[^"']+)["']''', caseSensitive: false),
-      );
-      final productPath = _firstHref(
-        html,
-        RegExp(r'''href=["'](/[^"']+)["']''', caseSensitive: false),
-        prefix: 'https://www.muziker.fi',
-      );
-      final candidate = productUrl ?? productPath;
-      if (candidate == null) continue;
+      // En listados NO tomamos precios directos; elegimos el candidato más probable y entramos.
+      final hit = _bestFromMuzikerListingByTokens(html, tokens: tokens.isEmpty ? _tokens(qRaw) : tokens);
+      final candidates = <String>[];
+      if (hit != null) candidates.add(hit.url);
+      candidates.addAll(_candidateMuzikerProductUrls(html, limit: 6));
 
-      final res2 = await _get(candidate);
-      if (res2 == null) continue;
-      final html2 = res2.body;
+      for (final candidate in candidates.toSet().take(8)) {
+        final res2 = await _get(candidate);
+        if (res2 == null) continue;
+        final html2 = res2.body;
 
-      if (tokens.isNotEmpty) {
-        final score = _scoreTokens(_normKey(html2), tokens);
-        if (score < minScore) continue;
+        if (tokens.isNotEmpty) {
+          final score = _scoreTokens(_normKey(html2), tokens);
+          if (score < minScore) continue;
+        }
+
+        final p2 = _extractBestProductPrice(html2);
+        if (p2 == null) continue;
+
+        final can2 = _extractCanonical(html2) ?? candidate;
+        final note2 = _extractMuzikerNote(html2);
+        return StoreOffer(storeId: 'muziker', store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
       }
-
-      final p2 = _extractBestProductPrice(html2);
-      if (p2 == null) continue;
-
-      final can2 = _extractCanonical(html2) ?? candidate;
-      final note2 = _extractMuzikerNote(html2);
-      return StoreOffer(store: 'Muziker.fi', price: p2, currency: 'EUR', url: can2, note: note2);
     }
 
     return null;
@@ -984,4 +1192,269 @@ class StorePriceService {
     return 'Con código $code';
   }
 
+  // ------------------ HHV ------------------
+
+  static Future<StoreOffer?> _fetchHHVByBarcode(String barcode) async {
+    final b = barcode.trim();
+    if (b.isEmpty) return null;
+    // HHV no es una tienda enfocada en barcode, pero a veces el EAN está en la ficha.
+    return _fetchHHV(query: b, tokens: [b], requireBarcodeOnProduct: true);
+  }
+
+  static Future<StoreOffer?> _fetchHHVByQuery(String query, {required String artist, required String album}) async {
+    final q = query.trim();
+    if (q.isEmpty) return null;
+    final tokens = _tokens('$artist $album');
+    return _fetchHHV(query: q, tokens: tokens, requireBarcodeOnProduct: false);
+  }
+
+  static double? _extractHHVPrice(String html) {
+    // HHV suele mostrar "Price: 134,99 €" en la ficha. Preferimos eso para evitar
+    // falsos positivos (envío, descuentos, etc.).
+    final h = html.replaceAll('&nbsp;', ' ').replaceAll('&euro;', '€');
+    final m = RegExp(
+      r'''\bPrice:\s*([0-9]{1,3}(?:[\.,][0-9]{2})?)\s*€''',
+      caseSensitive: false,
+    ).firstMatch(h);
+    final g = m?.group(1);
+    if (g == null || g.trim().isEmpty) return null;
+    final v = _parseNumber(g);
+    if (v == null) return null;
+    if (v < 3 || v > 3000) return null;
+    return v;
+  }
+
+  static Future<StoreOffer?> _fetchHHV({
+    required String query,
+    required List<String> tokens,
+    required bool requireBarcodeOnProduct,
+  }) async {
+    final term = Uri.encodeQueryComponent(query.trim());
+    final tries = <String>[
+      // Search en el catálogo (incluye Vinyl/CD/Tape). Ejemplo público:
+      // https://www.hhv.de/en/catalog/filter/search-S11?af=true&term=...
+      'https://www.hhv.de/en/catalog/filter/search-S11?af=true&term=$term',
+      'https://www.hhv.de/en/catalog/filter/search-S11?term=$term',
+    ];
+
+    for (final u in tries) {
+      final res = await _get(u);
+      if (res == null) continue;
+      final html = res.body;
+
+      final best = _bestLinkFromListing(
+        html,
+        hrefRx: RegExp(r'''href=["'](/en/records/item/[^"'#?]+)["']''', caseSensitive: false),
+        tokens: tokens,
+        baseUrl: 'https://www.hhv.de',
+        requirePriceHint: true,
+        requireVinylHint: false,
+      );
+
+      if (best == null) continue;
+      final res2 = await _get(best.url);
+      if (res2 == null) continue;
+      final html2 = res2.body;
+
+      if (requireBarcodeOnProduct && !html2.contains(query.trim())) return null;
+
+      final p2 = _extractHHVPrice(html2) ?? _extractBestProductPrice(html2);
+      if (p2 == null) continue;
+
+      final can2 = _extractCanonical(html2) ?? best.url;
+      return StoreOffer(storeId: 'hhv', store: 'HHV.de', price: p2, currency: 'EUR', url: can2);
+    }
+
+    return null;
+  }
+
+  // ------------------ The Record Hub ------------------
+
+  static Future<StoreOffer?> _fetchRecordHubByBarcode(String barcode) async {
+    final b = barcode.trim();
+    if (b.isEmpty) return null;
+    return _fetchRecordHub(query: b, tokens: [b], requireBarcodeOnProduct: true);
+  }
+
+  static Future<StoreOffer?> _fetchRecordHubByQuery(String query, {required String artist, required String album}) async {
+    final q = query.trim();
+    if (q.isEmpty) return null;
+    final tokens = _tokens('$artist $album');
+    return _fetchRecordHub(query: q, tokens: tokens, requireBarcodeOnProduct: false);
+  }
+
+  static Future<StoreOffer?> _fetchRecordHub({
+    required String query,
+    required List<String> tokens,
+    required bool requireBarcodeOnProduct,
+  }) async {
+    final q = Uri.encodeQueryComponent(query.trim());
+    final tries = <String>[
+      'https://therecordhub.com/search?q=$q',
+      'https://www.therecordhub.com/search?q=$q',
+    ];
+
+    for (final u in tries) {
+      final res = await _get(u);
+      if (res == null) continue;
+      final html = res.body;
+
+      final best = _bestLinkFromListing(
+        html,
+        hrefRx: RegExp(r'''href=["'](/products/[^"'#?]+)["']''', caseSensitive: false),
+        tokens: tokens,
+        baseUrl: 'https://therecordhub.com',
+        requirePriceHint: true,
+        requireVinylHint: true,
+      );
+
+      if (best == null) continue;
+      final res2 = await _get(best.url);
+      if (res2 == null) continue;
+
+      final html2 = res2.body;
+      if (requireBarcodeOnProduct && !html2.contains(query.trim())) return null;
+
+      final p2 = _extractBestProductPrice(html2);
+      if (p2 == null) continue;
+      final can2 = _extractCanonical(html2) ?? best.url;
+      return StoreOffer(storeId: 'therecordhub', store: 'TheRecordHub.com', price: p2, currency: 'EUR', url: can2);
+    }
+    return null;
+  }
+
+  // ------------------ LevykauppaX ------------------
+
+  static Future<StoreOffer?> _fetchLevykauppaXByBarcode(String barcode) async {
+    final b = barcode.trim();
+    if (b.isEmpty) return null;
+    return _fetchLevykauppaX(query: b, tokens: [b], requireBarcodeOnProduct: true);
+  }
+
+  static Future<StoreOffer?> _fetchLevykauppaXByQuery(String query, {required String artist, required String album}) async {
+    final q = query.trim();
+    if (q.isEmpty) return null;
+    final tokens = _tokens('$artist $album');
+    return _fetchLevykauppaX(query: q, tokens: tokens, requireBarcodeOnProduct: false);
+  }
+
+  static Future<StoreOffer?> _fetchLevykauppaX({
+    required String query,
+    required List<String> tokens,
+    required bool requireBarcodeOnProduct,
+  }) async {
+    final q = Uri.encodeQueryComponent(query.trim());
+
+    final tries = <String>[
+      'https://www.levykauppax.fi/search/?q=$q',
+      'https://www.levykauppax.fi/search?q=$q',
+      'https://www.levykauppax.fi/?s=$q',
+      'https://www.levykauppax.fi/search/?query=$q',
+    ];
+
+    for (final u in tries) {
+      final res = await _get(u);
+      if (res == null) continue;
+      final html = res.body;
+
+      // Encontrar una ficha probable (suelen ser /artist/...)
+      final best = _bestLinkFromListing(
+        html,
+        hrefRx: RegExp(r'''href=["'](/artist/[^"'#?]+)["']''', caseSensitive: false),
+        tokens: tokens,
+        baseUrl: 'https://www.levykauppax.fi',
+        requirePriceHint: true,
+        requireVinylHint: true,
+      );
+      if (best == null) continue;
+
+      final res2 = await _get(best.url);
+      if (res2 == null) continue;
+
+      final html2 = res2.body;
+      if (requireBarcodeOnProduct && !html2.contains(query.trim())) return null;
+
+      final p2 = _extractBestProductPrice(html2);
+      if (p2 == null) continue;
+      final can2 = _extractCanonical(html2) ?? best.url;
+      return StoreOffer(storeId: 'levykauppax', store: 'LevykauppaX.fi', price: p2, currency: 'EUR', url: can2);
+    }
+
+    return null;
+  }
+
+  // ------------------ Helper: mejor link desde un listado ------------------
+
+  static _ListingHit? _bestLinkFromListing(
+    String html, {
+    required RegExp hrefRx,
+    required List<String> tokens,
+    String? baseUrl,
+    bool requirePriceHint = true,
+    bool requireVinylHint = false,
+  }) {
+    if (html.trim().isEmpty) return null;
+    final normAll = _normKey(html);
+
+    _ListingHit? best;
+    int bestScore = -1;
+
+    for (final m in hrefRx.allMatches(html)) {
+      final raw = m.group(1);
+      if (raw == null || raw.trim().isEmpty) continue;
+      var url = raw.trim();
+      if (baseUrl != null && url.startsWith('/')) {
+        url = '$baseUrl$url';
+      }
+      if (!url.startsWith('http')) continue;
+
+      final start = m.start;
+      final from = (start - 600) < 0 ? 0 : (start - 600);
+      final to = (start + 900) > html.length ? html.length : (start + 900);
+      final snippet = html.substring(from, to);
+
+      if (requirePriceHint && !snippet.contains('€') && !snippet.toLowerCase().contains('eur')) {
+        continue;
+      }
+      if (requireVinylHint) {
+        final sn = snippet.toLowerCase();
+        if (!sn.contains('vinyl') && !sn.contains('lp') && !sn.contains('vinyyl')) continue;
+      }
+
+      final score = tokens.isEmpty ? 0 : _scoreTokens(normAll, tokens);
+      // Ajuste: cuando el snippet menciona tokens, subimos el score.
+      final scoreSnippet = tokens.isEmpty ? 0 : _scoreTokens(_normKey(snippet), tokens);
+      final total = (score * 2) + (scoreSnippet * 3);
+
+      final listingPrice = _firstPriceInHtml(snippet);
+
+      if (total > bestScore) {
+        bestScore = total;
+        best = _ListingHit(url: url, listingPrice: listingPrice);
+      }
+    }
+
+    return best;
+  }
+
+  static double? _firstPriceInHtml(String html) {
+    // Busca valores como 24,99 € o 24.99 €.
+    final m = RegExp(r'([0-9]{1,3}(?:[\.,][0-9]{2})?)\s*(?:€|EUR)', caseSensitive: false)
+        .firstMatch(html);
+    if (m == null) return null;
+    final raw = m.group(1);
+    if (raw == null) return null;
+    final norm = raw.replaceAll(',', '.').trim();
+    final v = double.tryParse(norm);
+    if (v == null) return null;
+    if (v < 3 || v > 3000) return null;
+    return v;
+  }
+
+}
+
+class _ListingHit {
+  final String url;
+  final double? listingPrice;
+  const _ListingHit({required this.url, this.listingPrice});
 }

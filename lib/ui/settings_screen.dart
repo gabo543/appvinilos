@@ -11,6 +11,7 @@ import '../services/locale_service.dart';
 import '../services/price_alert_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
+import 'price_sources_screen.dart';
 import '../l10n/app_strings.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -619,6 +620,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: Text(context.tr('Detectar / fusionar duplicados')),
                         subtitle: Text(context.tr('Encuentra repetidos por artista+álbum y los fusiona.')),
                         onTap: _duplicados,
+                      ),
+                      div,
+                      ListTile(
+                        leading: Icon(Icons.storefront_outlined),
+                        title: Text(context.tr('Tiendas de precios')),
+                        subtitle: Text(context.tr('Activar/desactivar tiendas para comparar precios.')),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const PriceSourcesScreen()),
+                          );
+                        },
                       ),
                       div,
                       ListTile(
