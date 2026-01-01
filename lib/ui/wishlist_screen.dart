@@ -565,9 +565,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
   
 
-Future<Map<String, String>?> _askConditionAndFormat() async {
+Future<Map<String, String>?> _askConditionAndFormat({required String artistName}) async {
   String condition = 'VG+';
   String format = 'LP';
+
+  // ✅ Precalcula el próximo ID de colección para este artista.
+  String? nextCode;
+  try {
+    nextCode = await VinylDb.instance.previewNextCollectionCode(artistName);
+  } catch (_) {
+    nextCode = null;
+  }
 
   try {
     condition = await AddDefaultsService.getLastCondition(fallback: condition);
@@ -586,6 +594,17 @@ Future<Map<String, String>?> _askConditionAndFormat() async {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if ((nextCode ?? '').trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        AppStrings.labeled(context, 'ID colección', nextCode!),
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
                 DropdownButtonFormField<String>(
                   initialValue: condition,
                   key: ValueKey(condition),
@@ -919,12 +938,12 @@ Widget _placeholder() {
                     icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
                     visualDensity: VisualDensity.compact,
                     onPressed: () async {
-                      final opts = await _askConditionAndFormat();
-                      if (!mounted || opts == null) return;
-
                       final a = (w['artista'] ?? '').toString().trim();
                       final al = (w['album'] ?? '').toString().trim();
                       if (a.isEmpty || al.isEmpty) return;
+
+                      final opts = await _askConditionAndFormat(artistName: a);
+                      if (!mounted || opts == null) return;
 
                       try {
                         await VinylDb.instance.insertVinyl(
@@ -1059,12 +1078,12 @@ Widget _placeholder() {
                         icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 20),
                         visualDensity: VisualDensity.compact,
                         onPressed: () async {
-                          final opts = await _askConditionAndFormat();
-                          if (!mounted || opts == null) return;
-
                           final a = (w['artista'] ?? '').toString().trim();
                           final al = (w['album'] ?? '').toString().trim();
                           if (a.isEmpty || al.isEmpty) return;
+
+                          final opts = await _askConditionAndFormat(artistName: a);
+                          if (!mounted || opts == null) return;
 
                           try {
                             await VinylDb.instance.insertVinyl(

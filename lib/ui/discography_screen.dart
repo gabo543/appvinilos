@@ -744,10 +744,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
   }
 
-  Future<Map<String, String>?> _askConditionAndFormat() async {
+  Future<Map<String, String>?> _askConditionAndFormat({required String artistName}) async {
     _dismissKeyboard();
     String condition = 'VG+';
     String format = 'LP';
+
+    // ✅ Precalcula el próximo código de colección para mostrarlo en el diálogo.
+    String? nextCode;
+    try {
+      nextCode = await VinylDb.instance.previewNextCollectionCode(artistName);
+    } catch (_) {
+      nextCode = null;
+    }
 
     // ✅ Prefill con la última selección del usuario
     try {
@@ -765,6 +773,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if ((nextCode ?? '').trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      AppStrings.labeled(context, 'ID colección', nextCode!),
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
               DropdownButtonFormField<String>(
                 value: condition,
                 decoration: InputDecoration(labelText: context.tr('Condición')),
@@ -1466,7 +1485,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                                 disabled: addDisabled,
                                                 onTap: () async {
                                                   _dismissKeyboard();
-                                                  final opts = await _askConditionAndFormat();
+                                                  final opts = await _askConditionAndFormat(artistName: artistName);
                                                   if (!mounted || opts == null) return;
                                                   await _addAlbumOptimistic(
                                                     artistName: artistName,

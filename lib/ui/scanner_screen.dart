@@ -2476,6 +2476,9 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
   late final TextEditingController _yearCtrl;
   bool _saving = false;
 
+  String? _nextCollectionCode;
+  bool _loadingNextCode = false;
+
   String _condition = 'VG+';
   String _format = 'LP';
 
@@ -2484,6 +2487,24 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
     super.initState();
     _yearCtrl = TextEditingController(text: widget.prepared.year ?? '');
     _loadDefaults();
+    _loadNextCode();
+  }
+
+  Future<void> _loadNextCode() async {
+    final a = widget.prepared.artist.trim();
+    if (a.isEmpty) return;
+    setState(() => _loadingNextCode = true);
+    try {
+      final code = await VinylDb.instance.previewNextCollectionCode(a);
+      if (!mounted) return;
+      setState(() {
+        _nextCollectionCode = code;
+        _loadingNextCode = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingNextCode = false);
+    }
   }
 
   Future<void> _loadDefaults() async {
@@ -2603,6 +2624,22 @@ class _AddPreparedSheetState extends State<_AddPreparedSheet> {
                     Text(p.artist, style: TextStyle(fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
                     SizedBox(height: 2),
                     Text(p.album, style: TextStyle(fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    if (_loadingNextCode)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          AppStrings.labeled(context, 'ID colección', '…'),
+                          style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                      )
+                    else if ((_nextCollectionCode ?? '').trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          AppStrings.labeled(context, 'ID colección', _nextCollectionCode!),
+                          style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                      ),
                     SizedBox(height: 8),
                     TextField(
                       controller: _yearCtrl,
