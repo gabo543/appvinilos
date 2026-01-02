@@ -3413,23 +3413,41 @@ Widget listaCompleta({
   }
 
   Widget _vinylScopeSelector() {
+    // Los labels de SegmentButtons a veces se parten en 2 líneas en pantallas angostas.
+    // Forzamos 1 línea + un tamaño un poco más compacto para que se lean completos.
+    Widget _segLabel(String s) => Text(
+          context.tr(s),
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+        );
+
     return SizedBox(
       width: double.infinity,
       child: SegmentedButton<VinylScope>(
+        style: ButtonStyle(
+          visualDensity: VisualDensity.compact,
+          textStyle: MaterialStatePropertyAll(
+            const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          padding: MaterialStatePropertyAll(
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          ),
+        ),
         segments: <ButtonSegment<VinylScope>>[
           ButtonSegment(
             value: VinylScope.vinilos,
-            label: Text(context.tr('Vinilos')),
+            label: _segLabel('Vinilos'),
             icon: Icon(Icons.library_music_outlined),
           ),
           ButtonSegment(
             value: VinylScope.artistas,
-            label: Text(context.tr('Artistas')),
+            label: _segLabel('Artistas'),
             icon: Icon(Icons.groups_outlined),
           ),
           ButtonSegment(
             value: VinylScope.canciones,
-            label: Text(context.tr('Canciones')),
+            label: _segLabel('Canciones'),
             icon: Icon(Icons.favorite_outline),
           ),
         ],

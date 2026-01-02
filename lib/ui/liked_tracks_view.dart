@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../db/vinyl_db.dart';
+import '../services/discography_service.dart';
+import 'album_tracks_screen.dart';
+import 'vinyl_detail_sheet.dart';
 
 /// Vista "Canciones" dentro de Vinilos.
 ///
@@ -26,6 +29,61 @@ class _LikedTracksViewState extends State<LikedTracksView> {
     setState(() {
       _future = VinylDb.instance.getLikedTracksWithStatus();
     });
+  }
+
+  Future<void> _openFromLikedRow(Map<String, dynamic> r) async {
+    final track = (r['trackTitle'] ?? '').toString().trim();
+    final artist = (r['artista'] ?? '').toString().trim();
+    final album = (r['album'] ?? '').toString().trim();
+    final year = (r['year'] ?? '').toString().trim();
+    final rg = (r['releaseGroupId'] ?? '').toString().trim();
+    final cover250 = (r['cover250'] ?? '').toString().trim();
+    final cover500 = (r['cover500'] ?? '').toString().trim();
+
+    if (artist.isEmpty || album.isEmpty) return;
+
+    // Si el álbum está en "Mis vinilos", abrimos el detalle de tu colección.
+    try {
+      final v = await VinylDb.instance.findByExact(artista: artist, album: album);
+      if (v != null && mounted) {
+        await showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => VinylDetailSheet(vinyl: v, showPrices: false),
+        );
+        return;
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    // Fallback: abrimos la vista de tracks por release-group (Discografía).
+    if (rg.isNotEmpty && mounted) {
+      final albumItem = AlbumItem(
+        releaseGroupId: rg,
+        title: album,
+        year: year.isEmpty ? null : year,
+        cover250: cover250,
+        cover500: cover500,
+      );
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AlbumTracksScreen(
+            album: albumItem,
+            artistName: artist,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('No pude abrir el álbum para "$track".')),
+    );
   }
 
   @override
@@ -71,10 +129,14 @@ class _LikedTracksViewState extends State<LikedTracksView> {
 
               final inVinyls = _asBool(r['inVinyls']);
               final inWishlist = _asBool(r['inWishlist']);
+              final releaseGroupId = (r['releaseGroupId'] ?? '').toString().trim();
+              final cover250 = (r['cover250'] ?? '').toString().trim();
+              final cover500 = (r['cover500'] ?? '').toString().trim();
 
               return ListTile(
                 leading: const Icon(Icons.favorite, size: 22),
                 title: Text(track, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () => _openFromLikedRow(r),
                 subtitle: Text(
                   [
                     artist,
@@ -84,6 +146,44 @@ class _LikedTracksViewState extends State<LikedTracksView> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                onTap: () async {
+                  // 1) Si el álbum existe en Mis Vinilos, abrimos el detalle del vinilo.
+                  final v = await VinylDb.instance.findByExact(artista: artist, album: album);
+                  if (v != null && mounted) {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => VinylDetailSheet(vinyl: v, showPrices: false),
+                    );
+                    return;
+                  }
+
+                  // 2) Si tenemos releaseGroupId, abrimos el álbum (tracklist) desde Discografía.
+                  if (releaseGroupId.isNotEmpty && artist.isNotEmpty && album.isNotEmpty) {
+                    final a = AlbumItem(
+                      releaseGroupId: releaseGroupId,
+                      title: album,
+                      year: year.isEmpty ? null : year,
+                      cover250: cover250,
+                      cover500: cover500.isNotEmpty ? cover500 : cover250,
+                    );
+                    if (!mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AlbumTracksScreen(album: a, artistName: artist),
+                      ),
+                    );
+                    return;
+                  }
+
+                  // 3) Fallback: nada que abrir.
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('No puedo abrir este álbum.')),
+                  );
+                },
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

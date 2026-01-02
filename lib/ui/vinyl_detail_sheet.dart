@@ -5,6 +5,7 @@ import '../services/store_price_service.dart';
 import '../services/country_service.dart';
 import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
+import '../utils/normalize.dart';
 import 'widgets/app_cover_image.dart';
 
 /// Bottom sheet con los precios (iMusic / Muziker).
@@ -184,10 +185,67 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   List<TrackItem> tracks = [];
   String? msg;
 
+  // ❤️ canciones guardadas para este álbum (por trackKey)
+  Set<String> _likedKeys = <String>{};
+
   bool loadingPrice = false;
   PriceRange? priceRange;
 
   Map<String, dynamic>? _priceAlert; // alerta de precio para este ítem
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr(text))));
+  }
+
+  Future<void> _loadLikedKeys() async {
+    final rg = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
+    if (rg.isEmpty) return;
+    try {
+      final keys = await VinylDb.instance.getLikedTrackKeysForReleaseGroup(rg);
+      if (!mounted) return;
+      setState(() => _likedKeys = keys);
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> _toggleLikeFromVinyl(TrackItem t) async {
+    final rg = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
+    if (rg.isEmpty) {
+      _snack('No hay ID (MBID) guardado para este LP.');
+      return;
+    }
+
+    final key = normalizeKey(t.title);
+    final artista = (widget.vinyl['artista'] as String?)?.trim() ?? '';
+    final album = (widget.vinyl['album'] as String?)?.trim() ?? '';
+    final year = (widget.vinyl['year'] as String?)?.trim();
+    final cover = (widget.vinyl['coverPath'] as String?)?.trim();
+
+    if (_likedKeys.contains(key)) {
+      await VinylDb.instance.removeLikedTrack(releaseGroupId: rg, trackTitle: t.title);
+      if (!mounted) return;
+      setState(() => _likedKeys = {..._likedKeys}..remove(key));
+      _snack('Quitada de canciones');
+      return;
+    }
+
+    await VinylDb.instance.addLikedTrack(
+      artista: artista,
+      album: album,
+      year: (year == null || year.isEmpty) ? null : year,
+      releaseGroupId: rg,
+      cover250: (cover == null || cover.isEmpty) ? null : cover,
+      cover500: (cover == null || cover.isEmpty) ? null : cover,
+      trackTitle: t.title,
+      trackNo: t.number,
+    );
+
+    if (!mounted) return;
+    setState(() => _likedKeys = {..._likedKeys}..add(key));
+    _snack('Canción guardada ❤️');
+  }
 
   Future<void> _openStorePrices() async {
     final artista = (widget.vinyl['artista'] as String?)?.trim() ?? '';
@@ -401,6 +459,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   void initState() {
     super.initState();
     _loadTracks();
+    _loadLikedKeys();
     if (widget.showPrices) {
       _loadPrice();
       _loadAlert();
@@ -556,7 +615,12 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   Future<void> _loadTracks() async {
     final mbid = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
     if (mbid.isEmpty) {
-      setState(() => msg = 'No hay ID (MBID) guardado para este LP, no puedo buscar canciones.');
+      setState(() {
+        msg = 'No hay ID (MBID) guardado para este LP, no puedo buscar canciones.';
+        tracks = [];
+        loadingTracks = false;
+        _likedKeys = <String>{};
+      });
       return;
     }
 
@@ -575,6 +639,9 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       loadingTracks = false;
       if (list.isEmpty) msg = 'No encontré canciones para este disco.';
     });
+
+    // Refresca estado ❤️ para el álbum.
+    await _loadLikedKeys();
   }
 
   Widget _cover() {
@@ -745,6 +812,7 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final out = <Widget>[];
     for (int i = 0; i < items.length; i++) {
       final tr = items[i];
+      final liked = _likedKeys.contains(normalizeKey(tr.title));
       out.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
@@ -765,6 +833,14 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                   tr.title,
                   style: TextStyle(color: fg, fontWeight: FontWeight.w700),
                 ),
+              ),
+              IconButton(
+                tooltip: liked ? 'Quitar de canciones' : 'Guardar canción',
+                onPressed: () => _toggleLikeFromVinyl(tr),
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                icon: Icon(liked ? Icons.favorite : Icons.favorite_border, size: 20),
               ),
               if ((tr.length ?? '').trim().isNotEmpty) ...[
                 const SizedBox(width: 10),
