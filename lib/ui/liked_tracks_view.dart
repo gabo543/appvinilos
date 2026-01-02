@@ -136,7 +136,6 @@ class _LikedTracksViewState extends State<LikedTracksView> {
               return ListTile(
                 leading: const Icon(Icons.favorite, size: 22),
                 title: Text(track, maxLines: 1, overflow: TextOverflow.ellipsis),
-                onTap: () => _openFromLikedRow(r),
                 subtitle: Text(
                   [
                     artist,
