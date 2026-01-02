@@ -22,7 +22,7 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 14, // ✅ v14: barcode en colección/wishlist/trash
+      version: 15, // ✅ v15: carpeta "Canciones" (tracks favoritos)
       onOpen: (d) async {
         // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
         try {
@@ -136,6 +136,28 @@ class VinylDb {
         ''');
         await d.execute('CREATE UNIQUE INDEX idx_price_alert_unique ON price_alerts(kind, itemId);');
         await d.execute('CREATE INDEX idx_price_alert_active ON price_alerts(isActive);');
+
+        // ✅ tabla liked_tracks: canciones favoritas (recordatorio)
+        await d.execute('''
+          CREATE TABLE liked_tracks(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            artistKey TEXT NOT NULL,
+            artista TEXT NOT NULL,
+            album TEXT NOT NULL,
+            year TEXT,
+            releaseGroupId TEXT NOT NULL DEFAULT '',
+            cover250 TEXT,
+            cover500 TEXT,
+            trackTitle TEXT NOT NULL,
+            trackKey TEXT NOT NULL,
+            trackNo INTEGER,
+            createdAt INTEGER NOT NULL
+          );
+        ''');
+        await d.execute('CREATE INDEX idx_liked_rg ON liked_tracks(releaseGroupId);');
+        await d.execute('CREATE INDEX idx_liked_artistkey ON liked_tracks(artistKey);');
+        await d.execute('CREATE INDEX idx_liked_created ON liked_tracks(createdAt);');
+        await d.execute('CREATE UNIQUE INDEX idx_liked_unique ON liked_tracks(releaseGroupId, trackKey);');
       },
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 3) {
@@ -436,6 +458,30 @@ if (oldV < 9) {
           try {
             await d.execute('ALTER TABLE trash ADD COLUMN barcode TEXT;');
           } catch (_) {}
+        }
+
+        if (oldV < 15) {
+          // v15: carpeta "Canciones" (liked_tracks)
+          await d.execute('''
+            CREATE TABLE IF NOT EXISTS liked_tracks(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              artistKey TEXT NOT NULL,
+              artista TEXT NOT NULL,
+              album TEXT NOT NULL,
+              year TEXT,
+              releaseGroupId TEXT NOT NULL DEFAULT '',
+              cover250 TEXT,
+              cover500 TEXT,
+              trackTitle TEXT NOT NULL,
+              trackKey TEXT NOT NULL,
+              trackNo INTEGER,
+              createdAt INTEGER NOT NULL
+            );
+          ''');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_liked_rg ON liked_tracks(releaseGroupId);');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_liked_artistkey ON liked_tracks(artistKey);');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_liked_created ON liked_tracks(createdAt);');
+          await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_liked_unique ON liked_tracks(releaseGroupId, trackKey);');
         }
 
 
@@ -1453,6 +1499,123 @@ Future<void> deleteTrashById(int trashId) async {
       where: 'LOWER(artista)=? AND LOWER(album)=?',
       whereArgs: [artista.trim().toLowerCase(), album.trim().toLowerCase()],
     );
+  }
+
+  // ---------------- LIKED TRACKS (canciones favoritas) ----------------
+
+  Future<List<Map<String, dynamic>>> getLikedTracksWithStatus() async {
+    final d = await db;
+    return d.rawQuery('''
+      SELECT
+        t.*,
+        EXISTS(
+          SELECT 1
+          FROM vinyls v
+          WHERE LOWER(v.artista) = LOWER(t.artista)
+            AND LOWER(v.album) = LOWER(t.album)
+        ) AS inVinyls,
+        EXISTS(
+          SELECT 1
+          FROM wishlist w
+          WHERE LOWER(w.artista) = LOWER(t.artista)
+            AND LOWER(w.album) = LOWER(t.album)
+        ) AS inWishlist
+      FROM liked_tracks t
+      ORDER BY t.createdAt DESC;
+    ''');
+  }
+
+  Future<Set<String>> getLikedTrackKeysForReleaseGroup(String releaseGroupId) async {
+    final d = await db;
+    final rg = releaseGroupId.trim();
+    if (rg.isEmpty) return <String>{};
+    final rows = await d.query(
+      'liked_tracks',
+      columns: ['trackKey'],
+      where: 'releaseGroupId = ?',
+      whereArgs: [rg],
+    );
+    return rows.map((r) => (r['trackKey'] ?? '').toString()).where((s) => s.trim().isNotEmpty).toSet();
+  }
+
+  Future<bool> hasAnyLikedTrackForReleaseGroup(String releaseGroupId) async {
+    final d = await db;
+    final rg = releaseGroupId.trim();
+    if (rg.isEmpty) return false;
+    final r = await d.rawQuery(
+      'SELECT COUNT(*) as c FROM liked_tracks WHERE releaseGroupId = ?',
+      [rg],
+    );
+    final v = r.first['c'];
+    final c = (v is int) ? v : int.tryParse(v.toString()) ?? 0;
+    return c > 0;
+  }
+
+  Future<void> addLikedTrack({
+    required String artista,
+    required String album,
+    String? year,
+    required String releaseGroupId,
+    String? cover250,
+    String? cover500,
+    required String trackTitle,
+    int? trackNo,
+  }) async {
+    final d = await db;
+    final a = artista.trim();
+    final al = album.trim();
+    final rg = releaseGroupId.trim();
+    final tt = trackTitle.trim();
+    if (a.isEmpty || al.isEmpty || rg.isEmpty || tt.isEmpty) return;
+
+    final aKey = _makeArtistKey(a);
+    final tKey = normalizeKey(tt);
+
+    await d.insert(
+      'liked_tracks',
+      {
+        'artistKey': aKey,
+        'artista': a,
+        'album': al,
+        'year': (year ?? '').trim().isEmpty ? null : year!.trim(),
+        'releaseGroupId': rg,
+        'cover250': (cover250 ?? '').trim().isEmpty ? null : cover250!.trim(),
+        'cover500': (cover500 ?? '').trim().isEmpty ? null : cover500!.trim(),
+        'trackTitle': tt,
+        'trackKey': tKey,
+        'trackNo': trackNo,
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> removeLikedTrackById(int id) async {
+    final d = await db;
+    if (id <= 0) return;
+    await d.delete('liked_tracks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> removeLikedTrack({
+    required String releaseGroupId,
+    required String trackTitle,
+  }) async {
+    final d = await db;
+    final rg = releaseGroupId.trim();
+    final tk = normalizeKey(trackTitle.trim());
+    if (rg.isEmpty || tk.isEmpty) return;
+    await d.delete(
+      'liked_tracks',
+      where: 'releaseGroupId = ? AND trackKey = ?',
+      whereArgs: [rg, tk],
+    );
+  }
+
+  Future<int> countLikedTracks() async {
+    final d = await db;
+    final r = await d.rawQuery('SELECT COUNT(*) as c FROM liked_tracks');
+    final v = r.first['c'];
+    return (v is int) ? v : int.tryParse(v.toString()) ?? 0;
   }
 
   // ---------------- PRICE ALERTS ----------------

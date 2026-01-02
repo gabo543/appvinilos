@@ -1,8 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../db/vinyl_db.dart';
 import '../services/discography_service.dart';
+import '../services/vinyl_add_service.dart';
+import '../services/add_defaults_service.dart';
+import '../services/backup_service.dart';
 import '../l10n/app_strings.dart';
+import '../utils/normalize.dart';
 import 'widgets/app_cover_image.dart';
 
 class AlbumTracksScreen extends StatefulWidget {
@@ -26,10 +31,15 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
   String? msg;
   List<TrackItem> tracks = [];
 
+  // ❤️ canciones guardadas para este álbum (por trackKey)
+  Set<String> _likedKeys = <String>{};
+
   bool loadingInfo = true;
   ArtistInfo? info;
 
   bool _bioExpanded = false;
+
+  Set<String> _likedKeys = {};
 
   @override
   void initState() {
@@ -64,6 +74,9 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
         loadingInfo = false;
         msg = list.isEmpty ? 'No encontré canciones.' : null;
       });
+
+      // Carga estado de "me gusta" para este álbum
+      await _loadLikedKeys();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -73,6 +86,242 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
         loadingInfo = false;
         msg = 'Error cargando información.';
       });
+    }
+  }
+
+  Future<void> _loadLikedKeys() async {
+    try {
+      final keys = await VinylDb.instance.getLikedTrackKeysForReleaseGroup(widget.album.releaseGroupId);
+      if (!mounted) return;
+      setState(() => _likedKeys = keys);
+    } catch (_) {
+      // silencioso
+    }
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.tr(text))),
+    );
+  }
+
+  Future<String?> _askWishlistStatus() async {
+    String picked = 'Por comprar';
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateDialog) {
+            return AlertDialog(
+              title: Text(context.tr('Estado (wishlist)')),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String>(
+                    value: 'Por comprar',
+                    groupValue: picked,
+                    title: Text(context.tr('Por comprar')),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                  RadioListTile<String>(
+                    value: 'Buscando',
+                    groupValue: picked,
+                    title: Text(context.tr('Buscando')),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                  RadioListTile<String>(
+                    value: 'Comprado',
+                    groupValue: picked,
+                    title: Text(context.tr('Comprado')),
+                    onChanged: (v) => setStateDialog(() => picked = v ?? picked),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(context.tr('Cancelar')),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, picked),
+                  child: Text(context.tr('Aceptar')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _maybeAskAddAlbumAfterFirstLike() async {
+    // Si ya existe en vinilos o deseos, no preguntamos.
+    final existsVinyl = await VinylDb.instance.existsExact(artista: widget.artistName, album: widget.album.title);
+    final wish = await VinylDb.instance.findWishlistByExact(artista: widget.artistName, album: widget.album.title);
+    if (existsVinyl || wish != null) return;
+
+    if (!mounted) return;
+
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  context.tr('¿Dónde quieres agregar este álbum?'),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${widget.artistName} — ${widget.album.title}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => Navigator.pop(ctx, 'vinyls'),
+                  icon: const Icon(Icons.library_add),
+                  label: Text(context.tr('A mis vinilos')),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, 'wish'),
+                  icon: const Icon(Icons.playlist_add),
+                  label: Text(context.tr('A deseos')),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(context.tr('Ahora no')),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (choice == null) return;
+
+    if (choice == 'vinyls') {
+      // mini-loading
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 12),
+              Text('Agregando a vinilos...'),
+            ],
+          ),
+        ),
+      );
+      final cond = await AddDefaultsService.getLastCondition(fallback: 'VG+');
+      final fmt = await AddDefaultsService.getLastFormat(fallback: 'LP');
+      try {
+        final prepared = await VinylAddService.prepareFromReleaseGroup(
+          artist: widget.artistName,
+          album: widget.album.title,
+          releaseGroupId: widget.album.releaseGroupId,
+          year: widget.album.year,
+          artistId: widget.artistId,
+        );
+        final res = await VinylAddService.addPrepared(
+          prepared,
+          favorite: false,
+          condition: cond,
+          format: fmt,
+        );
+        await BackupService.autoSaveIfEnabled();
+        if (mounted) Navigator.pop(context);
+        _snack(res.message);
+      } catch (_) {
+        if (mounted) Navigator.pop(context);
+        _snack('Error agregando');
+      }
+    } else if (choice == 'wish') {
+      final st = await _askWishlistStatus();
+      if (st == null) return;
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 12),
+              Text('Agregando a deseos...'),
+            ],
+          ),
+        ),
+      );
+      try {
+        await VinylDb.instance.addToWishlist(
+          artista: widget.artistName,
+          album: widget.album.title,
+          year: widget.album.year,
+          cover250: widget.album.cover250,
+          cover500: widget.album.cover500,
+          artistId: widget.artistId,
+          status: st,
+        );
+        await BackupService.autoSaveIfEnabled();
+        if (mounted) Navigator.pop(context);
+        _snack('Agregado a deseos ✅');
+      } catch (_) {
+        if (mounted) Navigator.pop(context);
+        _snack('Error agregando');
+      }
+    }
+  }
+
+  Future<void> _toggleLike(TrackItem t) async {
+    final key = normalizeKey(t.title);
+    final rg = widget.album.releaseGroupId;
+    if (rg.trim().isEmpty) return;
+
+    if (_likedKeys.contains(key)) {
+      await VinylDb.instance.removeLikedTrack(releaseGroupId: rg, trackTitle: t.title);
+      if (!mounted) return;
+      setState(() => _likedKeys = {..._likedKeys}..remove(key));
+      _snack('Quitada de canciones');
+      return;
+    }
+
+    // ¿ya existe algún track guardado para este álbum? (si sí, NO preguntamos por vinilos/deseos)
+    final alreadyAlbumInSongs = await VinylDb.instance.hasAnyLikedTrackForReleaseGroup(rg);
+
+    await VinylDb.instance.addLikedTrack(
+      artista: widget.artistName,
+      album: widget.album.title,
+      year: widget.album.year,
+      releaseGroupId: rg,
+      cover250: widget.album.cover250,
+      cover500: widget.album.cover500,
+      trackTitle: t.title,
+      trackNo: t.number,
+    );
+
+    if (!mounted) return;
+    setState(() => _likedKeys = {..._likedKeys}..add(key));
+    _snack('Canción guardada ❤️');
+
+    // Solo en el primer "me gusta" del álbum mostramos la pregunta.
+    if (!alreadyAlbumInSongs) {
+      await _maybeAskAddAlbumAfterFirstLike();
     }
   }
 
@@ -211,11 +460,26 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                     if (i.isOdd) return Divider(height: 1);
                     final idx = i ~/ 2;
                     final t = tracks[idx];
+                    final liked = _likedKeys.contains(normalizeKey(t.title));
                     return ListTile(
                       dense: true,
                       visualDensity: VisualDensity(vertical: -2),
                       title: Text('${t.number}. ${t.title}'),
-                      trailing: Text(t.length ?? ''),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(liked ? Icons.favorite : Icons.favorite_border),
+                            tooltip: liked ? context.tr('Quitar de canciones') : context.tr('Guardar en canciones'),
+                            onPressed: () => _toggleLike(t),
+                          ),
+                          if ((t.length ?? '').trim().isNotEmpty)
+                            Text(
+                              t.length!,
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                        ],
+                      ),
                     );
                   },
                   childCount: math.max(0, tracks.length * 2 - 1),

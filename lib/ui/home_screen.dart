@@ -23,6 +23,7 @@ import 'manual_vinyl_entry_screen.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
 import 'widgets/app_pager.dart';
+import 'liked_tracks_view.dart';
 
 enum Vista { inicio, lista, favoritos, borrar }
 
@@ -30,7 +31,7 @@ enum Vista { inicio, lista, favoritos, borrar }
 ///
 /// - vinilos: listado normal (lista/grid/caratula)
 /// - artistas: listado agrupado por artista (país + total)
-enum VinylScope { vinilos, artistas }
+enum VinylScope { vinilos, artistas, canciones }
 
 enum VinylSortMode { az, yearDesc, recent, code }
 
@@ -3426,6 +3427,11 @@ Widget listaCompleta({
             label: Text(context.tr('Artistas')),
             icon: Icon(Icons.groups_outlined),
           ),
+          ButtonSegment(
+            value: VinylScope.canciones,
+            label: Text(context.tr('Canciones')),
+            icon: Icon(Icons.favorite_outline),
+          ),
         ],
         selected: <VinylScope>{_vinylScope},
         onSelectionChanged: (s) {
@@ -3676,12 +3682,14 @@ Widget listaCompleta({
                           Expanded(
                             child: _vinylScope == VinylScope.artistas
                                 ? _artistSummaryList(embedInScroll: false)
-                                : listaCompleta(
-                                    conBorrar: false,
-                                    onlyFavorites: false,
-                                    embedInScroll: false,
-                                    artistKeyFilter: _artistFilterKey,
-                                  ),
+                                : (_vinylScope == VinylScope.canciones
+                                    ? const LikedTracksView()
+                                    : listaCompleta(
+                                        conBorrar: false,
+                                        onlyFavorites: false,
+                                        embedInScroll: false,
+                                        artistKeyFilter: _artistFilterKey,
+                                      )),
                           ),
                         if (vista == Vista.favoritos)
                           Expanded(

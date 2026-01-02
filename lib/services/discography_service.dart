@@ -679,6 +679,21 @@ class DiscographyService {
     }
 
     final want = norm(q);
+    final wantTokens = want.split(' ').where((t) => t.trim().isNotEmpty).toList();
+
+    bool matchesTitle(String titleNorm) {
+      if (wantTokens.isEmpty) return true;
+      if (wantTokens.length == 1) {
+        final w = wantTokens.first;
+        // Si escribió muy poco, no filtramos por título (deja pasar más candidatos).
+        if (w.length <= 2) return true;
+        return titleNorm.contains(w);
+      }
+      // Multi-palabra: exigimos que todas las palabras “reales” aparezcan en el título.
+      final strong = wantTokens.where((t) => t.length >= 2).toList();
+      if (strong.isEmpty) return true;
+      return strong.every((t) => titleNorm.contains(t));
+    }
     final candidates = <String>[];
     final seen = <String>{};
 
@@ -694,7 +709,9 @@ class DiscographyService {
       addCandidate(preferredRecordingId!.trim());
     }
 
+    var i = 0;
     for (final r in recs) {
+      i++;
       if (r is! Map) continue;
       final id = (r['id'] ?? '').toString().trim();
       final title = (r['title'] ?? '').toString().trim();
@@ -702,9 +719,12 @@ class DiscographyService {
 
       // Filtramos candidatos por título para no meter cosas raras.
       final tNorm = norm(title);
-      if (want.isNotEmpty && !tNorm.contains(want)) {
-        // Si el usuario escribió poco, igual dejamos pasar algunos matches.
-        if (want.length >= 4) continue;
+      final okTitle = matchesTitle(tNorm);
+      if (!okTitle) {
+        // Igual dejamos pasar los primeros resultados del search (a veces el título
+        // viene con variantes/remasters y no calza perfecto), pero capamos para no
+        // meter ruido.
+        if (want.length >= 4 && i > 4) continue;
       }
       addCandidate(id);
       if (candidates.length >= maxLookups) break;
@@ -1050,38 +1070,54 @@ class DiscographyService {
   static Future<List<AlbumItem>> getDiscographyByArtistId(
     String artistId,
   ) async {
-    final url = Uri.parse(
-      '$_mbBase/release-group/?artist=$artistId&fmt=json&limit=100',
-    );
-    final res = await _get(url);
-    if (res.statusCode != 200) return [];
-
-    final data = jsonDecode(res.body);
-    final groups = (data['release-groups'] as List?) ?? [];
-
+    // MusicBrainz pagina resultados. Antes solo traíamos 100.
+    // Para que el filtro de canciones funcione sobre *todas* las páginas,
+    // juntamos todo el resultado usando `offset`.
+    const limit = 100;
     final albums = <AlbumItem>[];
+    int offset = 0;
+    int safetyPages = 0;
 
-    for (final g in groups) {
-      if ((g['primary-type'] ?? '').toString().toLowerCase() != 'album') {
-        continue;
+    while (true) {
+      // safety: evita loop infinito por respuestas raras.
+      safetyPages++;
+      if (safetyPages > 30) break; // 30*100 = 3000 release-groups
+
+      final url = Uri.parse(
+        '$_mbBase/release-group/?artist=$artistId&fmt=json&limit=$limit&offset=$offset',
+      );
+      final res = await _get(url);
+      if (res.statusCode != 200) break;
+
+      final data = jsonDecode(res.body);
+      final groups = (data['release-groups'] as List?) ?? [];
+      if (groups.isEmpty) break;
+
+      for (final g in groups) {
+        if ((g['primary-type'] ?? '').toString().toLowerCase() != 'album') {
+          continue;
+        }
+
+        final id = g['id'];
+        final title = g['title'];
+        final date = g['first-release-date'] ?? '';
+        final year = date.length >= 4 ? date.substring(0, 4) : null;
+
+        albums.add(
+          AlbumItem(
+            releaseGroupId: id,
+            title: title,
+            year: year,
+            cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+            cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+          ),
+        );
       }
 
-      final id = g['id'];
-      final title = g['title'];
-      final date = g['first-release-date'] ?? '';
-      final year = date.length >= 4 ? date.substring(0, 4) : null;
-
-      albums.add(
-        AlbumItem(
-          releaseGroupId: id,
-          title: title,
-          year: year,
-          cover250:
-              'https://coverartarchive.org/release-group/$id/front-250',
-          cover500:
-              'https://coverartarchive.org/release-group/$id/front-500',
-        ),
-      );
+      // Si la API trae `count`, lo usamos para cortar sin pedir de más.
+      final count = (data['count'] is int) ? (data['count'] as int) : null;
+      offset += limit;
+      if (count != null && offset >= count) break;
     }
 
     albums.sort((a, b) {
@@ -1134,6 +1170,62 @@ class DiscographyService {
       }
     }
     return tracks;
+  }
+
+  /// Versión más robusta: intenta más de un release dentro del release-group.
+  /// Algunas veces el 1er release no trae recordings (o viene incompleto),
+  /// lo que hacía que el filtro de canciones no encontrara nada.
+  static Future<List<String>> getTrackTitlesFromReleaseGroupRobust(
+    String rgid, {
+    int maxReleaseLookups = 3,
+  }) async {
+    final urlRg = Uri.parse(
+      '$_mbBase/release-group/$rgid?inc=releases&fmt=json',
+    );
+    final resRg = await _get(urlRg);
+    if (resRg.statusCode != 200) return <String>[];
+
+    final releases = (jsonDecode(resRg.body)['releases'] as List?) ?? [];
+    if (releases.isEmpty) return <String>[];
+
+    int tried = 0;
+    for (final r in releases) {
+      final releaseId = (r is Map ? (r['id'] ?? '').toString().trim() : '');
+      if (releaseId.isEmpty) continue;
+
+      final urlRel = Uri.parse(
+        '$_mbBase/release/$releaseId?inc=recordings&fmt=json',
+      );
+      final resRel = await _get(urlRel);
+      if (resRel.statusCode != 200) {
+        tried++;
+        if (tried >= maxReleaseLookups) break;
+        continue;
+      }
+
+      final media = (jsonDecode(resRel.body)['media'] as List?) ?? [];
+      if (media.isEmpty) {
+        tried++;
+        if (tried >= maxReleaseLookups) break;
+        continue;
+      }
+
+      final titles = <String>[];
+      for (final m in media) {
+        for (final t in (m is Map ? (m['tracks'] as List? ?? const []) : const <dynamic>[])) {
+          if (t is! Map) continue;
+          final title = (t['title'] ?? '').toString().trim();
+          if (title.isNotEmpty) titles.add(title);
+        }
+      }
+
+      if (titles.isNotEmpty) return titles;
+
+      tried++;
+      if (tried >= maxReleaseLookups) break;
+    }
+
+    return <String>[];
   }
 
   static String? _fmtMs(dynamic ms) {
