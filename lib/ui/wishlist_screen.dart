@@ -1178,7 +1178,16 @@ Widget _placeholder() {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => VinylDetailSheet(vinyl: vinylLike),
+      builder: (_) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.90,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          child: Container(
+            color: Theme.of(context).colorScheme.surface,
+            child: VinylDetailSheet(vinyl: vinylLike),
+          ),
+        ),
+      ),
     );
   }
 

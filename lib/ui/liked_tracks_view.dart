@@ -31,6 +31,25 @@ class _LikedTracksViewState extends State<LikedTracksView> {
     });
   }
 
+  Future<void> _showVinylDetailSheet(Map<String, dynamic> v) async {
+    if (!mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.90,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          child: Container(
+            color: Theme.of(context).colorScheme.surface,
+            child: VinylDetailSheet(vinyl: v, showPrices: false),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openFromLikedRow(Map<String, dynamic> r) async {
     final track = (r['trackTitle'] ?? '').toString().trim();
     final artist = (r['artista'] ?? '').toString().trim();
@@ -46,12 +65,7 @@ class _LikedTracksViewState extends State<LikedTracksView> {
     try {
       final v = await VinylDb.instance.findByExact(artista: artist, album: album);
       if (v != null && mounted) {
-        await showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => VinylDetailSheet(vinyl: v, showPrices: false),
-        );
+        await _showVinylDetailSheet(v);
         return;
       }
     } catch (_) {
@@ -148,13 +162,8 @@ class _LikedTracksViewState extends State<LikedTracksView> {
                 onTap: () async {
                   // 1) Si el álbum existe en Mis Vinilos, abrimos el detalle del vinilo.
                   final v = await VinylDb.instance.findByExact(artista: artist, album: album);
-                  if (v != null && mounted) {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => VinylDetailSheet(vinyl: v, showPrices: false),
-                    );
+                  if (v != null) {
+                    await _showVinylDetailSheet(v);
                     return;
                   }
 
