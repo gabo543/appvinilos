@@ -39,7 +39,6 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
 
   bool _bioExpanded = false;
 
-  Set<String> _likedKeys = {};
 
   @override
   void initState() {

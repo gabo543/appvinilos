@@ -98,6 +98,7 @@ class _LikedTracksViewState extends State<LikedTracksView> {
                         message: 'En Deseos',
                         child: Icon(Icons.shopping_cart, size: 20),
                       ),
+                    ],
                     const SizedBox(width: 10),
                     IconButton(
                       icon: const Icon(Icons.delete_outline),
