@@ -231,9 +231,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         continue;
       }
 
-      // Tracklist cache
+      // Tracklist cache (primera edición) para evitar falsos positivos por deluxe/bonus.
       var titles = _trackTitlesCache[rgid];
-      titles ??= await DiscographyService.getTrackTitlesFromReleaseGroupRobust(rgid);
+      titles ??= await DiscographyService.getTrackTitlesFromReleaseGroupFirstEdition(rgid);
       _trackTitlesCache[rgid] = titles;
 
       bool ok = false;
@@ -1789,77 +1789,92 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            RawAutocomplete<ArtistHit>(
-              textEditingController: artistCtrl,
-              focusNode: _artistFocus,
-              displayStringForOption: (a) => a.name,
-              optionsBuilder: (TextEditingValue tev) {
-                final q = tev.text.trim();
-                if (q.isEmpty) return const Iterable<ArtistHit>.empty();
+            // 🎤 Artista: Autocomplete en overlay (no empuja el layout) y, al elegir,
+            // se reemplaza por un chip para liberar espacio a los álbumes.
+            if (pickedArtist != null && artistResults.isEmpty) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InputChip(
+                  label: Text('${context.tr('Artista')}: ${pickedArtist!.name}'),
+                  avatar: const Icon(Icons.person),
+                  deleteIcon: const Icon(Icons.edit),
+                  deleteButtonTooltipMessage: context.tr('Cambiar'),
+                  onDeleted: () => _clearArtistSearch(keepFocus: true),
+                ),
+              ),
+            ] else ...[
+              RawAutocomplete<ArtistHit>(
+                textEditingController: artistCtrl,
+                focusNode: _artistFocus,
+                displayStringForOption: (a) => a.name,
+                optionsBuilder: (TextEditingValue tev) {
+                  final q = tev.text.trim();
+                  if (q.isEmpty) return const Iterable<ArtistHit>.empty();
 
-                // Si ya hay artista seleccionado y el texto coincide, no sugerimos.
-                if (pickedArtist != null && _normQ(q) == _normQ(pickedArtist!.name)) {
-                  return const Iterable<ArtistHit>.empty();
-                }
-                return artistResults;
-              },
-              onSelected: (a) => _pickArtist(a),
-              fieldViewBuilder: (context, ctrl, focus, onFieldSubmitted) {
-                return TextField(
-                  controller: ctrl,
-                  focusNode: focus,
-                  onChanged: (v) {
-                    // Asegura que el botón X aparezca/desaparezca al tipear.
-                    setState(() {});
-                    _onArtistTextChanged(v);
-                  },
-                  onSubmitted: (_) => onFieldSubmitted(),
-                  decoration: InputDecoration(
-                    labelText: context.tr('Artista'),
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: ctrl.text.trim().isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: context.tr('Limpiar'),
-                            icon: const Icon(Icons.close),
-                            onPressed: () => _clearArtistSearch(),
-                          ),
-                  ),
-                );
-              },
-              optionsViewBuilder: (context, onSelected, options) {
-                final opts = options.toList();
-                final maxW = MediaQuery.of(context).size.width - 24; // padding del body
-                return Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(12),
-                    clipBehavior: Clip.antiAlias,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: 320, maxWidth: maxW),
-                      child: ListView.separated(
-                        padding: EdgeInsets.zero,
-                        itemCount: opts.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
-                          final a = opts[i];
-                          return ListTile(
-                            dense: true,
-                            title: Text(a.name),
-                            subtitle: Text(
-                              (a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}',
+                  // Si ya hay artista seleccionado y el texto coincide, no sugerimos.
+                  if (pickedArtist != null && _normQ(q) == _normQ(pickedArtist!.name)) {
+                    return const Iterable<ArtistHit>.empty();
+                  }
+                  return artistResults;
+                },
+                onSelected: (a) => _pickArtist(a),
+                fieldViewBuilder: (context, ctrl, focus, onFieldSubmitted) {
+                  return TextField(
+                    controller: ctrl,
+                    focusNode: focus,
+                    onChanged: (v) {
+                      // Asegura que el botón X aparezca/desaparezca al tipear.
+                      setState(() {});
+                      _onArtistTextChanged(v);
+                    },
+                    onSubmitted: (_) => onFieldSubmitted(),
+                    decoration: InputDecoration(
+                      labelText: context.tr('Artista'),
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: ctrl.text.trim().isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: context.tr('Limpiar'),
+                              icon: const Icon(Icons.close),
+                              onPressed: () => _clearArtistSearch(),
                             ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => onSelected(a),
-                          );
-                        },
+                    ),
+                  );
+                },
+                optionsViewBuilder: (context, onSelected, options) {
+                  final opts = options.toList();
+                  final maxW = MediaQuery.of(context).size.width - 24; // padding del body
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(12),
+                      clipBehavior: Clip.antiAlias,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: 320, maxWidth: maxW),
+                        child: ListView.separated(
+                          padding: EdgeInsets.zero,
+                          itemCount: opts.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final a = opts[i];
+                            return ListTile(
+                              dense: true,
+                              title: Text(a.name),
+                              subtitle: Text(
+                                (a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => onSelected(a),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
+            ],
             SizedBox(height: 10),
             if (searchingArtists) LinearProgressIndicator(),
 

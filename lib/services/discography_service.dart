@@ -1632,19 +1632,62 @@ class DiscographyService {
       return <String>[];
     }
 
-    // Orden: Official primero, luego por fecha más antigua.
+    // Año objetivo: first-release-date del release-group (si viene).
+    final frd = (data is Map ? (data['first-release-date'] ?? '') : '').toString().trim();
+    final targetYear = (frd.length >= 4) ? (int.tryParse(frd.substring(0, 4)) ?? 0) : 0;
+
     int yearOf(dynamic v) {
       final s = (v ?? '').toString().trim();
-      if (s.length >= 4) return int.tryParse(s.substring(0, 4)) ?? 9999;
-      return 9999;
+      if (s.length >= 4) return int.tryParse(s.substring(0, 4)) ?? 0;
+      return 0;
+    }
+
+    String dateStr(dynamic v) {
+      return (v ?? '').toString().trim();
     }
 
     int statusRank(dynamic v) {
       final s = (v ?? '').toString().trim().toLowerCase();
       if (s.isEmpty || s == 'official') return 0;
-      // Bootleg/Other -> atrás
       if (s == 'bootleg') return 3;
       return 1;
+    }
+
+    int bonusPenalty(Map<String, dynamic> r) {
+      // Heurística para evitar deluxe/expanded/remaster/bonus como "primera edición".
+      final t = ((r['title'] ?? '').toString() + ' ' + (r['disambiguation'] ?? '').toString()).toLowerCase();
+      const bad = [
+        'deluxe',
+        'expanded',
+        'remaster',
+        'remastered',
+        'bonus',
+        'anniversary',
+        'special edition',
+        'édition',
+        'edition',
+      ];
+      for (final k in bad) {
+        if (t.contains(k)) return 1;
+      }
+      return 0;
+    }
+
+    int yearGroupRank(Map<String, dynamic> r) {
+      // Preferimos releases cuya fecha coincide con el año objetivo.
+      // Si falta fecha, NO los mandamos al final automáticamente; los tratamos
+      // como candidatos tempranos porque en MusicBrainz muchos originales vienen
+      // sin fecha completa.
+      final d = dateStr(r['date']);
+      final y = yearOf(d);
+      final hasDate = d.isNotEmpty;
+      if (targetYear > 0) {
+        if (hasDate && y == targetYear) return 0;
+        if (!hasDate) return 1;
+        return 2; // otros años
+      }
+      if (!hasDate) return 1;
+      return 0;
     }
 
     final rels = <Map<String, dynamic>>[];
@@ -1662,31 +1705,53 @@ class DiscographyService {
     rels.sort((a, b) {
       final sr = statusRank(a['status']).compareTo(statusRank(b['status']));
       if (sr != 0) return sr;
-      final ya = yearOf(a['date']);
-      final yb = yearOf(b['date']);
-      final yc = ya.compareTo(yb);
-      if (yc != 0) return yc;
-      // desempate: título
+      final yr = yearGroupRank(a).compareTo(yearGroupRank(b));
+      if (yr != 0) return yr;
+      final bp = bonusPenalty(a).compareTo(bonusPenalty(b));
+      if (bp != 0) return bp;
+      // Dentro del grupo, por fecha (asc). Si no hay fecha, va después.
+      final da = dateStr(a['date']);
+      final db = dateStr(b['date']);
+      if (da.isEmpty && db.isNotEmpty) return 1;
+      if (db.isEmpty && da.isNotEmpty) return -1;
+      final dc = da.compareTo(db);
+      if (dc != 0) return dc;
       return ((a['title'] ?? '').toString()).toLowerCase().compareTo(((b['title'] ?? '').toString()).toLowerCase());
     });
 
+    // En vez de devolver el primer release con tracks, evaluamos varios y elegimos
+    // la mejor "primera edición" según heurísticas (incluye preferir menor #tracks).
+    List<String> bestTitles = <String>[];
+    int bestScoreSr = 999;
+    int bestScoreYr = 999;
+    int bestScoreBp = 999;
+    int bestVinylRank = 1; // 0=vinyl, 1=otros
+    int bestTrackCount = 99999;
+    String bestDate = '9999-99-99';
+
     int tried = 0;
     for (final r in rels) {
+      if (tried >= maxReleaseLookups) break;
       final rid = (r['id'] ?? '').toString().trim();
       if (rid.isEmpty) continue;
+
       final urlRel = Uri.parse('$_mbBase/release/$rid?inc=recordings&fmt=json');
       final resRel = await _get(urlRel);
       tried++;
-      if (resRel.statusCode != 200) {
-        if (tried >= maxReleaseLookups) break;
-        continue;
-      }
+      if (resRel.statusCode != 200) continue;
 
       final relData = jsonDecode(resRel.body);
       final media = (relData is Map ? (relData['media'] as List?) : null) ?? const <dynamic>[];
-      if (media.isEmpty) {
-        if (tried >= maxReleaseLookups) break;
-        continue;
+      if (media.isEmpty) continue;
+
+      bool isVinyl = false;
+      for (final m in media) {
+        if (m is! Map) continue;
+        final fmt = (m['format'] ?? '').toString().toLowerCase();
+        if (fmt.contains('vinyl')) {
+          isVinyl = true;
+          break;
+        }
       }
 
       final titles = <String>[];
@@ -1698,17 +1763,47 @@ class DiscographyService {
           if (title.isNotEmpty) titles.add(title);
         }
       }
+      if (titles.isEmpty) continue;
 
-      if (titles.isNotEmpty) {
-        _firstEditionTracksCache[id] = _CacheEntry(titles, DateTime.now());
-        return titles;
+      final sr = statusRank(r['status']);
+      final yr = yearGroupRank(r);
+      final bp = bonusPenalty(r);
+      final vr = isVinyl ? 0 : 1;
+      final d = dateStr(r['date']);
+      final tc = titles.length;
+
+      bool better = false;
+      if (sr != bestScoreSr) {
+        better = sr < bestScoreSr;
+      } else if (yr != bestScoreYr) {
+        better = yr < bestScoreYr;
+      } else if (bp != bestScoreBp) {
+        better = bp < bestScoreBp;
+      } else if (vr != bestVinylRank) {
+        // Preferimos vinilo como referencia de tracklist (más alineado al uso de la app).
+        better = vr < bestVinylRank;
+      } else if (tc != bestTrackCount) {
+        // Preferimos menos tracks para evitar bonus tracks.
+        better = tc < bestTrackCount;
+      } else {
+        // fecha más antigua (si existe)
+        final dd = d.isEmpty ? '9999-99-99' : d;
+        better = dd.compareTo(bestDate) < 0;
       }
 
-      if (tried >= maxReleaseLookups) break;
+      if (bestTitles.isEmpty || better) {
+        bestTitles = titles;
+        bestScoreSr = sr;
+        bestScoreYr = yr;
+        bestScoreBp = bp;
+        bestVinylRank = vr;
+        bestTrackCount = tc;
+        bestDate = d.isEmpty ? '9999-99-99' : d;
+      }
     }
 
-    _firstEditionTracksCache[id] = _CacheEntry(<String>[], DateTime.now());
-    return <String>[];
+    _firstEditionTracksCache[id] = _CacheEntry(bestTitles, DateTime.now());
+    return bestTitles;
   }
 
   static bool _titleMatchesSong({
