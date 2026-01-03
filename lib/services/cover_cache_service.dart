@@ -36,6 +36,56 @@ class CoverCacheService {
     return d;
   }
 
+  /// Guarda una carátula elegida por el usuario dentro de /Documents/covers.
+  ///
+  /// Devuelve la ruta local final (para guardar en `vinyls.coverPath`).
+  static Future<String?> saveCustomCover({
+    required int vinylId,
+    String? mbid,
+    required String sourcePath,
+  }) async {
+    try {
+      final src = File(sourcePath);
+      if (!await src.exists()) return null;
+
+      final dir = await _coversDir();
+      final base = _sanitizeBase((mbid ?? '').trim().isNotEmpty ? (mbid ?? '') : 'id_$vinylId');
+
+      // Respeta extensión si es conocida; si no, usa jpg.
+      final ext0 = p.extension(sourcePath).toLowerCase().replaceAll('.', '');
+      final ext = (ext0 == 'png' || ext0 == 'jpg' || ext0 == 'jpeg' || ext0 == 'webp') ? ext0 : 'jpg';
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final out = File(p.join(dir.path, '${base}_custom_$ts.$ext'));
+
+      await src.copy(out.path);
+      return out.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Borra un archivo solo si pertenece a la carpeta administrada /Documents/covers.
+  /// (Evita borrar rutas del usuario fuera de la app o URLs.)
+  static Future<void> deleteIfManaged(String? path) async {
+    final raw = (path ?? '').trim();
+    if (raw.isEmpty) return;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return;
+
+    try {
+      final covers = await _coversDir();
+      final candidate = p.normalize(raw);
+      final managedRoot = p.normalize(covers.path);
+      if (!candidate.startsWith(managedRoot)) return;
+
+      final f = File(raw);
+      if (await f.exists()) {
+        await f.delete();
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+
   static Future<String?> _downloadWithRetries(
     String url, {
     required String baseName,

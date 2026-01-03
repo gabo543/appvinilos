@@ -79,6 +79,26 @@ class AlbumItem {
   });
 }
 
+/// Página de discografía (MusicBrainz release-groups).
+///
+/// Se usa para cargar rápido: primero una página, y luego vamos trayendo
+/// más páginas solo cuando se necesitan.
+class DiscographyPage {
+  final List<AlbumItem> items;
+  final int total;
+  final int offset;
+  final int limit;
+
+  DiscographyPage({
+    required this.items,
+    required this.total,
+    required this.offset,
+    required this.limit,
+  });
+
+  bool get hasMore => (offset + limit) < total;
+}
+
 class ExploreAlbumHit {
   final String releaseGroupId;
   final String title;
@@ -121,6 +141,31 @@ class TrackItem {
     required this.title,
     this.length,
   });
+}
+
+/// Edición (release) dentro de un release-group.
+///
+/// Se usa para que el usuario pueda elegir "qué edición" usar como referencia
+/// para carátula/metadata, sin alterar el año guardado del álbum (que viene del
+/// first-release-date del release-group).
+class ReleaseEdition {
+  final String id;
+  final String title;
+  final String? date; // YYYY-MM-DD (o vacío)
+  final String? country;
+  final String? status;
+  final String? barcode;
+
+  ReleaseEdition({
+    required this.id,
+    required this.title,
+    this.date,
+    this.country,
+    this.status,
+    this.barcode,
+  });
+
+  String? get year => (date != null && date!.length >= 4) ? date!.substring(0, 4) : null;
 }
 
 class SongHit {
@@ -1067,57 +1112,84 @@ class DiscographyService {
   // =====================================
   // 📀 DISCOGRAFÍA (ORDENADA POR AÑO)
   // =====================================
+  /// Obtiene UNA página de discografía desde MusicBrainz.
+  ///
+  /// Esto evita tener que descargar 1000+ releases para mostrar algo:
+  /// la UI puede cargar la primera página y luego pedir más páginas bajo
+  /// demanda (por ejemplo, al buscar un álbum específico).
+  static Future<DiscographyPage> getDiscographyPageByArtistId(
+    String artistId, {
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final url = Uri.parse(
+      '$_mbBase/release-group/?artist=$artistId&fmt=json&limit=$limit&offset=$offset',
+    );
+    final res = await _get(url);
+    if (res.statusCode != 200) {
+      throw Exception('MusicBrainz ${res.statusCode}');
+    }
+
+    final data = jsonDecode(res.body);
+    final groups = (data['release-groups'] as List?) ?? [];
+
+    final items = <AlbumItem>[];
+    for (final g in groups) {
+      if ((g['primary-type'] ?? '').toString().toLowerCase() != 'album') {
+        continue;
+      }
+
+      final id = (g['id'] ?? '').toString();
+      if (id.trim().isEmpty) continue;
+      final title = (g['title'] ?? '').toString();
+      final date = (g['first-release-date'] ?? '').toString();
+      final year = date.length >= 4 ? date.substring(0, 4) : null;
+
+      items.add(
+        AlbumItem(
+          releaseGroupId: id,
+          title: title,
+          year: year,
+          cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+          cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+        ),
+      );
+    }
+
+    final total = (data['count'] is int)
+        ? (data['count'] as int)
+        : (offset + groups.length);
+
+    return DiscographyPage(
+      items: items,
+      total: total,
+      offset: offset,
+      limit: limit,
+    );
+  }
+
   static Future<List<AlbumItem>> getDiscographyByArtistId(
     String artistId,
   ) async {
-    // MusicBrainz pagina resultados. Antes solo traíamos 100.
-    // Para que el filtro de canciones funcione sobre *todas* las páginas,
-    // juntamos todo el resultado usando `offset`.
+    // Legacy (modo "traer todo"). Se mantiene para filtros que necesitan
+    // recorrer todo. Para UI, preferir getDiscographyPageByArtistId.
     const limit = 100;
     final albums = <AlbumItem>[];
     int offset = 0;
     int safetyPages = 0;
 
     while (true) {
-      // safety: evita loop infinito por respuestas raras.
       safetyPages++;
       if (safetyPages > 30) break; // 30*100 = 3000 release-groups
-
-      final url = Uri.parse(
-        '$_mbBase/release-group/?artist=$artistId&fmt=json&limit=$limit&offset=$offset',
+      final page = await getDiscographyPageByArtistId(
+        artistId,
+        limit: limit,
+        offset: offset,
       );
-      final res = await _get(url);
-      if (res.statusCode != 200) break;
-
-      final data = jsonDecode(res.body);
-      final groups = (data['release-groups'] as List?) ?? [];
-      if (groups.isEmpty) break;
-
-      for (final g in groups) {
-        if ((g['primary-type'] ?? '').toString().toLowerCase() != 'album') {
-          continue;
-        }
-
-        final id = g['id'];
-        final title = g['title'];
-        final date = g['first-release-date'] ?? '';
-        final year = date.length >= 4 ? date.substring(0, 4) : null;
-
-        albums.add(
-          AlbumItem(
-            releaseGroupId: id,
-            title: title,
-            year: year,
-            cover250: 'https://coverartarchive.org/release-group/$id/front-250',
-            cover500: 'https://coverartarchive.org/release-group/$id/front-500',
-          ),
-        );
-      }
-
-      // Si la API trae `count`, lo usamos para cortar sin pedir de más.
-      final count = (data['count'] is int) ? (data['count'] as int) : null;
+      if (page.items.isEmpty) break;
+      albums.addAll(page.items);
       offset += limit;
-      if (count != null && offset >= count) break;
+      if (!page.hasMore) break;
     }
 
     albums.sort((a, b) {
@@ -1170,6 +1242,64 @@ class DiscographyService {
       }
     }
     return tracks;
+  }
+
+  // =========================
+  // 💿 EDICIONES (RELEASES) DE UN ÁLBUM
+  // =========================
+  /// Devuelve una lista de ediciones (releases) asociadas a un release-group.
+  ///
+  /// IMPORTANTE: no se usa para "año" (eso se toma del release-group), sino para
+  /// permitir elegir una edición específica como fallback de carátula (release).
+  static Future<List<ReleaseEdition>> getEditionsFromReleaseGroup(String rgid) async {
+    final id = rgid.trim();
+    if (id.isEmpty) return [];
+
+    final urlRg = Uri.parse(
+      '$_mbBase/release-group/$id?inc=releases&fmt=json',
+    );
+    final resRg = await _get(urlRg);
+    if (resRg.statusCode != 200) return [];
+
+    final data = jsonDecode(resRg.body) as Map<String, dynamic>;
+    final releases = (data['releases'] as List?) ?? [];
+    if (releases.isEmpty) return [];
+
+    final out = <ReleaseEdition>[];
+    for (final r in releases) {
+      if (r is! Map) continue;
+      final rid = (r['id'] ?? '').toString().trim();
+      final title = (r['title'] ?? '').toString().trim();
+      if (rid.isEmpty) continue;
+
+      final date = (r['date'] ?? '').toString().trim();
+      final country = (r['country'] ?? '').toString().trim();
+      final status = (r['status'] ?? '').toString().trim();
+      final barcode = (r['barcode'] ?? '').toString().trim();
+
+      out.add(
+        ReleaseEdition(
+          id: rid,
+          title: title.isEmpty ? '(sin título)' : title,
+          date: date.isEmpty ? null : date,
+          country: country.isEmpty ? null : country,
+          status: status.isEmpty ? null : status,
+          barcode: barcode.isEmpty ? null : barcode,
+        ),
+      );
+    }
+
+    // Orden por fecha (más antigua primero) y luego por título.
+    out.sort((a, b) {
+      final ay = int.tryParse(a.year ?? '') ?? 9999;
+      final by = int.tryParse(b.year ?? '') ?? 9999;
+      final c = ay.compareTo(by);
+      if (c != 0) return c;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+
+    // Limitar para que el UI no explote con artistas/álbumes con cientos de ediciones.
+    return out.take(120).toList();
   }
 
   /// Versión más robusta: intenta más de un release dentro del release-group.

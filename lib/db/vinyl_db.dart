@@ -22,8 +22,17 @@ class VinylDb {
 
     return openDatabase(
       path,
-      version: 15, // ✅ v15: carpeta "Canciones" (tracks favoritos)
+      version: 16, // ✅ v16: índices NOCASE + ajustes de performance
       onOpen: (d) async {
+        // ⚡ Performance (seguro en SQLite/sqflite)
+        try {
+          await d.execute('PRAGMA journal_mode=WAL;');
+          await d.execute('PRAGMA synchronous=NORMAL;');
+          await d.execute('PRAGMA temp_store=MEMORY;');
+        } catch (_) {
+          // En algunos dispositivos/estados raros puede fallar; no es crítico.
+        }
+
         // Normaliza valores antiguos (por si quedaron como texto 'true'/'false')
         try {
           await d.execute("UPDATE vinyls SET favorite = 1 WHERE favorite = 'true'");
@@ -31,6 +40,18 @@ class VinylDb {
         } catch (_) {
           // si la tabla/columna no existe todavía en algún estado raro, ignorar
         }
+
+        // ✅ Índices para búsquedas exactas case-insensitive (evita LOWER() en WHERE)
+        // Los creamos en onOpen para que existan incluso con backups/restores.
+        try {
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_vinyl_exact_nocase ON vinyls(artista COLLATE NOCASE, album COLLATE NOCASE);');
+        } catch (_) {}
+        try {
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_wish_exact_nocase ON wishlist(artista COLLATE NOCASE, album COLLATE NOCASE);');
+        } catch (_) {}
+        try {
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_trash_exact_nocase ON trash(artista COLLATE NOCASE, album COLLATE NOCASE);');
+        } catch (_) {}
       },
       onCreate: (d, v) async {
         await d.execute('''
@@ -61,6 +82,7 @@ class VinylDb {
         await d.execute('CREATE INDEX idx_artist_key ON vinyls(artistKey);');
         await d.execute('CREATE INDEX idx_fav ON vinyls(favorite);');
         await d.execute('CREATE UNIQUE INDEX idx_vinyl_exact ON vinyls(artista, album);');
+        await d.execute('CREATE INDEX idx_vinyl_exact_nocase ON vinyls(artista COLLATE NOCASE, album COLLATE NOCASE);');
 
         // ✅ tabla artist_orders: asigna un número fijo por artista (sin alfabético)
         await d.execute('''
@@ -87,6 +109,7 @@ class VinylDb {
           );
         ''');
         await d.execute('CREATE UNIQUE INDEX idx_wish_unique ON wishlist(artista, album);');
+        await d.execute('CREATE INDEX idx_wish_exact_nocase ON wishlist(artista COLLATE NOCASE, album COLLATE NOCASE);');
 
         // ✅ tabla trash (papelera)
         await d.execute('''
@@ -114,6 +137,7 @@ class VinylDb {
         ''');
         await d.execute('CREATE INDEX idx_trash_deleted ON trash(deletedAt);');
         await d.execute('CREATE UNIQUE INDEX idx_trash_unique ON trash(artista, album);');
+        await d.execute('CREATE INDEX idx_trash_exact_nocase ON trash(artista COLLATE NOCASE, album COLLATE NOCASE);');
 
         // ✅ tabla price_alerts: alerta cuando el precio mínimo de mercado baja de un umbral.
         await d.execute('''
@@ -484,6 +508,19 @@ if (oldV < 9) {
           await d.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_liked_unique ON liked_tracks(releaseGroupId, trackKey);');
         }
 
+        if (oldV < 16) {
+          // v16: índices NOCASE para búsquedas exactas (mejor performance)
+          try {
+            await d.execute('CREATE INDEX IF NOT EXISTS idx_vinyl_exact_nocase ON vinyls(artista COLLATE NOCASE, album COLLATE NOCASE);');
+          } catch (_) {}
+          try {
+            await d.execute('CREATE INDEX IF NOT EXISTS idx_wish_exact_nocase ON wishlist(artista COLLATE NOCASE, album COLLATE NOCASE);');
+          } catch (_) {}
+          try {
+            await d.execute('CREATE INDEX IF NOT EXISTS idx_trash_exact_nocase ON trash(artista COLLATE NOCASE, album COLLATE NOCASE);');
+          } catch (_) {}
+        }
+
 
       },
     );
@@ -681,15 +718,54 @@ Future<Map<String, dynamic>?> findByExact({
     required String album,
   }) async {
     final d = await db;
-    final a = artista.trim().toLowerCase();
-    final al = album.trim().toLowerCase();
+    final a = artista.trim();
+    final al = album.trim();
     final rows = await d.query(
       'vinyls',
-      where: 'LOWER(artista)=? AND LOWER(album)=?',
+      where: 'artista = ? COLLATE NOCASE AND album = ? COLLATE NOCASE',
       whereArgs: [a, al],
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Búsqueda exacta (por artista + lista de álbumes) en UNA query.
+  ///
+  /// Devuelve un Map indexado por `normalizeKey(album)` (minúsculas + trim).
+  Future<Map<String, Map<String, dynamic>>> findManyByExact({
+    required String artista,
+    required List<String> albums,
+  }) async {
+    final d = await db;
+    final a = artista.trim();
+    final clean = albums.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (a.isEmpty || clean.isEmpty) return <String, Map<String, dynamic>>{};
+
+    // SQLite tiene límite de parámetros; aquí trabajamos por páginas visibles (20),
+    // pero igual lo chunkeamos por seguridad.
+    const chunkSize = 500;
+    final out = <String, Map<String, dynamic>>{};
+
+    for (int i = 0; i < clean.length; i += chunkSize) {
+      final chunk = clean.sublist(i, (i + chunkSize).clamp(0, clean.length));
+      final qs = List.filled(chunk.length, '?').join(',');
+      final rows = await d.rawQuery(
+        '''
+          SELECT id, album, favorite
+          FROM vinyls
+          WHERE artista = ? COLLATE NOCASE
+            AND album COLLATE NOCASE IN ($qs)
+        ''',
+        <Object?>[a, ...chunk],
+      );
+      for (final r in rows) {
+        final al = (r['album'] as String?)?.trim() ?? '';
+        if (al.isEmpty) continue;
+        out[normalizeKey(al)] = Map<String, dynamic>.from(r);
+      }
+    }
+
+    return out;
   }
 
   Future<List<Map<String, dynamic>>> search({
@@ -726,12 +802,12 @@ Future<Map<String, dynamic>?> findByExact({
 
   Future<bool> existsExact({required String artista, required String album}) async {
     final d = await db;
-    final a = artista.trim().toLowerCase();
-    final al = album.trim().toLowerCase();
+    final a = artista.trim();
+    final al = album.trim();
     final rows = await d.query(
       'vinyls',
       columns: ['id'],
-      where: 'LOWER(artista)=? AND LOWER(album)=?',
+      where: 'artista = ? COLLATE NOCASE AND album = ? COLLATE NOCASE',
       whereArgs: [a, al],
       limit: 1,
     );
@@ -951,12 +1027,14 @@ Future<Map<String, dynamic>?> findByExact({
   /// - Si el (artista, álbum) nuevo ya existe en otro registro, lanza excepción.
   Future<void> updateVinylDetails({
     required int id,
+    int? numero,
     required String artista,
     required String album,
     String? year,
     String? country,
     String? condition,
     String? format,
+    String? coverPath,
   }) async {
     final d = await db;
     final a = artista.trim();
@@ -969,6 +1047,22 @@ Future<Map<String, dynamic>?> findByExact({
       final cur = await txn.query('vinyls', where: 'id = ?', whereArgs: [id], limit: 1);
       if (cur.isEmpty) throw Exception('No encontré el vinilo.');
       final old = cur.first;
+
+      final oldNumero = _asInt(old['numero']);
+      if (numero != null) {
+        if (numero <= 0) {
+          throw Exception('Número inválido.');
+        }
+        if (numero != oldNumero) {
+          final used = await txn.rawQuery(
+            'SELECT id FROM vinyls WHERE numero = ? AND id <> ? LIMIT 1',
+            [numero, id],
+          );
+          if (used.isNotEmpty) {
+            throw Exception('Ese número ya está usado.');
+          }
+        }
+      }
 
       final oldA = (old['artista'] ?? '').toString().trim();
       final oldAl = (old['album'] ?? '').toString().trim();
@@ -1005,6 +1099,7 @@ Future<Map<String, dynamic>?> findByExact({
       await txn.update(
         'vinyls',
         {
+          if (numero != null) 'numero': numero,
           'artista': a,
           'album': al,
           'artistKey': newKey.isEmpty ? oldKey : newKey,
@@ -1012,6 +1107,7 @@ Future<Map<String, dynamic>?> findByExact({
           if (country != null) 'country': country.trim().isEmpty ? null : country.trim(),
           if (condition != null) 'condition': condition.trim().isEmpty ? null : condition.trim(),
           if (format != null) 'format': format.trim().isEmpty ? null : format.trim(),
+          if (coverPath != null) 'coverPath': coverPath.trim().isEmpty ? null : coverPath.trim(),
         },
         where: 'id = ?',
         whereArgs: [id],
@@ -1434,15 +1530,51 @@ Future<void> deleteTrashById(int trashId) async {
     required String album,
   }) async {
     final d = await db;
-    final a = artista.trim().toLowerCase();
-    final al = album.trim().toLowerCase();
+    final a = artista.trim();
+    final al = album.trim();
     final rows = await d.query(
       'wishlist',
-      where: 'LOWER(artista)=? AND LOWER(album)=?',
+      where: 'artista = ? COLLATE NOCASE AND album = ? COLLATE NOCASE',
       whereArgs: [a, al],
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Búsqueda exacta (wishlist) por artista + lista de álbumes en UNA query.
+  /// Devuelve un Map indexado por `normalizeKey(album)`.
+  Future<Map<String, Map<String, dynamic>>> findWishlistManyByExact({
+    required String artista,
+    required List<String> albums,
+  }) async {
+    final d = await db;
+    final a = artista.trim();
+    final clean = albums.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (a.isEmpty || clean.isEmpty) return <String, Map<String, dynamic>>{};
+
+    const chunkSize = 500;
+    final out = <String, Map<String, dynamic>>{};
+
+    for (int i = 0; i < clean.length; i += chunkSize) {
+      final chunk = clean.sublist(i, (i + chunkSize).clamp(0, clean.length));
+      final qs = List.filled(chunk.length, '?').join(',');
+      final rows = await d.rawQuery(
+        '''
+          SELECT id, album
+          FROM wishlist
+          WHERE artista = ? COLLATE NOCASE
+            AND album COLLATE NOCASE IN ($qs)
+        ''',
+        <Object?>[a, ...chunk],
+      );
+      for (final r in rows) {
+        final al = (r['album'] as String?)?.trim() ?? '';
+        if (al.isEmpty) continue;
+        out[normalizeKey(al)] = Map<String, dynamic>.from(r);
+      }
+    }
+
+    return out;
   }
 
   Future<void> addToWishlist({

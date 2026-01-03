@@ -20,8 +20,8 @@ class AlbumSuggest {
 class CoverCandidate {
   final String releaseGroupId;
   final String? year;
-  final String coverUrl250;
-  final String coverUrl500;
+  final String? coverUrl250;
+  final String? coverUrl500;
 
   CoverCandidate({
     required this.releaseGroupId,
@@ -221,7 +221,10 @@ class MetadataService {
         final dataRg = jsonDecode(resRg.body) as Map<String, dynamic>;
 
         final frd = (dataRg['first-release-date'] as String?) ?? '';
-        if ((year == null || year.isEmpty) && frd.length >= 4) {
+        // ✅ Regla: el año guardado debe ser el de la primera edición.
+        // MusicBrainz puede devolver releases (reediciones) con un año diferente;
+        // forzamos el "first-release-date" del release-group cuando existe.
+        if (frd.length >= 4) {
           year = frd.substring(0, 4);
         }
 

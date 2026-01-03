@@ -34,11 +34,11 @@ class PreparedVinylAdd {
   final String? releaseGroupId;
 
   /// ReleaseID (útil como fallback de carátula cuando vienes desde búsqueda por barcode)
-  final String? releaseId;
+  String? releaseId;
 
   /// Fallback de carátula si el endpoint de release-group no trae imagen.
-  final String? coverFallback250;
-  final String? coverFallback500;
+  String? coverFallback250;
+  String? coverFallback500;
 
   /// Opciones de carátula (máx 5)
   final List<CoverCandidate> coverCandidates;
@@ -199,16 +199,11 @@ class VinylAddService {
       coverPath = await _copyLocalCoverToLocal(local);
     }
 
-    // Descargar carátula (si hay). Intentamos con la seleccionada.
-    // 1) selected 500
-    if (coverPath == null) {
-      final primary = (prepared.selectedCover500 ?? '').trim();
-      if (primary.isNotEmpty) {
-        coverPath = await _downloadCoverToLocal(primary);
-      }
-    }
+    // Descargar carátula (si hay).
+    // Regla pro: si existe un releaseId (barcode / edición elegida),
+    // preferimos su carátula antes que la del release-group.
 
-    // 2) fallback 500 (release)
+    // 1) fallback 500 (release)
     if (coverPath == null) {
       final fb = (prepared.coverFallback500 ?? '').trim();
       if (fb.isNotEmpty) {
@@ -216,19 +211,27 @@ class VinylAddService {
       }
     }
 
-    // 3) selected 250
+    // 2) selected 500 (release-group)
     if (coverPath == null) {
-      final alt = (prepared.selectedCover250 ?? '').trim();
-      if (alt.isNotEmpty) {
-        coverPath = await _downloadCoverToLocal(alt);
+      final primary = (prepared.selectedCover500 ?? '').trim();
+      if (primary.isNotEmpty) {
+        coverPath = await _downloadCoverToLocal(primary);
       }
     }
 
-    // 4) fallback 250 (release)
+    // 3) fallback 250 (release)
     if (coverPath == null) {
       final fb = (prepared.coverFallback250 ?? '').trim();
       if (fb.isNotEmpty) {
         coverPath = await _downloadCoverToLocal(fb);
+      }
+    }
+
+    // 4) selected 250 (release-group)
+    if (coverPath == null) {
+      final alt = (prepared.selectedCover250 ?? '').trim();
+      if (alt.isNotEmpty) {
+        coverPath = await _downloadCoverToLocal(alt);
       }
     }
 

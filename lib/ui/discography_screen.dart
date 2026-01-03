@@ -9,6 +9,7 @@ import '../services/discography_service.dart';
 import '../services/vinyl_add_service.dart';
 import '../services/add_defaults_service.dart';
 import '../services/store_price_service.dart';
+import '../utils/normalize.dart';
 import 'widgets/app_cover_image.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
@@ -28,9 +29,55 @@ class DiscographyScreen extends StatefulWidget {
 
 class _DiscographyScreenState extends State<DiscographyScreen> {
 
+  // =============================================
+  // ⚡ Performance: paginación REAL en MusicBrainz
+  // =============================================
+  // MusicBrainz pagina en bloques de 100. Antes descargábamos TODO siempre,
+  // lo que hacía lento el cambio de artista. Ahora:
+  // - cargamos 1 página para mostrar rápido,
+  // - y traemos más páginas solo cuando se necesitan (ej. búsqueda de álbum).
+  static const int _mbLimit = 100;
+  int _mbOffset = 0;
+  int _mbTotal = 0;
+  bool _mbHasMore = false;
+  bool _mbLoadingMore = false;
+  String _mbArtistId = '';
+  final Set<String> _mbLoadedIds = <String>{};
+
+  // Búsqueda global de álbum: mientras el usuario escribe, si no encontramos
+  // coincidencias en lo cargado, seguimos trayendo páginas automáticamente.
+  Timer? _albumDebounce;
+  int _albumSearchSeq = 0;
+  bool _loadingAlbumGlobalSearch = false;
+
+  // Hidratación (colección/wishlist) en lote para evitar 2 queries por ítem.
+  String _lastHydrateSig = '';
+  bool _hydrateInFlight = false;
+
   // 📄 Paginación (20 por página) para la lista de álbumes.
   static const int _pageSize = 20;
   int _albumPage = 1;
+
+  // 🧭 Scroll: al cambiar de página, volver al inicio de la lista.
+  final ScrollController _albumsScrollCtrl = ScrollController();
+
+  void _scrollAlbumsToTop() {
+    // Post-frame por si el ListView aún no está montado justo después del setState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_albumsScrollCtrl.hasClients) return;
+      _albumsScrollCtrl.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  void _changeAlbumPage(int newPage) {
+    if (newPage == _albumPage) return;
+    setState(() => _albumPage = newPage);
+    _scrollAlbumsToTop();
+  }
 
   int _asInt(dynamic v) {
     if (v is int) return v;
@@ -49,6 +96,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   final TextEditingController artistCtrl = TextEditingController();
   final FocusNode _artistFocus = FocusNode();
   Timer? _debounce;
+
+  // 💿 Buscador por álbum (filtra la lista de álbumes)
+  final TextEditingController albumCtrl = TextEditingController();
+  final FocusNode _albumFocus = FocusNode();
 
   // 🎵 Buscador por canción (filtra álbumes)
   final TextEditingController songCtrl = TextEditingController();
@@ -70,11 +121,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   int _songScanTotal = 0;
   int _songScanDone = 0;
 
+  // Cuando el filtro por canción necesita buscar en páginas no cargadas aún.
+  bool _songLoadingMorePages = false;
+
   void _clearArtistSearch({bool keepFocus = true}) {
     _debounce?.cancel();
     artistCtrl.clear();
 
     _clearSongFilter(setText: true);
+    _clearAlbumFilter(setText: true);
 
     setState(() {
       searchingArtists = false;
@@ -83,6 +138,14 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       albums = [];
       loadingAlbums = false;
       _albumPage = 1;
+
+      _mbArtistId = '';
+      _mbOffset = 0;
+      _mbTotal = 0;
+      _mbHasMore = false;
+      _mbLoadingMore = false;
+      _mbLoadedIds.clear();
+      _loadingAlbumGlobalSearch = false;
     });
     _lastAutoPickedQuery = '';
     _exists.clear();
@@ -100,6 +163,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
   }
 
+  void _clearAlbumFilter({bool setText = false}) {
+    if (setText) albumCtrl.clear();
+    if (mounted) {
+      setState(() {
+        _albumPage = 1;
+      });
+    }
+  }
+
   void _clearSongFilter({bool setText = false}) {
     _songDebounce?.cancel();
     _songSuggestDebounce?.cancel();
@@ -112,6 +184,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       _albumPage = 1;
       _songScanTotal = 0;
       _songScanDone = 0;
+      _songLoadingMorePages = false;
     });
     _lastSongQueryNorm = '';
     _selectedSongRecordingId = '';
@@ -133,12 +206,19 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       _songScanDone = 0;
     });
 
+    int done = 0;
+    int lastUi = 0;
+
     for (final al in list) {
       if (!mounted) break;
       if (mySeq != _songReqSeq) break; // cancelado
-      final rgid = (al.releaseGroupId ?? '').toString().trim();
+      final rgid = al.releaseGroupId.toString().trim();
       if (rgid.isEmpty) {
-        if (mounted) setState(() => _songScanDone++);
+        done++;
+        if (mounted && (done - lastUi >= 6 || done == total)) {
+          lastUi = done;
+          setState(() => _songScanDone = done);
+        }
         continue;
       }
 
@@ -156,12 +236,49 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
       if (ok) matches.add(rgid);
 
-      if (mounted) {
-        // Actualiza progreso (sin setState por cada track, solo por álbum)
-        setState(() => _songScanDone++);
+      done++;
+      if (mounted && (done - lastUi >= 6 || done == total)) {
+        lastUi = done;
+        setState(() => _songScanDone = done);
       }
     }
     return matches;
+  }
+
+  bool _hasAnyLoadedAlbumMatch(Set<String> rgids) {
+    if (rgids.isEmpty) return false;
+    for (final al in albums) {
+      final id = al.releaseGroupId.trim();
+      if (id.isNotEmpty && rgids.contains(id)) return true;
+    }
+    return false;
+  }
+
+  /// Cuando el filtro por canción devuelve release-groups que aún no están cargados
+  /// (porque la discografía viene paginada), vamos cargando páginas hasta que
+  /// aparezca al menos 1 coincidencia o se terminen las páginas.
+  Future<void> _ensureSongMatchesAcrossPages(Set<String> rgids, int mySeq) async {
+    if (rgids.isEmpty) return;
+    if (_hasAnyLoadedAlbumMatch(rgids)) return;
+    if (!_mbHasMore) return;
+
+    if (mounted) {
+      setState(() {
+        _songLoadingMorePages = true;
+      });
+    }
+
+    while (mounted && mySeq == _songReqSeq && _mbHasMore) {
+      await _loadMoreDiscographyPage();
+      if (!mounted || mySeq != _songReqSeq) break;
+      if (_hasAnyLoadedAlbumMatch(rgids)) break;
+    }
+
+    if (mounted && mySeq == _songReqSeq) {
+      setState(() {
+        _songLoadingMorePages = false;
+      });
+    }
   }
 
   bool searchingArtists = false;
@@ -405,6 +522,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   @override
   void initState() {
     super.initState();
+    // Rebuild cuando el campo de álbum gana/pierde foco (para mostrar/ocultar autocompletado).
+    _albumFocus.addListener(() {
+      if (!mounted) return;
+      setState(() {});
+    });
     // Cierra el dropdown de sugerencias de canciones cuando el campo pierde foco.
     _songFocus.addListener(() {
       if (!mounted) return;
@@ -430,12 +552,16 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _albumDebounce?.cancel();
     _songDebounce?.cancel();
     _songSuggestDebounce?.cancel();
     artistCtrl.dispose();
+    albumCtrl.dispose();
     songCtrl.dispose();
     _artistFocus.dispose();
+    _albumFocus.dispose();
     _songFocus.dispose();
+    _albumsScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -459,6 +585,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         setState(() {
           searchingSongs = false;
           _songMatchReleaseGroups = <String>{};
+          _songLoadingMorePages = false;
         });
       }
     }
@@ -554,14 +681,31 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final cached = _songCache[cacheKey];
     if (cached != null) {
       if (!mounted) return;
+
       // Activamos el filtro aunque venga de caché.
       if (markAsSelected || _selectedSongRecordingId.isEmpty) {
         _selectedSongRecordingId = (preferredRecordingId ?? 'text');
         _selectedSongTitleNorm = qNorm;
       }
+
+      setState(() {
+        searchingSongs = true;
+        _songLoadingMorePages = false;
+        _songMatchReleaseGroups = cached;
+        _albumPage = 1;
+        _songScanTotal = 0;
+        _songScanDone = 0;
+      });
+
+      // Si la discografía está paginada, puede que aún no tengamos cargado
+      // el(los) álbum(es) donde aparece la canción. Cargamos páginas hasta que aparezca.
+      await _ensureSongMatchesAcrossPages(cached, mySeq);
+      if (!mounted) return;
+      if (mySeq != _songReqSeq) return;
+
       setState(() {
         searchingSongs = false;
-        _songMatchReleaseGroups = cached;
+        _songLoadingMorePages = false;
       });
       return;
     }
@@ -569,6 +713,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     if (!mounted) return;
     setState(() {
       searchingSongs = true;
+      _songLoadingMorePages = false;
       _songMatchReleaseGroups = <String>{};
       _albumPage = 1;
       _songScanTotal = 0;
@@ -587,41 +732,51 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         maxLookups: 12,
       );
 
-      // ✅ Regla: el filtro se aplica sobre los álbumes encontrados en discografía
-      // (todas las páginas). Por eso intersectamos con los release-groups cargados.
-      final loadedRgs = albums
-          .map((e) => e.releaseGroupId.trim())
-          .where((e) => e.isNotEmpty)
-          .toSet();
-      var ids = idsRaw.intersection(loadedRgs);
+      // IDs de release-groups (álbumes) donde aparece la canción.
+      // OJO: ahora la discografía se carga paginada para ser rápida, así que puede que
+      // el(los) álbum(es) estén en páginas aún no cargadas.
+      var ids = idsRaw;
 
-      // 🛟 Fallback: si la búsqueda por recording no devolvió nada, escaneamos
-      // los tracklists de los álbumes cargados (todas las páginas).
-      // Esto es más lento, pero evita falsos negativos.
+      // 🛟 Fallback: si MusicBrainz no devolvió nada, escaneamos tracklists de lo ya cargado.
+      // (Más lento, pero evita falsos negativos.)
       if (ids.isEmpty && qNorm.length >= 2) {
         final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
         if (!mounted) return;
         if (mySeq != _songReqSeq) return;
         ids = scanned;
       }
+
       if (!mounted) return;
       if (mySeq != _songReqSeq) return;
-      _songCache[cacheKey] = ids;
-      setState(() {
-        searchingSongs = false;
-        _songMatchReleaseGroups = ids;
-      });
 
       // Si el usuario no seleccionó sugerencia, igual activamos el filtro.
       if (markAsSelected || _selectedSongRecordingId.isEmpty) {
         _selectedSongRecordingId = (preferredRecordingId ?? 'text');
         _selectedSongTitleNorm = qNorm;
       }
+
+      _songCache[cacheKey] = ids;
+
+      // Aplicamos el filtro (aunque aún no tengamos cargado la página donde cae el álbum).
+      setState(() {
+        _songMatchReleaseGroups = ids;
+      });
+
+      // ✅ Nuevo: si aún no hay coincidencias visibles, vamos cargando páginas hasta que aparezcan.
+      await _ensureSongMatchesAcrossPages(ids, mySeq);
+      if (!mounted) return;
+      if (mySeq != _songReqSeq) return;
+
+      setState(() {
+        searchingSongs = false;
+        _songLoadingMorePages = false;
+      });
     } catch (_) {
       if (!mounted) return;
       if (mySeq != _songReqSeq) return;
       setState(() {
         searchingSongs = false;
+        _songLoadingMorePages = false;
         _songMatchReleaseGroups = <String>{};
       });
       if (markAsSelected || _selectedSongRecordingId.isEmpty) {
@@ -677,6 +832,94 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     );
   }
 
+  Widget _highlightAlbumTitle(String text, String query) {
+    final q = query.trim();
+    if (q.isEmpty) return Text(text);
+    final tl = text.toLowerCase();
+    final ql = q.toLowerCase();
+    final idx = tl.indexOf(ql);
+    if (idx < 0) return Text(text);
+
+    final before = text.substring(0, idx);
+    final mid = text.substring(idx, idx + q.length);
+    final after = text.substring(idx + q.length);
+    final base = Theme.of(context).textTheme.bodyMedium;
+    final on = Theme.of(context).colorScheme.onSurface;
+
+    return RichText(
+      text: TextSpan(
+        style: base?.copyWith(color: on),
+        children: [
+          TextSpan(text: before),
+          TextSpan(text: mid, style: base?.copyWith(color: on, fontWeight: FontWeight.w900)),
+          TextSpan(text: after),
+        ],
+      ),
+    );
+  }
+
+  void _onAlbumTextChanged(String _) {
+    // Filtro en vivo. Además, si el álbum no está dentro de lo que ya
+    // cargamos desde MusicBrainz, vamos trayendo más páginas automáticamente
+    // (modo "buscar en todas las páginas").
+    if (mounted) setState(() => _albumPage = 1);
+
+    _albumDebounce?.cancel();
+    _albumSearchSeq++;
+    final mySeq = _albumSearchSeq;
+
+    final qNorm = _normQ(albumCtrl.text.trim());
+    if (pickedArtist == null || qNorm.isEmpty) {
+      if (mounted) setState(() => _loadingAlbumGlobalSearch = false);
+      return;
+    }
+
+    _albumDebounce = Timer(const Duration(milliseconds: 260), () async {
+      if (!mounted) return;
+      if (mySeq != _albumSearchSeq) return;
+
+      bool hasMatch = albums.any((a) => _normQ(a.title).contains(qNorm));
+      if (hasMatch || !_mbHasMore) {
+        if (mounted) setState(() => _loadingAlbumGlobalSearch = false);
+        return;
+      }
+
+      if (mounted) setState(() => _loadingAlbumGlobalSearch = true);
+
+      // Mientras no haya match, seguimos trayendo páginas.
+      while (mounted && mySeq == _albumSearchSeq) {
+        hasMatch = albums.any((a) => _normQ(a.title).contains(qNorm));
+        if (hasMatch || !_mbHasMore) break;
+        if (_mbLoadingMore) {
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          continue;
+        }
+        await _loadMoreDiscographyPage();
+        // Si hay otra operación de carga (songs/explore), dejamos respirar.
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+
+      if (mounted && mySeq == _albumSearchSeq) {
+        setState(() => _loadingAlbumGlobalSearch = false);
+      }
+    });
+  }
+
+  void _openAlbum(BuildContext context, String artistName, AlbumItem al) {
+    if (artistName.trim().isEmpty) return;
+    _dismissKeyboard();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AlbumTracksScreen(
+          album: al,
+          artistName: artistName,
+          artistId: pickedArtist?.id,
+        ),
+      ),
+    );
+  }
+
   void _snack(String t) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart(t))));
@@ -688,10 +931,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     // Si el usuario cambia el texto, invalidamos la selección anterior.
     if (pickedArtist != null && _normQ(q) != _normQ(pickedArtist!.name)) {
       _clearSongFilter(setText: true);
+      _clearAlbumFilter(setText: true);
       setState(() {
         pickedArtist = null;
         albums = [];
         loadingAlbums = false;
+        _mbArtistId = '';
+        _mbOffset = 0;
+        _mbTotal = 0;
+        _mbHasMore = false;
+        _mbLoadingMore = false;
+        _mbLoadedIds.clear();
+        _loadingAlbumGlobalSearch = false;
       });
       _exists.clear();
       _vinylId.clear();
@@ -703,6 +954,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
     if (q.isEmpty) {
       _clearSongFilter(setText: true);
+      _clearAlbumFilter(setText: true);
       setState(() {
         searchingArtists = false;
         artistResults = [];
@@ -761,6 +1013,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   Future<void> _pickArtist(ArtistHit a) async {
     FocusScope.of(context).unfocus();
     _clearSongFilter(setText: true);
+    _clearAlbumFilter(setText: true);
     setState(() {
       pickedArtist = a;
       artistCtrl.text = a.name;
@@ -768,6 +1021,16 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       albums = [];
       loadingAlbums = true;
       _albumPage = 1;
+
+      // reset MusicBrainz paging
+      _mbArtistId = a.id;
+      _mbOffset = 0;
+      _mbTotal = 0;
+      _mbHasMore = false;
+      _mbLoadingMore = false;
+      _mbLoadedIds.clear();
+      _loadingAlbumGlobalSearch = false;
+      _albumSearchSeq++;
 
       // limpiezas cache (para evitar estados viejos)
       _exists.clear();
@@ -780,10 +1043,28 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     });
 
     try {
-      final list = await DiscographyService.getDiscographyByArtistId(a.id);
+      final page = await DiscographyService.getDiscographyPageByArtistId(
+        a.id,
+        limit: _mbLimit,
+        offset: 0,
+      );
       if (!mounted) return;
       setState(() {
-        albums = list;
+        _mbOffset = _mbLimit;
+        _mbTotal = page.total;
+        _mbHasMore = _mbOffset < _mbTotal;
+
+        // Merge único + orden por año
+        final merged = <AlbumItem>[];
+        for (final it in page.items) {
+          if (_mbLoadedIds.add(it.releaseGroupId)) merged.add(it);
+        }
+        merged.sort((a, b) {
+          final ay = int.tryParse(a.year ?? '') ?? 9999;
+          final by = int.tryParse(b.year ?? '') ?? 9999;
+          return ay.compareTo(by);
+        });
+        albums = merged;
         loadingAlbums = false;
       });
     } catch (_) {
@@ -791,8 +1072,96 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       setState(() {
         albums = [];
         loadingAlbums = false;
+
+        _mbOffset = 0;
+        _mbTotal = 0;
+        _mbHasMore = false;
+        _mbLoadingMore = false;
       });
       _snack('Error cargando discografía');
+    }
+  }
+
+  Future<void> _loadMoreDiscographyPage() async {
+    if (!mounted) return;
+    if (_mbLoadingMore || !_mbHasMore) return;
+    if (_mbArtistId.trim().isEmpty) return;
+
+    setState(() => _mbLoadingMore = true);
+    try {
+      final page = await DiscographyService.getDiscographyPageByArtistId(
+        _mbArtistId,
+        limit: _mbLimit,
+        offset: _mbOffset,
+      );
+      if (!mounted) return;
+
+      // Avanza offset siempre (incluso si una página tiene 0 álbumes)
+      final nextOffset = _mbOffset + _mbLimit;
+
+      final merged = <AlbumItem>[...albums];
+      for (final it in page.items) {
+        if (_mbLoadedIds.add(it.releaseGroupId)) merged.add(it);
+      }
+      merged.sort((a, b) {
+        final ay = int.tryParse(a.year ?? '') ?? 9999;
+        final by = int.tryParse(b.year ?? '') ?? 9999;
+        return ay.compareTo(by);
+      });
+
+      setState(() {
+        _mbOffset = nextOffset;
+        _mbTotal = page.total;
+        _mbHasMore = _mbOffset < _mbTotal;
+        albums = merged;
+      });
+    } catch (_) {
+      // Si falla, dejamos el botón disponible para reintentar
+    } finally {
+      if (mounted) setState(() => _mbLoadingMore = false);
+    }
+  }
+
+  void _scheduleHydrateForVisiblePage(String artistName, List<AlbumItem> items) {
+    if (artistName.trim().isEmpty) return;
+    if (items.isEmpty) return;
+
+    final sig = '$artistName|${items.map((e) => e.releaseGroupId).join(',')}';
+    if (sig == _lastHydrateSig) return;
+    _lastHydrateSig = sig;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hydrateBatchForAlbums(artistName, items);
+    });
+  }
+
+  Future<void> _hydrateBatchForAlbums(String artistName, List<AlbumItem> items) async {
+    if (!mounted) return;
+    if (_hydrateInFlight) return;
+    if (artistName.trim().isEmpty || items.isEmpty) return;
+
+    _hydrateInFlight = true;
+    try {
+      final titles = items.map((e) => e.title).where((t) => t.trim().isNotEmpty).toList();
+      if (titles.isEmpty) return;
+
+      final got = await VinylDb.instance.findManyByExact(artista: artistName, albums: titles);
+      final gotWish = await VinylDb.instance.findWishlistManyByExact(artista: artistName, albums: titles);
+      if (!mounted) return;
+
+      for (final al in items) {
+        final k = _k(artistName, al.title);
+        final norm = normalizeKey(al.title);
+        final row = got[norm];
+        _exists[k] = row != null;
+        _vinylId[k] = _asInt(row?['id']);
+        _fav[k] = _asFav(row?['favorite']);
+        _wish[k] = (gotWish[norm] != null);
+      }
+
+      if (mounted) setState(() {});
+    } finally {
+      _hydrateInFlight = false;
     }
   }
 
@@ -1144,12 +1513,22 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final songFilterActive = (pickedArtist != null && _selectedSongRecordingId.isNotEmpty);
     final showUnfilteredWhileSearching = songFilterActive && searchingSongs && _songMatchReleaseGroups.isEmpty;
 
-    final visibleAlbums = (!songFilterActive || showUnfilteredWhileSearching)
+    // 1) Base: filtro por canción (si está activo)
+    final songVisibleAlbums = (!songFilterActive || showUnfilteredWhileSearching)
         ? albums
         : albums.where((al) {
             final rgid = al.releaseGroupId.trim();
             return rgid.isNotEmpty && _songMatchReleaseGroups.contains(rgid);
           }).toList();
+
+    // 2) Filtro por álbum (local) sobre TODO lo cargado (incluye todas las páginas del pager).
+    final albumRaw = albumCtrl.text.trim();
+    final albumNorm = _normQ(albumRaw);
+    final albumFilterActive = (pickedArtist != null && albumNorm.isNotEmpty);
+
+    final visibleAlbums = (!albumFilterActive)
+        ? songVisibleAlbums
+        : songVisibleAlbums.where((al) => _normQ(al.title).contains(albumNorm)).toList();
 
     // 📄 Paginación (20 por página)
     final totalAlbums = visibleAlbums.length;
@@ -1165,6 +1544,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final pageAlbums = (totalAlbums <= 0 || start >= totalAlbums)
         ? const <AlbumItem>[]
         : visibleAlbums.sublist(start, end);
+
+    // ✅ Perf: hidratar (colección/wishlist/fav) en lote para la página visible,
+    // evitando 2 queries por item y múltiples setState.
+    if (pickedArtist != null && artistResults.isEmpty && !loadingAlbums) {
+      _scheduleHydrateForVisiblePage(artistName, pageAlbums);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -1251,6 +1636,120 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             ),
             SizedBox(height: 10),
             if (searchingArtists) LinearProgressIndicator(),
+
+            // 💿 Buscador de álbum (aparece solo cuando ya hay artista elegido)
+            if (pickedArtist != null && artistResults.isEmpty) ...[
+              TextField(
+                controller: albumCtrl,
+                focusNode: _albumFocus,
+                textInputAction: TextInputAction.search,
+                onChanged: (v) {
+                  setState(() {});
+                  _onAlbumTextChanged(v);
+                },
+                decoration: InputDecoration(
+                  labelText: context.tr('Álbum'),
+                  hintText: context.tr('Escribe un álbum para filtrar álbumes.'),
+                  prefixIcon: const Icon(Icons.album),
+                  suffixIcon: albumCtrl.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: context.tr('Limpiar'),
+                          icon: const Icon(Icons.close),
+                          onPressed: () => _clearAlbumFilter(setText: true),
+                        ),
+                ),
+              ),
+              if (_loadingAlbumGlobalSearch || _mbLoadingMore) ...[
+                const SizedBox(height: 6),
+                LinearProgressIndicator(),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _loadingAlbumGlobalSearch
+                        ? context.tr('Buscando en todas las páginas...')
+                        : context.tr('Cargando más álbumes...'),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ],
+              if (_albumFocus.hasFocus && albumCtrl.text.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Builder(
+                  builder: (_) {
+                    final maxItems = 12;
+                    final list = visibleAlbums.take(maxItems).toList();
+                    if (list.isEmpty) {
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Text(
+                            context.tr('Sin resultados'),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ),
+                      );
+                    }
+                    return ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 260),
+                      child: Material(
+                        elevation: 2,
+                        borderRadius: BorderRadius.circular(12),
+                        clipBehavior: Clip.antiAlias,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListView.separated(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: list.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final al = list[i];
+                              return ListTile(
+                                dense: true,
+                                leading: AppCoverImage(
+                                  pathOrUrl: al.cover250,
+                                  width: 40,
+                                  height: 40,
+                                  fit: BoxFit.cover,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                title: _highlightAlbumTitle(al.title, albumCtrl.text.trim()),
+                                subtitle: Text(((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? ''), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                onTap: () {
+                                  albumCtrl.text = al.title;
+                                  albumCtrl.selection = TextSelection.collapsed(offset: al.title.length);
+                                  FocusScope.of(context).unfocus();
+                                  setState(() => _albumPage = 1);
+                                  _openAlbum(context, artistName, al);
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+              if (albumFilterActive)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 2),
+                    child: Text(
+                      '${context.tr('Coinciden')}: ${visibleAlbums.length}',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
 
             // 🎵 Buscador de canción (aparece solo cuando ya hay artista elegido)
             if (pickedArtist != null && artistResults.isEmpty) ...[
@@ -1361,6 +1860,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                       ? (_songScanDone / _songScanTotal).clamp(0.0, 1.0)
                       : null,
                 ),
+                if (_songScanTotal == 0 && _songLoadingMorePages)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        context.tr('Buscando en más páginas de álbumes...'),
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                  ),
                 if (_songScanTotal > 0)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -1409,20 +1919,21 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                     ? Center(child: CircularProgressIndicator())
                     : (albums.isEmpty
                         ? Center(child: Text(context.tr('Busca un artista para ver su discografía.')))
-                        : (songFilterActive && !searchingSongs && visibleAlbums.isEmpty
-                            ? Center(child: Text(context.tr('No encontré esa canción en álbumes.')))
-                            : Column(
+                        : (songFilterActive && searchingSongs && visibleAlbums.isEmpty
+                            ? Center(child: Text(context.tr('Buscando esa canción en tus álbumes...')))
+                            : (songFilterActive && !searchingSongs && visibleAlbums.isEmpty
+                                ? Center(child: Text(context.tr('No encontré esa canción en álbumes.')))
+                                : Column(
                                 children: [
                                   Expanded(
                                     child: ListView.builder(
+                                      controller: _albumsScrollCtrl,
                                       itemCount: pageAlbums.length,
                                       itemBuilder: (_, i) {
                                         final al = pageAlbums[i];
                               final key = _k(artistName, al.title);
 
-                              if (artistName.isNotEmpty && !_exists.containsKey(key) && _busy[key] != true) {
-                                _hydrateIfNeeded(artistName, al);
-                              }
+                              // Hidratación en lote se dispara una vez por página visible.
 
                               final exists = _exists[key] == true;
                               final fav = _fav[key] == true;
@@ -1535,17 +2046,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                         ],
                                       ),
                                       onTap: () {
-                                        if (artistName.trim().isEmpty) return;
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => AlbumTracksScreen(
-                                              album: al,
-                                              artistName: artistName,
-                                              artistId: pickedArtist?.id,
-                                            ),
-                                          ),
-                                        );
+                                        _openAlbum(context, artistName, al);
                                       },
                                     ),
                                     Divider(height: 1),
@@ -1643,11 +2144,33 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                                       },
                                     ),
                                   ),
+                                  if (pickedArtist != null && artistResults.isEmpty && _mbHasMore && !albumFilterActive && !songFilterActive)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 6, bottom: 4),
+                                      child: Row(
+                                        children: [
+                                          TextButton.icon(
+                                            onPressed: _mbLoadingMore ? null : _loadMoreDiscographyPage,
+                                            icon: const Icon(Icons.download),
+                                            label: Text(
+                                              _mbLoadingMore
+                                                  ? context.tr('Cargando...')
+                                                  : '${context.tr('Cargar más')} (+$_mbLimit)',
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Text(
+                                            '${albums.length} ${context.tr('álbumes')}',
+                                            style: Theme.of(context).textTheme.labelSmall,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   AppPager(
                                     page: page,
                                     totalPages: totalPages,
-                                    onPrev: () => setState(() => _albumPage = (page - 1).clamp(1, totalPages)),
-                                    onNext: () => setState(() => _albumPage = (page + 1).clamp(1, totalPages)),
+                                    onPrev: () => _changeAlbumPage((page - 1).clamp(1, totalPages)),
+                                    onNext: () => _changeAlbumPage((page + 1).clamp(1, totalPages)),
                                   ),
                                 ],
                               ))),

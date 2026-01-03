@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/discography_service.dart';
 import '../services/price_range_service.dart';
 import '../services/store_price_service.dart';
 import '../services/country_service.dart';
+import '../services/cover_cache_service.dart';
 import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
 import '../utils/normalize.dart';
@@ -281,13 +284,58 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final country0 = (widget.vinyl['country'] as String?)?.trim() ?? '';
     final cond0 = (widget.vinyl['condition'] as String?)?.trim() ?? 'VG+';
     final fmt0 = (widget.vinyl['format'] as String?)?.trim() ?? 'LP';
+    final cover0 = (widget.vinyl['coverPath'] as String?)?.trim() ?? '';
+    final mbid0 = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
+    final numero0 = int.tryParse((widget.vinyl['numero'] ?? '').toString()) ?? 0;
 
     final artistaCtrl = TextEditingController(text: artista0);
     final albumCtrl = TextEditingController(text: album0);
     final yearCtrl = TextEditingController(text: year0);
     final countryCtrl = TextEditingController(text: country0);
+    final numeroCtrl = TextEditingController(text: (numero0 > 0) ? numero0.toString() : '');
     String condition = cond0.isEmpty ? 'VG+' : cond0;
     String format = fmt0.isEmpty ? 'LP' : fmt0;
+
+    // Carátula editable
+    String coverPath = cover0;
+    bool savingCover = false;
+
+    Future<void> pickAndSaveCover(StateSetter setD, ImageSource src) async {
+      try {
+        final picker = ImagePicker();
+        final x = await picker.pickImage(source: src, imageQuality: 92);
+        if (x == null) return;
+
+        final prev = coverPath;
+        try {
+          setD(() => savingCover = true);
+        } catch (_) {}
+
+        final savedPath = await CoverCacheService.saveCustomCover(
+          vinylId: id,
+          mbid: mbid0.isEmpty ? null : mbid0,
+          sourcePath: x.path,
+        );
+
+        if (savedPath == null || savedPath.trim().isEmpty) {
+          _snack(src == ImageSource.camera
+              ? 'No pude guardar la carátula desde la cámara.'
+              : 'No pude guardar la carátula desde la galería.');
+        } else {
+          coverPath = savedPath;
+          // Limpia el archivo anterior solo si era administrado por la app.
+          if (prev.trim().isNotEmpty && prev.trim() != coverPath.trim()) {
+            await CoverCacheService.deleteIfManaged(prev);
+          }
+        }
+      } catch (_) {
+        _snack(src == ImageSource.camera ? 'No pude abrir la cámara.' : 'No pude abrir la galería.');
+      } finally {
+        try {
+          setD(() => savingCover = false);
+        } catch (_) {}
+      }
+    }
 
     // Catálogo de países (para autocomplete). Si falla, igual permitimos texto libre.
     List<CountryOption> allCountries = const <CountryOption>[];
@@ -311,12 +359,66 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Carátula editable (solo aquí, como pediste)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        context.tr('Carátula'),
+                        style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppCoverImage(
+                          pathOrUrl: coverPath,
+                          width: 92,
+                          height: 92,
+                          borderRadius: BorderRadius.circular(12),
+                          cacheWidth: 240,
+                          cacheHeight: 240,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: savingCover ? null : () => pickAndSaveCover(setD, ImageSource.gallery),
+                                icon: const Icon(Icons.photo_library_outlined),
+                                label: Text(context.tr('Elegir de galería')),
+                              ),
+                              const SizedBox(height: 8),
+                              OutlinedButton.icon(
+                                onPressed: savingCover ? null : () => pickAndSaveCover(setD, ImageSource.camera),
+                                icon: const Icon(Icons.photo_camera_outlined),
+                                label: Text(context.tr('Tomar foto')),
+                              ),
+                              if (savingCover)
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 8),
+                                  child: LinearProgressIndicator(minHeight: 3),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: numeroCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(labelText: context.tr('Número de vinilo')),
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: artistaCtrl,
                       textInputAction: TextInputAction.next,
                       decoration: InputDecoration(labelText: context.tr('Artista')),
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: albumCtrl,
                       textInputAction: TextInputAction.next,
@@ -407,8 +509,14 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('Cancelar'))),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(context.tr('Guardar'))),
+                TextButton(
+                  onPressed: savingCover ? null : () => Navigator.pop(ctx, false),
+                  child: Text(context.tr('Cancelar')),
+                ),
+                FilledButton(
+                  onPressed: savingCover ? null : () => Navigator.pop(ctx, true),
+                  child: Text(context.tr('Guardar')),
+                ),
               ],
             );
           },
@@ -421,31 +529,55 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final newAlbum = albumCtrl.text.trim();
     final newYear = yearCtrl.text.trim();
     final newCountry = countryCtrl.text.trim();
+    final newNumeroText = numeroCtrl.text.trim();
     artistaCtrl.dispose();
     albumCtrl.dispose();
     yearCtrl.dispose();
     countryCtrl.dispose();
+    numeroCtrl.dispose();
 
     if (saved != true) return;
+
+    final newCover = coverPath.trim();
+    final coverChanged = newCover.toLowerCase() != cover0.trim().toLowerCase();
+
+    int? numeroToSave;
+    if (newNumeroText.isNotEmpty) {
+      final n = int.tryParse(newNumeroText);
+      if (n == null || n <= 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart('Número inválido'))));
+        return;
+      }
+      if (n != numero0) numeroToSave = n;
+    }
 
     try {
       await VinylDb.instance.updateVinylDetails(
         id: id,
+        numero: numeroToSave,
         artista: newArtist,
         album: newAlbum,
         year: newYear,
         country: newCountry,
         condition: condition,
         format: format,
+        coverPath: coverChanged ? newCover : null,
       );
 
       // Actualiza el mapa local para reflejar cambios sin recargar.
+      if (numeroToSave != null) {
+        widget.vinyl['numero'] = numeroToSave;
+      }
       widget.vinyl['artista'] = newArtist;
       widget.vinyl['album'] = newAlbum;
       widget.vinyl['year'] = newYear;
       widget.vinyl['country'] = newCountry;
       widget.vinyl['condition'] = condition;
       widget.vinyl['format'] = format;
+      if (coverChanged) {
+        widget.vinyl['coverPath'] = newCover;
+      }
       if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('Actualizado ✅'))));

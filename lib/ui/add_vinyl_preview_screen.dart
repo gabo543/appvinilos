@@ -37,6 +37,11 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
 
   bool _bioExpanded = false;
 
+  // Ediciones (releases) para elegir fallback de carátula / referencia.
+  bool _loadingEditions = false;
+  List<ReleaseEdition> _editions = const [];
+  ReleaseEdition? _selectedEdition;
+
   // ID de colección sugerido (artistNo.albumNo) según el artista.
   bool _loadingNextCode = false;
   String? _nextCollectionCode;
@@ -47,6 +52,181 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     _loadTracks();
     _loadPrice();
     _loadNextCollectionCode();
+    // Si venimos desde un flujo que ya trae releaseId (barcode),
+    // mostramos "Edición: seleccionada" y, si el usuario abre "Ver ediciones",
+    // intentaremos marcarla.
+  }
+
+  String _editionLabel() {
+    final e = _selectedEdition;
+    if (e != null) {
+      final bits = <String>[];
+      final y = (e.year ?? '').trim();
+      if (y.isNotEmpty) bits.add(y);
+      final c = (e.country ?? '').trim();
+      if (c.isNotEmpty) bits.add(c);
+      final s = (e.status ?? '').trim();
+      if (s.isNotEmpty) bits.add(s);
+      return bits.isEmpty ? context.tr('Edición seleccionada') : bits.join(' · ');
+    }
+
+    final rid = (widget.prepared.releaseId ?? '').trim();
+    if (rid.isNotEmpty) return context.tr('Edición: seleccionada (barcode)');
+    return context.tr('Edición: auto');
+  }
+
+  Future<void> _openEditionsPicker() async {
+    final rgid = (widget.prepared.releaseGroupId ?? '').trim();
+    if (rgid.isEmpty) {
+      _snack('No hay ediciones disponibles para este álbum.');
+      return;
+    }
+
+    if (_loadingEditions) return;
+
+    // Cargar ediciones si aún no las tenemos.
+    if (_editions.isEmpty) {
+      setState(() => _loadingEditions = true);
+      try {
+        final list = await DiscographyService.getEditionsFromReleaseGroup(rgid);
+        if (!mounted) return;
+        setState(() {
+          _editions = list;
+          _loadingEditions = false;
+          // Si veníamos con releaseId (barcode), intentamos marcarla.
+          final rid = (widget.prepared.releaseId ?? '').trim();
+          if (rid.isNotEmpty) {
+            final hits = list.where((x) => x.id == rid).toList();
+            _selectedEdition = hits.isEmpty ? null : hits.first;
+          }
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _loadingEditions = false);
+        _snack('Error cargando ediciones.');
+        return;
+      }
+    }
+
+    if (_editions.isEmpty) {
+      _snack('No encontré ediciones.');
+      return;
+    }
+
+    final chosen = await showModalBottomSheet<ReleaseEdition>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final year = (widget.prepared.year ?? '').trim();
+        final currentId = (_selectedEdition?.id ?? (widget.prepared.releaseId ?? '')).trim();
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  context.tr('Elige una edición'),
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  year.isEmpty
+                      ? context.tr('El año guardado será el de la primera edición (si existe).')
+                      : 'Año guardado: $year (1ra edición)',
+                  style: Theme.of(ctx).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 10),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _editions.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final e = _editions[i];
+                      final selected = e.id == currentId;
+
+                      final meta = <String>[];
+                      final y = (e.year ?? '').trim();
+                      if (y.isNotEmpty) meta.add(y);
+                      final c = (e.country ?? '').trim();
+                      if (c.isNotEmpty) meta.add(c);
+                      final s = (e.status ?? '').trim();
+                      if (s.isNotEmpty) meta.add(s);
+                      final b = (e.barcode ?? '').trim();
+                      if (b.isNotEmpty) meta.add('EAN $b');
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => Navigator.pop(ctx, e),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: selected ? cs.primaryContainer.withOpacity(0.55) : cs.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: selected ? cs.primary : cs.outlineVariant,
+                              width: selected ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                                  color: selected ? cs.primary : cs.onSurfaceVariant),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      e.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    if (meta.isNotEmpty)
+                                      Text(
+                                        meta.join(' · '),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(ctx).textTheme.bodySmall,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(context.tr('Cerrar')),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || chosen == null) return;
+
+    // Aplicamos: solo afecta fallback de carátula (release). El año guardado no cambia.
+    setState(() {
+      _selectedEdition = chosen;
+      widget.prepared.releaseId = chosen.id;
+      widget.prepared.coverFallback250 = 'https://coverartarchive.org/release/${chosen.id}/front-250';
+      widget.prepared.coverFallback500 = 'https://coverartarchive.org/release/${chosen.id}/front-500';
+    });
   }
 
   Future<void> _loadNextCollectionCode() async {
@@ -282,7 +462,20 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
     final local = (p.localCoverPath ?? '').trim();
     final hasLocal = local.isNotEmpty && File(local).existsSync();
 
-    final cover = hasLocal ? null : _bestCover(prefer500: true);
+    // Si el usuario eligió una edición (o venimos por barcode), intentamos
+    // mostrar primero la carátula del release (edición) y, si falla, caemos
+    // a la del release-group.
+    final releaseCover = hasLocal
+        ? null
+        : (((p.coverFallback500 ?? '').trim().isNotEmpty)
+            ? p.coverFallback500!.trim()
+            : (((p.coverFallback250 ?? '').trim().isNotEmpty) ? p.coverFallback250!.trim() : null));
+
+    final groupCover = hasLocal ? null : _bestCover(prefer500: true);
+
+    final preferRelease = (_selectedEdition != null) || (p.releaseId ?? '').trim().isNotEmpty;
+    final coverPrimary = preferRelease ? (releaseCover ?? groupCover) : (groupCover ?? releaseCover);
+    final coverSecondary = (coverPrimary == releaseCover) ? groupCover : releaseCover;
     final year = (p.year ?? '').trim();
     final genre = (p.genre ?? '').trim();
     final country = (p.country ?? '').trim();
@@ -335,13 +528,23 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                             children: [
                               if (hasLocal)
                                 Image.file(File(local), fit: BoxFit.cover)
-                              else if (cover == null)
+                              else if (coverPrimary == null)
                                 Icon(Icons.album, size: 46)
                               else
                                 Image.network(
-                                  cover,
+                                  coverPrimary!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Icon(Icons.album, size: 46),
+                                  errorBuilder: (_, __, ___) {
+                                    final sec = coverSecondary;
+                                    if (sec != null && sec != coverPrimary) {
+                                      return Image.network(
+                                        sec,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Icon(Icons.album, size: 46),
+                                      );
+                                    }
+                                    return Icon(Icons.album, size: 46);
+                                  },
                                 ),
                               if (hasLocal)
                                 Positioned(
@@ -389,7 +592,10 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                               children: [
                                 if (year.isNotEmpty)
                                   Chip(
-                                    label: Text(AppStrings.labeled(context, 'Año', year), style: TextStyle(fontWeight: FontWeight.w800)),
+                                    label: Text(
+                                      AppStrings.labeled(context, 'Año (1ra ed.)', year),
+                                      style: TextStyle(fontWeight: FontWeight.w800),
+                                    ),
                                     visualDensity: VisualDensity.compact,
                                   ),
                                 if (_loadingNextCode)
@@ -422,6 +628,27 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                                   ),
                               ],
                             ),
+                            if ((p.releaseGroupId ?? '').trim().isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Icon(Icons.layers_outlined, size: 18, color: cs.onSurfaceVariant),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _editionLabel(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: _openEditionsPicker,
+                                    child: Text(context.tr('Ver ediciones')),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),

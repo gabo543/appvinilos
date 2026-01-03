@@ -128,6 +128,17 @@ class _DiamondLogoPainter extends CustomPainter {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+
+  // 🧭 Scroll controllers para que la paginación vuelva arriba al cambiar de página.
+  final ScrollController _scrollAll = ScrollController();
+  final ScrollController _scrollFav = ScrollController();
+  final ScrollController _scrollTrash = ScrollController();
+
+  ScrollController _listScrollCtrl({required bool conBorrar, required bool onlyFavorites}) {
+    if (conBorrar) return _scrollTrash;
+    if (onlyFavorites) return _scrollFav;
+    return _scrollAll;
+  }
   // 🔒 Persistencia UI (última vista / orden) para que al reabrir quede igual.
   static const String _kPrefLastVista = 'ui.lastVista';
   static const String _kPrefSortMode = 'ui.sortMode';
@@ -845,6 +856,16 @@ Future<void> _loadViewMode() async {
         _pageVinilos = p;
       }
     });
+
+    // ✅ Al cambiar de página, vuelve al inicio de la lista/grid.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final c = _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites);
+      if (!c.hasClients) return;
+      try {
+        c.jumpTo(0);
+      } catch (_) {}
+    });
   }
 
   void _resetPagingAll() {
@@ -865,6 +886,9 @@ Future<void> _loadViewMode() async {
     _artistFocus.dispose();
     _localSearchCtrl.dispose();
     _localSearchFocus.dispose();
+    _scrollAll.dispose();
+    _scrollFav.dispose();
+    _scrollTrash.dispose();
     super.dispose();
   }
 
@@ -3069,6 +3093,7 @@ Widget listaCompleta({
 
       if (_viewMode == VinylViewMode.grid) {
         return wrapWithPager(GridView.builder(
+          controller: _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites),
           // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
           // Sin shrinkWrap/physics el Grid puede quedar sin altura
           // (o lanzar "unbounded height") y verse como "lista vacía".
@@ -3094,6 +3119,7 @@ Widget listaCompleta({
         final w = MediaQuery.of(context).size.width;
         final int cols = ((w / 140).floor()).clamp(2, 5).toInt();
         return wrapWithPager(GridView.builder(
+          controller: _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites),
           shrinkWrap: embedInScroll,
           physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(12),
@@ -3125,6 +3151,7 @@ Widget listaCompleta({
           rows.add(_AlphaRow.item(v));
         }
         return wrapWithPager(ListView.builder(
+          controller: _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites),
           shrinkWrap: embedInScroll,
           physics: embedInScroll ? NeverScrollableScrollPhysics() : AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -3140,6 +3167,7 @@ Widget listaCompleta({
       }
 
       return wrapWithPager(ListView.builder(
+        controller: _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites),
         // ⚠️ Esta pantalla vive dentro de un SingleChildScrollView.
         // Sin shrinkWrap/physics el ListView puede quedar sin altura
         // y verse como "lista vacía".

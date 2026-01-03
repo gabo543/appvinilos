@@ -89,6 +89,7 @@ class AppStrings {
   "Canción": "Song",
   "Canciones": "Tracks",
   "Escribe una canción para filtrar álbumes.": "Type a song to filter albums.",
+  "Escribe un álbum para filtrar álbumes.": "Type an album to filter albums.",
   "No encontré esa canción en álbumes.": "I couldn't find that song in albums.",
   "Coinciden": "Matches",
   "Cargar backup local": "Load local backup",
