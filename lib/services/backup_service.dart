@@ -28,6 +28,7 @@ class BackupPreview {
   final int wishlist;
   final int trash;
   final int likedTracks;
+  final int priceAlerts;
   final bool hasPrefs;
 
   const BackupPreview({
@@ -39,6 +40,7 @@ class BackupPreview {
     required this.wishlist,
     required this.trash,
     required this.likedTracks,
+    required this.priceAlerts,
     required this.hasPrefs,
   });
 
@@ -52,6 +54,7 @@ class BackupPreview {
     if (wishlist > 0) parts.add('Wishlist: $wishlist');
     if (trash > 0) parts.add('Papelera: $trash');
     if (likedTracks > 0) parts.add('Canciones: $likedTracks');
+    if (priceAlerts > 0) parts.add('Alertas: $priceAlerts');
     if (hasPrefs) parts.add('Incluye ajustes');
     return parts.join(' • ');
   }
@@ -68,6 +71,7 @@ class BackupPreview {
         wishlist: 0,
         trash: 0,
         likedTracks: 0,
+        priceAlerts: 0,
         hasPrefs: false,
       );
     }
@@ -102,6 +106,12 @@ class BackupPreview {
               ? ((m['payload'] as Map)['likedTracks'] as List).length
               : 0;
 
+      final priceAlerts = (m['priceAlerts'] is List)
+          ? (m['priceAlerts'] as List).length
+          : (m['payload'] is Map && (m['payload'] as Map)['priceAlerts'] is List)
+              ? ((m['payload'] as Map)['priceAlerts'] as List).length
+              : 0;
+
       final hasPrefs = (m['prefs'] is Map) || (m['payload'] is Map && (m['payload'] as Map)['prefs'] is Map);
 
       return BackupPreview(
@@ -113,6 +123,7 @@ class BackupPreview {
         wishlist: wishlist,
         trash: trash,
         likedTracks: likedTracks,
+        priceAlerts: priceAlerts,
         hasPrefs: hasPrefs,
       );
     }
@@ -126,6 +137,7 @@ class BackupPreview {
       wishlist: 0,
       trash: 0,
       likedTracks: 0,
+      priceAlerts: 0,
       hasPrefs: false,
     );
   }
@@ -152,6 +164,11 @@ class BackupImportResult {
   int skippedLikedTracks = 0;
   int invalidLikedTracks = 0;
 
+  int insertedPriceAlerts = 0;
+  int updatedPriceAlerts = 0;
+  int skippedPriceAlerts = 0;
+  int invalidPriceAlerts = 0;
+
   bool prefsApplied = false;
 
   String summary() {
@@ -173,6 +190,8 @@ class BackupImportResult {
         line('Papelera', insertedTrash, updatedTrash, skippedTrash, invalidTrash),
       if (insertedLikedTracks + updatedLikedTracks + skippedLikedTracks + invalidLikedTracks > 0)
         line('Canciones', insertedLikedTracks, updatedLikedTracks, skippedLikedTracks, invalidLikedTracks),
+      if (insertedPriceAlerts + updatedPriceAlerts + skippedPriceAlerts + invalidPriceAlerts > 0)
+        line('Alertas', insertedPriceAlerts, updatedPriceAlerts, skippedPriceAlerts, invalidPriceAlerts),
       if (prefsApplied) 'Ajustes: importados',
     ];
     return s.join(' • ');
@@ -191,7 +210,7 @@ class BackupService {
   static const int _kKeep = 10;
 
   // Formato del backup (independiente de la versión de la DB)
-  static const int _schemaVersion = 3; // ✅ v3: incluye liked_tracks
+  static const int _schemaVersion = 4; // ✅ v4: incluye liked_tracks + price_alerts
 
   static Future<bool> isAutoEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -375,7 +394,20 @@ class BackupService {
     final vinyls = await VinylDb.instance.getAll();
     final wishlist = await VinylDb.instance.getWishlist();
     final trash = await VinylDb.instance.getTrash();
-    final likedTracks = await db.query('liked_tracks');
+    List<Map<String, dynamic>> likedTracks = <Map<String, dynamic>>[];
+    try {
+      likedTracks = await db.query('liked_tracks');
+    } catch (_) {
+      // DB antigua o tabla no disponible (compat).
+      likedTracks = <Map<String, dynamic>>[];
+    }
+
+    List<Map<String, dynamic>> priceAlerts = const [];
+    try {
+      priceAlerts = await db.query('price_alerts');
+    } catch (_) {
+      // DB antigua o tabla no disponible (compat).
+    }
 
     // prefs relevantes
     final prefs = await SharedPreferences.getInstance();
@@ -419,12 +451,14 @@ class BackupService {
         'wishlist': wishlist.length,
         'trash': trash.length,
         'likedTracks': likedTracks.length,
+        'priceAlerts': priceAlerts.length,
       },
       'prefs': prefsOut..removeWhere((k, v) => v == null),
       'vinyls': normVinyls,
       'wishlist': wishlist,
       'trash': trash,
       'likedTracks': likedTracks,
+      'priceAlerts': priceAlerts,
     };
   }
 
@@ -668,6 +702,55 @@ class BackupService {
     return out;
   }
 
+
+  static double? _asDouble(dynamic v, {double? fallback}) {
+    if (v == null) return fallback;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    final s = v.toString().trim().replaceAll(',', '.');
+    return double.tryParse(s) ?? fallback;
+  }
+
+  static Map<String, dynamic>? _normPriceAlert(dynamic raw) {
+    final m = _asMap(raw);
+    if (m == null) return null;
+
+    var kind = _trim(m['kind']).toLowerCase();
+    if (kind == 'wishlist') kind = 'wish';
+    if (kind != 'vinyl' && kind != 'wish') return null;
+
+    final artista = _trim(m['artista']);
+    final album = _trim(m['album']);
+    if (artista.isEmpty || album.isEmpty) return null;
+
+    final target = _asDouble(m['target'], fallback: null);
+    if (target == null) return null;
+
+    final currency = _trim(m['currency']);
+    final isActive = _asInt(m['isActive'], fallback: 1) ?? 1;
+
+    final createdAt = _asInt(m['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch) ?? DateTime.now().millisecondsSinceEpoch;
+
+    final out = <String, dynamic>{
+      'kind': kind,
+      // itemId NO es estable entre dispositivos; se recalcula al importar.
+      'artista': artista,
+      'album': album,
+      'mbid': _trim(m['mbid']),
+      'target': target,
+      'currency': currency.isEmpty ? 'EUR' : currency,
+      'isActive': (isActive == 1) ? 1 : 0,
+      'createdAt': createdAt,
+      'lastCheckedAt': _asInt(m['lastCheckedAt'], fallback: null),
+      'lastHitAt': _asInt(m['lastHitAt'], fallback: null),
+      'lastMin': _asDouble(m['lastMin'], fallback: null),
+      'lastMax': _asDouble(m['lastMax'], fallback: null),
+    };
+
+    out.removeWhere((k, v) => v == null || (v is String && v.trim().isEmpty));
+    return out;
+  }
+
   static Future<void> _applyPrefs(Map<String, dynamic> prefsIn) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -733,6 +816,7 @@ class BackupService {
     List wishRaw = [];
     List trashRaw = [];
     List likedRaw = [];
+    List priceRaw = [];
     Map<String, dynamic> prefsIn = {};
 
     if (decoded is List) {
@@ -744,6 +828,7 @@ class BackupService {
         wishRaw = _asList(payload['wishlist']);
         trashRaw = _asList(payload['trash']);
         likedRaw = _asList(payload['likedTracks']);
+        priceRaw = _asList(payload['priceAlerts']);
         final pmap = _asMap(payload['prefs']);
         if (pmap != null) prefsIn = pmap;
       } else {
@@ -751,6 +836,7 @@ class BackupService {
         wishRaw = _asList(m['wishlist']);
         trashRaw = _asList(m['trash']);
         likedRaw = _asList(m['likedTracks']);
+        priceRaw = _asList(m['priceAlerts']);
         final pmap = _asMap(m['prefs']);
         if (pmap != null) prefsIn = pmap;
       }
@@ -761,14 +847,15 @@ class BackupService {
       }
     }
 
-    if (vinylsRaw.isEmpty && wishRaw.isEmpty && trashRaw.isEmpty && likedRaw.isEmpty) {
-      throw Exception('El archivo no tiene datos que importar (vinyls/wishlist/trash/canciones).');
+    if (vinylsRaw.isEmpty && wishRaw.isEmpty && trashRaw.isEmpty && likedRaw.isEmpty && priceRaw.isEmpty) {
+      throw Exception('El archivo no tiene datos que importar (vinyls/wishlist/trash/canciones/alertas).');
     }
 
     final vinyls = <Map<String, dynamic>>[];
     final wishlist = <Map<String, dynamic>>[];
     final trash = <Map<String, dynamic>>[];
     final likedTracks = <Map<String, dynamic>>[];
+    final priceAlerts = <Map<String, dynamic>>[];
 
     final result = BackupImportResult();
 
@@ -776,9 +863,16 @@ class BackupService {
     final seenWish = <String>{};
     final seenTrash = <String>{};
     final seenLiked = <String>{};
+    final seenPrice = <String>{};
 
     String _k(String artista, String album) => '${artista.trim().toLowerCase()}|${album.trim().toLowerCase()}';
     String _lk(String rg, String tk) => '${rg.trim().toLowerCase()}|${tk.trim().toLowerCase()}';
+    String _pk(String kind, String artista, String album, String mbid) {
+      final k = kind.trim().toLowerCase();
+      final id = mbid.trim().toLowerCase();
+      if (id.isNotEmpty) return '$k|$id';
+      return '$k|${artista.trim().toLowerCase()}|${album.trim().toLowerCase()}';
+    }
 
     for (final it in vinylsRaw) {
       final v = _normVinyl(it);
@@ -839,16 +933,172 @@ class BackupService {
         }
       }
     }
+    for (final it in priceRaw) {
+      final pa = _normPriceAlert(it);
+      if (pa == null) {
+        result.invalidPriceAlerts++;
+      } else {
+        final k = _pk(pa['kind'].toString(), pa['artista'].toString(), pa['album'].toString(), (pa['mbid'] ?? '').toString());
+        if (seenPrice.contains(k)) {
+          result.invalidPriceAlerts++;
+        } else {
+          seenPrice.add(k);
+          priceAlerts.add(pa);
+        }
+      }
+    }
+
 
     final db = await VinylDb.instance.db;
 
     await db.transaction((txn) async {
+      // -------- Helpers (Price Alerts) --------
+      Future<int?> _findVinylId(String mbid, String artista, String album) async {
+        final id = mbid.trim();
+        if (id.isNotEmpty) {
+          final rows = await txn.query(
+            'vinyls',
+            columns: ['id'],
+            where: 'TRIM(mbid) = TRIM(?)',
+            whereArgs: [id],
+            limit: 1,
+          );
+          if (rows.isNotEmpty) return _asInt(rows.first['id'], fallback: null);
+        }
+
+        final rows = await txn.query(
+          'vinyls',
+          columns: ['id'],
+          where: 'artista = ? COLLATE NOCASE AND album = ? COLLATE NOCASE',
+          whereArgs: [artista.trim(), album.trim()],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) return _asInt(rows.first['id'], fallback: null);
+        return null;
+      }
+
+      Future<int?> _findWishId(String artista, String album) async {
+        final rows = await txn.query(
+          'wishlist',
+          columns: ['id'],
+          where: 'artista = ? COLLATE NOCASE AND album = ? COLLATE NOCASE',
+          whereArgs: [artista.trim(), album.trim()],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) return _asInt(rows.first['id'], fallback: null);
+        return null;
+      }
+
+      Future<void> _upsertPriceAlert(Map<String, dynamic> pa, BackupImportMode mode) async {
+        final kind = (pa['kind'] ?? '').toString().trim();
+        final artista = _trim(pa['artista']);
+        final album = _trim(pa['album']);
+        final mbid = _trim(pa['mbid']);
+
+        int? itemId;
+        if (kind == 'vinyl') {
+          itemId = await _findVinylId(mbid, artista, album);
+        } else if (kind == 'wish') {
+          itemId = await _findWishId(artista, album);
+        } else {
+          result.invalidPriceAlerts++;
+          return;
+        }
+
+        if (itemId == null || itemId <= 0) {
+          // No hay item asociado en esta DB (por ej. alerta de wish pero no existe wish).
+          result.skippedPriceAlerts++;
+          return;
+        }
+
+        List<Map<String, Object?>> existingRows = const [];
+        try {
+          existingRows = await txn.query(
+            'price_alerts',
+            columns: [
+              'id',
+              'createdAt',
+              'lastCheckedAt',
+              'lastHitAt',
+              'lastMin',
+              'lastMax',
+            ],
+            where: 'kind = ? AND itemId = ?',
+            whereArgs: [kind, itemId],
+            limit: 1,
+          );
+        } catch (_) {
+          // tabla no existe / DB antigua (compat)
+          result.invalidPriceAlerts++;
+          return;
+        }
+
+        final payload = <String, dynamic>{
+          'kind': kind,
+          'itemId': itemId,
+          'artista': artista,
+          'album': album,
+          'mbid': mbid.isEmpty ? null : mbid,
+          'target': pa['target'],
+          'currency': (pa['currency'] ?? 'EUR').toString().trim().isEmpty ? 'EUR' : (pa['currency'] ?? 'EUR').toString().trim(),
+          'isActive': (_asInt(pa['isActive'], fallback: 1) ?? 1) == 1 ? 1 : 0,
+          'createdAt': _asInt(pa['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch) ?? DateTime.now().millisecondsSinceEpoch,
+          'lastCheckedAt': _asInt(pa['lastCheckedAt'], fallback: null),
+          'lastHitAt': _asInt(pa['lastHitAt'], fallback: null),
+          'lastMin': pa['lastMin'],
+          'lastMax': pa['lastMax'],
+        }..removeWhere((k, v) => v == null || (v is String && v.trim().isEmpty));
+
+        if (existingRows.isNotEmpty) {
+          if (mode == BackupImportMode.onlyMissing) {
+            result.skippedPriceAlerts++;
+            return;
+          }
+
+          final ex = existingRows.first;
+
+          int minInt(int a, int b) => (a < b) ? a : b;
+          int maxInt(int a, int b) => (a > b) ? a : b;
+
+          final exCreated = _asInt(ex['createdAt'], fallback: payload['createdAt'] as int) ?? (payload['createdAt'] as int);
+          final inCreated = _asInt(payload['createdAt'], fallback: exCreated) ?? exCreated;
+          payload['createdAt'] = minInt(exCreated, inCreated);
+
+          final exChecked = _asInt(ex['lastCheckedAt'], fallback: null);
+          final inChecked = _asInt(payload['lastCheckedAt'], fallback: null);
+          if (exChecked != null && inChecked != null) payload['lastCheckedAt'] = maxInt(exChecked, inChecked);
+
+          final exHit = _asInt(ex['lastHitAt'], fallback: null);
+          final inHit = _asInt(payload['lastHitAt'], fallback: null);
+          if (exHit != null && inHit != null) payload['lastHitAt'] = maxInt(exHit, inHit);
+
+          if (payload['lastMin'] == null && ex['lastMin'] != null) payload['lastMin'] = ex['lastMin'];
+          if (payload['lastMax'] == null && ex['lastMax'] != null) payload['lastMax'] = ex['lastMax'];
+
+          await txn.update(
+            'price_alerts',
+            payload,
+            where: 'id = ?',
+            whereArgs: [ex['id']],
+          );
+          result.updatedPriceAlerts++;
+        } else {
+          await txn.insert(
+            'price_alerts',
+            payload,
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+          result.insertedPriceAlerts++;
+        }
+      }
+
       // Replace: borra todo y carga
       if (mode == BackupImportMode.replace) {
         await txn.delete('vinyls');
         await txn.delete('wishlist');
         await txn.delete('trash');
         try { await txn.delete('liked_tracks'); } catch (_) {}
+        try { await txn.delete('price_alerts'); } catch (_) {}
         try { await txn.delete('artist_orders'); } catch (_) {}
 
         // numeración estable
@@ -982,6 +1232,11 @@ class BackupService {
             conflictAlgorithm: ConflictAlgorithm.abort,
           );
           result.insertedLikedTracks++;
+        }
+
+        // PRICE ALERTS (re-link por mbid o artista+album)
+        for (final pa in priceAlerts) {
+          await _upsertPriceAlert(pa, mode);
         }
 
         return;
@@ -1342,6 +1597,10 @@ class BackupService {
           );
           result.insertedLikedTracks++;
         }
+      }
+      // PRICE ALERTS (re-link por mbid o artista+album)
+      for (final pa in priceAlerts) {
+        await _upsertPriceAlert(pa, mode);
       }
     });
 

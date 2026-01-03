@@ -5,56 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/normalize.dart';
 
-// -----------------------------------------------------------------------------
-// Compat layer (build-fix):
-// En algunos merges, partes del filtro de canciones quedaron como helpers fuera de
-// DiscographyService. Estos símbolos a nivel de librería garantizan que compile
-// en release, sin afectar el comportamiento cuando se usan los miembros estáticos
-// dentro de DiscographyService.
-// -----------------------------------------------------------------------------
-const String _mbBase = 'https://musicbrainz.org/ws/2';
-
-DateTime _mbLastCall = DateTime.fromMillisecondsSinceEpoch(0);
-
-final Map<String, _CacheEntry<bool>> _rgHasArtistCache = {};
-
-Map<String, String> _headers() => const {
-      'User-Agent': 'GaBoLP/1.0 (contact: gabo.hachim@gmail.com)',
-      'Accept': 'application/json',
-    };
-
-Future<void> _throttle() async {
-  final now = DateTime.now();
-  final diff = now.difference(_mbLastCall);
-  if (diff.inMilliseconds < 1100) {
-    await Future.delayed(Duration(milliseconds: 1100 - diff.inMilliseconds));
-  }
-  _mbLastCall = DateTime.now();
-}
-
-bool _isRetryableStatus(int statusCode) =>
-    statusCode == 429 || (statusCode >= 500 && statusCode <= 599);
-
-Future<http.Response> _get(Uri url, {int retries = 2}) async {
-  http.Response? last;
-  for (var attempt = 0; attempt <= retries; attempt++) {
-    await _throttle();
-    try {
-      final res = await http
-          .get(url, headers: _headers())
-          .timeout(const Duration(seconds: 15));
-      last = res;
-      if (res.statusCode == 200) return res;
-      if (!_isRetryableStatus(res.statusCode)) return res;
-    } catch (_) {
-      // retry
-    }
-  }
-  return last ??
-      http.Response('{"error":"network"}', 599, request: http.Request('GET', url));
-}
-
-
 class ArtistHit {
   final String id;
   final String name;
@@ -1682,76 +1632,19 @@ class DiscographyService {
       return <String>[];
     }
 
-    // Año objetivo: first-release-date del release-group (si viene).
-    final frd = (data is Map ? (data['first-release-date'] ?? '') : '').toString().trim();
-    final targetYear = (frd.length >= 4) ? (int.tryParse(frd.substring(0, 4)) ?? 0) : 0;
-
+    // Orden: Official primero, luego por fecha más antigua.
     int yearOf(dynamic v) {
       final s = (v ?? '').toString().trim();
-      if (s.length >= 4) return int.tryParse(s.substring(0, 4)) ?? 0;
-      return 0;
-    }
-
-    String dateStr(dynamic v) {
-      return (v ?? '').toString().trim();
+      if (s.length >= 4) return int.tryParse(s.substring(0, 4)) ?? 9999;
+      return 9999;
     }
 
     int statusRank(dynamic v) {
       final s = (v ?? '').toString().trim().toLowerCase();
       if (s.isEmpty || s == 'official') return 0;
+      // Bootleg/Other -> atrás
       if (s == 'bootleg') return 3;
       return 1;
-    }
-
-    int bonusPenalty(Map<String, dynamic> r) {
-      // Heurística para evitar deluxe/expanded/remaster/bonus como "primera edición".
-      final t = ((r['title'] ?? '').toString() + ' ' + (r['disambiguation'] ?? '').toString()).toLowerCase();
-      const bad = [
-        'deluxe',
-        'expanded',
-        'remaster',
-        'remastered',
-        'bonus',
-        'anniversary',
-        'special edition',
-        'édition',
-        'edition',
-      ];
-      for (final k in bad) {
-        if (t.contains(k)) return 1;
-      }
-      return 0;
-    }
-
-    int yearGroupRank(Map<String, dynamic> r) {
-      // Preferimos releases cuya fecha se acerque a la "primera edición" real.
-      // Si el release-group trae first-release-date completo (YYYY-MM-DD), le damos
-      // prioridad absoluta a la coincidencia exacta.
-      final d = dateStr(r['date']);
-      final hasDate = d.isNotEmpty;
-
-      // targetDate puede venir vacío o solo con año. Si viene completo, úsalo.
-      final targetDate = frd; // usa first-release-date del release-group (string)
-      final hasTargetDate = targetDate.length >= 10; // YYYY-MM-DD
-      final y = yearOf(d);
-
-      if (hasTargetDate) {
-        if (hasDate && d == targetDate) return 0;           // exact match
-        if (hasDate && targetYear > 0 && y == targetYear) return 1; // mismo año, distinta fecha
-        if (!hasDate) return 2;                              // sin fecha
-        return 3;                                            // otro año
-      }
-
-      // Si solo hay año objetivo:
-      if (targetYear > 0) {
-        if (hasDate && y == targetYear) return 0;
-        if (!hasDate) return 1;
-        return 2;
-      }
-
-      // Sin target: preferimos que tenga fecha (pero permitimos sin fecha).
-      if (!hasDate) return 1;
-      return 0;
     }
 
     final rels = <Map<String, dynamic>>[];
@@ -1769,53 +1662,31 @@ class DiscographyService {
     rels.sort((a, b) {
       final sr = statusRank(a['status']).compareTo(statusRank(b['status']));
       if (sr != 0) return sr;
-      final yr = yearGroupRank(a).compareTo(yearGroupRank(b));
-      if (yr != 0) return yr;
-      final bp = bonusPenalty(a).compareTo(bonusPenalty(b));
-      if (bp != 0) return bp;
-      // Dentro del grupo, por fecha (asc). Si no hay fecha, va después.
-      final da = dateStr(a['date']);
-      final db = dateStr(b['date']);
-      if (da.isEmpty && db.isNotEmpty) return 1;
-      if (db.isEmpty && da.isNotEmpty) return -1;
-      final dc = da.compareTo(db);
-      if (dc != 0) return dc;
+      final ya = yearOf(a['date']);
+      final yb = yearOf(b['date']);
+      final yc = ya.compareTo(yb);
+      if (yc != 0) return yc;
+      // desempate: título
       return ((a['title'] ?? '').toString()).toLowerCase().compareTo(((b['title'] ?? '').toString()).toLowerCase());
     });
 
-    // En vez de devolver el primer release con tracks, evaluamos varios y elegimos
-    // la mejor "primera edición" según heurísticas (incluye preferir menor #tracks).
-    List<String> bestTitles = <String>[];
-    int bestScoreSr = 999;
-    int bestScoreYr = 999;
-    int bestScoreBp = 999;
-    int bestVinylRank = 1; // 0=vinyl, 1=otros
-    int bestTrackCount = 99999;
-    String bestDate = '9999-99-99';
-
     int tried = 0;
     for (final r in rels) {
-      if (tried >= maxReleaseLookups) break;
       final rid = (r['id'] ?? '').toString().trim();
       if (rid.isEmpty) continue;
-
       final urlRel = Uri.parse('$_mbBase/release/$rid?inc=recordings&fmt=json');
       final resRel = await _get(urlRel);
       tried++;
-      if (resRel.statusCode != 200) continue;
+      if (resRel.statusCode != 200) {
+        if (tried >= maxReleaseLookups) break;
+        continue;
+      }
 
       final relData = jsonDecode(resRel.body);
       final media = (relData is Map ? (relData['media'] as List?) : null) ?? const <dynamic>[];
-      if (media.isEmpty) continue;
-
-      bool isVinyl = false;
-      for (final m in media) {
-        if (m is! Map) continue;
-        final fmt = (m['format'] ?? '').toString().toLowerCase();
-        if (fmt.contains('vinyl')) {
-          isVinyl = true;
-          break;
-        }
+      if (media.isEmpty) {
+        if (tried >= maxReleaseLookups) break;
+        continue;
       }
 
       final titles = <String>[];
@@ -1827,47 +1698,17 @@ class DiscographyService {
           if (title.isNotEmpty) titles.add(title);
         }
       }
-      if (titles.isEmpty) continue;
 
-      final sr = statusRank(r['status']);
-      final yr = yearGroupRank(r);
-      final bp = bonusPenalty(r);
-      final vr = isVinyl ? 0 : 1;
-      final d = dateStr(r['date']);
-      final tc = titles.length;
-
-      bool better = false;
-      if (sr != bestScoreSr) {
-        better = sr < bestScoreSr;
-      } else if (yr != bestScoreYr) {
-        better = yr < bestScoreYr;
-      } else if (bp != bestScoreBp) {
-        better = bp < bestScoreBp;
-      } else if (tc != bestTrackCount) {
-        // Preferimos menos tracks para evitar bonus tracks (más importante que el formato).
-        better = tc < bestTrackCount;
-      } else if (vr != bestVinylRank) {
-        // Entre tracklists equivalentes, preferimos vinilo como referencia.
-        better = vr < bestVinylRank;
-      } else {
-        // fecha más antigua (si existe)
-        final dd = d.isEmpty ? '9999-99-99' : d;
-        better = dd.compareTo(bestDate) < 0;
+      if (titles.isNotEmpty) {
+        _firstEditionTracksCache[id] = _CacheEntry(titles, DateTime.now());
+        return titles;
       }
 
-      if (bestTitles.isEmpty || better) {
-        bestTitles = titles;
-        bestScoreSr = sr;
-        bestScoreYr = yr;
-        bestScoreBp = bp;
-        bestVinylRank = vr;
-        bestTrackCount = tc;
-        bestDate = d.isEmpty ? '9999-99-99' : d;
-      }
+      if (tried >= maxReleaseLookups) break;
     }
 
-    _firstEditionTracksCache[id] = _CacheEntry(bestTitles, DateTime.now());
-    return bestTitles;
+    _firstEditionTracksCache[id] = _CacheEntry(<String>[], DateTime.now());
+    return <String>[];
   }
 
   static bool _titleMatchesSong({
@@ -1935,25 +1776,7 @@ class DiscographyService {
   ///
   /// Se usa para el autocompletado de canciones: el usuario escribe "forget" y
   /// el dropdown muestra el título completo + los álbumes donde realmente aparece.
-  
-  /// Devuelve álbumes (release-groups) donde aparece un recording,
-  /// validando que la canción esté en el tracklist de la **primera edición**.
-  ///
-  /// API pública usada por la UI.
   static Future<List<AlbumItem>> albumsForRecordingFirstEditionVerified({
-    required String artistId,
-    required String recordingId,
-    required String songTitle,
-    int maxAlbums = 8,
-  }) =>
-      _albumsForRecordingFirstEditionVerifiedImpl(
-        artistId: artistId,
-        recordingId: recordingId,
-        songTitle: songTitle,
-        maxAlbums: maxAlbums,
-      );
-
-static Future<List<AlbumItem>> _albumsForRecordingFirstEditionVerifiedImpl({
     required String artistId,
     required String recordingId,
     required String songTitle,
@@ -2027,10 +1850,18 @@ static Future<List<AlbumItem>> _albumsForRecordingFirstEditionVerifiedImpl({
       final belongs = await _releaseGroupBelongsToArtist(releaseGroupId: rgid, artistId: arid);
       if (!belongs) continue;
 
-      // 2) Tracklist de primera edición
-      final titles = await DiscographyService.getTrackTitlesFromReleaseGroupFirstEdition(rgid);
-      if (titles.isEmpty) continue;
-      final ok = titles.any((t) => _titleMatchesSong(trackTitle: t, songTitle: songTitle));
+      // 2) Tracklist: preferimos 1ª edición (evita falsos positivos por deluxe),
+      // pero MusicBrainz a veces trae releases antiguos sin recordings/tracklist.
+      // En esos casos (o si no matchea por variantes), usamos fallback robusto.
+      final titlesFirst = await getTrackTitlesFromReleaseGroupFirstEdition(rgid);
+      var ok = titlesFirst.any((t) => _titleMatchesSong(trackTitle: t, songTitle: songTitle));
+
+      // Fallback: si la 1ª edición viene vacía o no encuentra match, intentamos
+      // con más de un release dentro del mismo release-group.
+      if (!ok) {
+        final titlesRobust = await getTrackTitlesFromReleaseGroupRobust(rgid);
+        ok = titlesRobust.any((t) => _titleMatchesSong(trackTitle: t, songTitle: songTitle));
+      }
       if (!ok) continue;
 
       out.add(candidates[rgid]!);

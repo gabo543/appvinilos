@@ -6,6 +6,7 @@ import '../services/price_range_service.dart';
 import '../services/store_price_service.dart';
 import '../services/country_service.dart';
 import '../services/cover_cache_service.dart';
+import '../services/backup_service.dart';
 import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
 import '../utils/normalize.dart';
@@ -231,6 +232,10 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       if (!mounted) return;
       setState(() => _likedKeys = {..._likedKeys}..remove(key));
       _snack('Quitada de canciones');
+      // Si el auto-backup está activo, respalda cambios en canciones.
+      try {
+        await BackupService.autoSaveIfEnabled();
+      } catch (_) {}
       return;
     }
 
@@ -248,6 +253,11 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     if (!mounted) return;
     setState(() => _likedKeys = {..._likedKeys}..add(key));
     _snack('Canción guardada ❤️');
+
+    // Si el auto-backup está activo, respalda cambios en canciones.
+    try {
+      await BackupService.autoSaveIfEnabled();
+    } catch (_) {}
   }
 
   Future<void> _openStorePrices() async {

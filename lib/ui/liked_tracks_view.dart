@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../db/vinyl_db.dart';
 import '../services/discography_service.dart';
+import '../services/backup_service.dart';
 import 'album_tracks_screen.dart';
 import 'vinyl_detail_sheet.dart';
 
@@ -233,6 +234,10 @@ class _LikedTracksViewState extends State<LikedTracksView> {
                               );
                               if (ok != true) return;
                               await VinylDb.instance.removeLikedTrackById(id);
+                              // Si el auto-backup está activo, respalda también cambios en canciones.
+                              try {
+                                await BackupService.autoSaveIfEnabled();
+                              } catch (_) {}
                               await _reload();
                             },
                     ),

@@ -29,6 +29,9 @@ class DiscographyScreen extends StatefulWidget {
 
 class _DiscographyScreenState extends State<DiscographyScreen> {
 
+  // 👁️ UI: mostrar/ocultar buscadores de Álbum y Canción (manual)
+  bool _showAlbumAndSongFilters = true;
+
   // =============================================
   // ⚡ Performance: paginación REAL en MusicBrainz
   // =============================================
@@ -61,11 +64,6 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   // 🧭 Scroll: al cambiar de página, volver al inicio de la lista.
   final ScrollController _albumsScrollCtrl = ScrollController();
 
-  // 🎵 Conteo de canciones por álbum (lazy) para mostrar "X canciones" en la lista
-  // sin recargar toda la UI. Se calcula por release-group y se cachea en memoria.
-  final Map<String, int> _trackCountByRg = <String, int>{};
-  final Set<String> _trackCountLoading = <String>{};
-
   void _scrollAlbumsToTop() {
     // Post-frame por si el ListView aún no está montado justo después del setState.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,6 +94,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  void _toggleAlbumAndSongFilters() {
+    final next = !_showAlbumAndSongFilters;
+
+    // Si se van a ocultar y el teclado está abierto, lo cerramos para evitar foco en inputs ocultos.
+    if (!next) _dismissKeyboard();
+
+    if (mounted) {
+      setState(() => _showAlbumAndSongFilters = next);
+    }
   }
 
   final TextEditingController artistCtrl = TextEditingController();
@@ -134,6 +143,20 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   // Cuando el filtro por canción necesita buscar en páginas no cargadas aún.
   bool _songLoadingMorePages = false;
+
+  /// Plan C: cuando la búsqueda "pro" (A+B) no devuelve álbumes, intentamos
+  /// encontrar coincidencias escaneando tracklists de los álbumes ya cargados
+  /// en pantalla. Devuelve los álbumes cargados que corresponden a los
+  /// release-groups que matchean.
+  List<AlbumItem> _loadedAlbumsForReleaseGroups(Set<String> rgids) {
+    if (rgids.isEmpty) return <AlbumItem>[];
+    final out = <AlbumItem>[];
+    for (final al in albums) {
+      final id = al.releaseGroupId.trim();
+      if (id.isNotEmpty && rgids.contains(id)) out.add(al);
+    }
+    return out;
+  }
 
   void _clearArtistSearch({bool keepFocus = true}) {
     _debounce?.cancel();
@@ -236,9 +259,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         continue;
       }
 
-      // Tracklist cache (primera edición) para evitar falsos positivos por deluxe/bonus.
+      // Tracklist cache
       var titles = _trackTitlesCache[rgid];
-      titles ??= await DiscographyService.getTrackTitlesFromReleaseGroupFirstEdition(rgid);
+      titles ??= await DiscographyService.getTrackTitlesFromReleaseGroupRobust(rgid);
       _trackTitlesCache[rgid] = titles;
 
       bool ok = false;
@@ -716,12 +739,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       );
       if (!mounted || mySeq != _songReqSeq) return;
       if (hits.isEmpty) {
+        // Plan C: si no hay sugerencias desde MusicBrainz, igual intentamos
+        // escanear los álbumes ya cargados en pantalla.
+        final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
+        if (!mounted || mySeq != _songReqSeq) return;
+        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
+
         setState(() {
           searchingSongs = false;
           _selectedSongRecordingId = 'text';
           _selectedSongTitleNorm = qNorm;
-          _songAlbumResults = <AlbumItem>[];
-          _songMatchReleaseGroups = <String>{};
+          _songAlbumResults = scannedItems;
+          _songMatchReleaseGroups = scanned;
         });
         return;
       }
@@ -747,7 +776,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
 
       if (!mounted || mySeq != _songReqSeq) return;
-      final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
+      // Plan C: si A+B no devolvieron nada, escanear tracklists de lo ya cargado.
+      Set<String> ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
+      if (ids.isEmpty) {
+        final scanned = await _scanLoadedAlbumsForSong(_normQ(best.title), mySeq);
+        if (!mounted || mySeq != _songReqSeq) return;
+        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
+        if (scannedItems.isNotEmpty) items = scannedItems;
+        ids = scanned;
+      }
 
       setState(() {
         searchingSongs = false;
@@ -970,7 +1007,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
       if (!mounted || mySeq != _songReqSeq) return;
 
-      final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
+      // Plan C: si A+B no devolvieron nada, escanear tracklists de lo ya cargado.
+      Set<String> ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
+      if (ids.isEmpty) {
+        final scanned = await _scanLoadedAlbumsForSong(norm, mySeq);
+        if (!mounted || mySeq != _songReqSeq) return;
+        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
+        if (scannedItems.isNotEmpty) items = scannedItems;
+        ids = scanned;
+      }
       setState(() {
         searchingSongs = false;
         _songAlbumResults = items;
@@ -1098,107 +1143,6 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
           artistId: pickedArtist?.id,
         ),
       ),
-    );
-  }
-
-  void _ensureTrackCountFor(AlbumItem al) {
-    final rgid = al.releaseGroupId.trim();
-    if (rgid.isEmpty) return;
-    if (_trackCountByRg.containsKey(rgid)) return;
-    if (_trackCountLoading.contains(rgid)) return;
-
-    // Límite simple de concurrencia: máximo 2 fetches al mismo tiempo.
-    if (_trackCountLoading.length >= 2) return;
-
-    _trackCountLoading.add(rgid);
-    DiscographyService.getTracksFromReleaseGroup(rgid).then((tracks) {
-      if (!mounted) return;
-      setState(() {
-        _trackCountByRg[rgid] = tracks.length;
-        _trackCountLoading.remove(rgid);
-      });
-    }).catchError((_) {
-      if (!mounted) return;
-      setState(() {
-        _trackCountByRg[rgid] = 0;
-        _trackCountLoading.remove(rgid);
-      });
-    });
-  }
-
-  void _showAlbumActionsSheet(String artistName, AlbumItem al) {
-    _dismissKeyboard();
-    final key = _k(artistName, al.title);
-    final exists = _exists[key] == true;
-    final fav = _fav[key] == true;
-    final inWish = _wish[key] == true;
-    final busy = _busy[key] == true;
-
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (_) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.open_in_new),
-                title: Text(context.tr('Abrir')),
-                onTap: () {
-                  Navigator.pop(context);
-                  _openAlbum(context, artistName, al);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.format_list_bulleted),
-                title: Text(context.tr('Agregar a tu lista')),
-                enabled: !exists && !busy,
-                onTap: () async {
-                  Navigator.pop(context);
-                  final opts = await _askConditionAndFormat(artistName: artistName);
-                  if (!mounted || opts == null) return;
-                  await _addAlbumOptimistic(
-                    artistName: artistName,
-                    album: al,
-                    condition: opts['condition'] ?? 'VG+',
-                    format: opts['format'] ?? 'LP',
-                  );
-                },
-              ),
-              ListTile(
-                leading: Icon(fav ? Icons.star : Icons.star_border),
-                title: Text(fav ? context.tr('Quitar favorito') : context.tr('Marcar favorito')),
-                enabled: exists && !busy,
-                onTap: () {
-                  Navigator.pop(context);
-                  _toggleFavorite(artistName, al);
-                },
-              ),
-              ListTile(
-                leading: Icon(inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined),
-                title: Text(context.tr('Agregar a deseos')),
-                enabled: !exists && !inWish && !busy,
-                onTap: () async {
-                  Navigator.pop(context);
-                  final st = await _askWishlistStatus();
-                  if (!mounted || st == null) return;
-                  await _addWishlist(artistName, al, st);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.euro_symbol),
-                title: Text(context.tr('Precios')),
-                enabled: !busy,
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _onEuroPressed(artistName, al, forceRefresh: true);
-                },
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
@@ -1788,412 +1732,753 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final a = pickedArtist;
-    final artistName = a?.name ?? '';
+    final artistName = pickedArtist?.name ?? artistCtrl.text.trim();
 
-    // Si la pantalla fue abierta con un artista inicial, pero aún no se ha cargado,
-    // mostramos un loader corto en vez del UI antiguo.
-    if (a == null && widget.initialArtist != null) {
-      return Scaffold(
-        appBar: AppBar(title: Text(context.tr('Discografías'))),
-        body: const Center(child: CircularProgressIndicator()),
-      );
+    final songRaw = songCtrl.text.trim();
+    final songNorm = _normQ(songRaw);
+    // Filtro de canción (pro): solo se activa cuando el usuario selecciona
+    // una sugerencia (título completo) o presiona buscar.
+    final songFilterActive = (pickedArtist != null && _selectedSongTitleNorm.isNotEmpty);
+    final showUnfilteredWhileSearching = songFilterActive && searchingSongs && _songAlbumResults.isEmpty;
+
+    // 1) Base: filtro por canción (si está activo)
+    final songVisibleAlbums = (!songFilterActive || showUnfilteredWhileSearching)
+        ? albums
+        : _songAlbumResults;
+
+    // 2) Filtro por álbum (local) sobre TODO lo cargado (incluye todas las páginas del pager).
+    final albumRaw = albumCtrl.text.trim();
+    final albumNorm = _normQ(albumRaw);
+    final albumFilterActive = (pickedArtist != null && albumNorm.isNotEmpty);
+
+    final visibleAlbums = (!albumFilterActive)
+        ? songVisibleAlbums
+        : songVisibleAlbums.where((al) => _normQ(al.title).contains(albumNorm)).toList();
+
+    // 📄 Paginación (20 por página)
+    final totalAlbums = visibleAlbums.length;
+    final totalPages = (totalAlbums <= 0) ? 1 : ((totalAlbums + _pageSize - 1) ~/ _pageSize);
+    final page = _albumPage.clamp(1, totalPages);
+    if (page != _albumPage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _albumPage = page);
+      });
+    }
+    final start = (page - 1) * _pageSize;
+    final end = (start + _pageSize < totalAlbums) ? (start + _pageSize) : totalAlbums;
+    final pageAlbums = (totalAlbums <= 0 || start >= totalAlbums)
+        ? const <AlbumItem>[]
+        : visibleAlbums.sublist(start, end);
+
+    // ✅ Perf: hidratar (colección/wishlist/fav) en lote para la página visible,
+    // evitando 2 queries por item y múltiples setState.
+    if (pickedArtist != null && artistResults.isEmpty && !loadingAlbums) {
+      _scheduleHydrateForVisiblePage(artistName, pageAlbums);
     }
 
-    // ---------------------------
-    // ✅ Vista "Pantalla 2" (mock): álbumes del artista
-    // ---------------------------
-    if (a != null) {
-      final songRaw = songCtrl.text.trim();
-      final songNorm = _normQ(songRaw);
-      final songFilterActive = (a != null && _selectedSongTitleNorm.isNotEmpty);
-      final showUnfilteredWhileSearching = songFilterActive && searchingSongs && _songAlbumResults.isEmpty;
-
-      final songVisibleAlbums = (!songFilterActive || showUnfilteredWhileSearching)
-          ? albums
-          : _songAlbumResults;
-
-      final albumRaw = albumCtrl.text.trim();
-      final albumNorm = _normQ(albumRaw);
-      final albumFilterActive = albumNorm.isNotEmpty;
-
-      final visibleAlbums = (!albumFilterActive)
-          ? songVisibleAlbums
-          : songVisibleAlbums.where((al) => _normQ(al.title).contains(albumNorm)).toList();
-
-      final totalAlbums = visibleAlbums.length;
-      final totalPages = (totalAlbums <= 0) ? 1 : ((totalAlbums + _pageSize - 1) ~/ _pageSize);
-      final page = _albumPage.clamp(1, totalPages);
-      if (page != _albumPage) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() => _albumPage = page);
-        });
-      }
-      final start = (page - 1) * _pageSize;
-      final end = (start + _pageSize < totalAlbums) ? (start + _pageSize) : totalAlbums;
-      final pageAlbums = (totalAlbums <= 0 || start >= totalAlbums)
-          ? const <AlbumItem>[]
-          : visibleAlbums.sublist(start, end);
-
-      if (!loadingAlbums) {
-        _scheduleHydrateForVisiblePage(artistName, pageAlbums);
-      }
-
-      final cc = (a.country ?? '').trim();
-      final loaded = albums.length;
-      final total = _mbTotal;
-      final countText = (total > 0)
-          ? '$loaded ${context.tr('de')} $total ${context.tr('álbumes cargados')}'
-          : '$loaded ${context.tr('álbumes')}';
-      final title = cc.isEmpty ? '$artistName · $countText' : '$artistName · $cc · $countText';
-
-      final theme = Theme.of(context);
-      final cs = theme.colorScheme;
-
-      Widget pillButton({
-        required String text,
-        required VoidCallback? onPressed,
-        required bool selected,
-      }) {
-        final style = selected
-            ? ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              )
-            : OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              );
-
-        final child = Text(text, style: const TextStyle(fontWeight: FontWeight.w800));
-        return selected
-            ? ElevatedButton(onPressed: onPressed, style: style, child: child)
-            : OutlinedButton(onPressed: onPressed, style: style, child: child);
-      }
-
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        body: SafeArea(
+    return Scaffold(
+      appBar: AppBar(
+        toolbarHeight: kAppBarToolbarHeight,
+        leadingWidth: appBarLeadingWidthForLogoBack(logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        leading: appBarLeadingLogoBack(context, logoSize: kAppBarLogoSize, gap: kAppBarGapLogoBack),
+        // ✅ Importante: el título NO debe cortarse ("Di...") por culpa de los íconos.
+        // Por eso, las acciones van en una segunda fila (AppBar.bottom).
+        title: appBarTitleTextScaled(context.tr('Discografías'), padding: const EdgeInsets.only(left: 8)),
+        titleSpacing: 12,
+        actions: const <Widget>[],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(44),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Column(
+            padding: const EdgeInsets.fromLTRB(12, 0, 8, 8),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: pillButton(
-                        text: context.tr('Buscar'),
-                        selected: true,
-                        onPressed: () {},
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: pillButton(
-                        text: context.tr('Explorar'),
-                        selected: false,
-                        onPressed: () {
-                          _dismissKeyboard();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const ExploreScreen()),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: pillButton(
-                        text: context.tr('Similares'),
-                        selected: false,
-                        onPressed: () {
-                          _dismissKeyboard();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => SimilarArtistsScreen(
-                                initialArtistName: artistName.isEmpty ? null : artistName,
-                                initialArtistId: a.id,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withOpacity(0.55),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: cs.outlineVariant),
+                const Spacer(),
+                IconButton(
+                  tooltip: _showAlbumAndSongFilters
+                      ? context.trSmart('Ocultar Álbum y Canción')
+                      : context.trSmart('Mostrar Álbum y Canción'),
+                  icon: Icon(
+                    _showAlbumAndSongFilters ? Icons.visibility : Icons.visibility_off,
                   ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${context.trSmart('Artista seleccionado')}: $artistName',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _toggleAlbumAndSongFilters,
+                ),
+                IconButton(
+                  tooltip: context.tr('Buscar'),
+                  icon: const Icon(Icons.search),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    FocusScope.of(context).requestFocus(_artistFocus);
+                  },
+                ),
+                IconButton(
+                  tooltip: context.tr('Explorar'),
+                  icon: const Icon(Icons.explore),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _dismissKeyboard();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ExploreScreen()),
+                    );
+                  },
+                ),
+                IconButton(
+                  tooltip: context.tr('Similares'),
+                  icon: const Icon(Icons.hub_outlined),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _dismissKeyboard();
+                    final a = pickedArtist;
+                    final name = (a?.name ?? artistCtrl.text.trim());
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SimilarArtistsScreen(
+                          initialArtistName: name.isEmpty ? null : name,
+                          initialArtistId: a?.id,
                         ),
                       ),
-                      TextButton.icon(
-                        onPressed: () {
-                          _dismissKeyboard();
-                          Navigator.of(context).maybePop();
-                        },
-                        icon: const Icon(Icons.edit, size: 18),
-                        label: Text(context.tr('Cambiar')),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: albumCtrl,
-                  focusNode: _albumFocus,
-                  textInputAction: TextInputAction.search,
-                  onChanged: (v) {
-                    setState(() {});
-                    _onAlbumTextChanged(v);
+                    );
                   },
-                  decoration: InputDecoration(
-                    hintText: context.tr('Álbum'),
-                    prefixIcon: const Icon(Icons.album),
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    suffixIcon: albumCtrl.text.trim().isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: context.tr('Limpiar'),
-                            icon: const Icon(Icons.close),
-                            onPressed: () => _clearAlbumFilter(setText: true),
-                          ),
-                  ),
-                ),
-                if (_loadingAlbumGlobalSearch || _mbLoadingMore) ...[
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(),
-                ],
-                const SizedBox(height: 10),
-                TextField(
-                  controller: songCtrl,
-                  focusNode: _songFocus,
-                  textInputAction: TextInputAction.search,
-                  onChanged: (v) {
-                    setState(() {});
-                    _onSongTextChanged(v);
-                  },
-                  onSubmitted: (v) {
-                    final raw = v.trim();
-                    if (raw.isEmpty) {
-                      _clearSongFilter(setText: true);
-                      return;
-                    }
-                    FocusScope.of(context).unfocus();
-                    _runSongSearchImmediate(raw, full: true);
-                  },
-                  decoration: InputDecoration(
-                    hintText: context.tr('Canción'),
-                    prefixIcon: const Icon(Icons.music_note),
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    suffixIcon: songCtrl.text.trim().isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: context.tr('Limpiar'),
-                            icon: const Icon(Icons.close),
-                            onPressed: () => _clearSongFilter(setText: true),
-                          ),
-                  ),
-                ),
-                // Mantener el dropdown de sugerencias (si está funcionando) sin forzar
-                // que ocupe espacio si el usuario no lo está usando.
-                if (_songFocus.hasFocus && songNorm.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 240),
-                    child: Material(
-                      elevation: 2,
-                      borderRadius: BorderRadius.circular(12),
-                      clipBehavior: Clip.antiAlias,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: cs.outlineVariant),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Builder(
-                          builder: (_) {
-                            if (_loadingSongSuggestions) {
-                              return const Center(child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 14),
-                                child: CircularProgressIndicator(),
-                              ));
-                            }
-                            if (_songSuggestions.isEmpty) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                                child: Text(
-                                  (songNorm.length < 2)
-                                      ? context.trSmart('Escribe al menos 2 letras...')
-                                      : context.trSmart('Sin resultados.'),
-                                ),
-                              );
-                            }
-                            final q = songCtrl.text.trim();
-                            return ListView.separated(
-                              padding: EdgeInsets.zero,
-                              itemCount: _songSuggestions.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (_, i) {
-                                final hit = _songSuggestions[i];
-                                final loading = _songAlbumsLoading.contains(hit.id);
-                                final als = _songAlbumsByRecording[hit.id];
-                                String subtitle;
-                                if (loading) {
-                                  subtitle = context.tr('Buscando álbumes...');
-                                } else if (als == null) {
-                                  subtitle = '—';
-                                } else if (als.isEmpty) {
-                                  subtitle = context.trSmart('No aparece en álbumes (1ª edición).');
-                                } else {
-                                  final parts = als.take(2).map((a) {
-                                    final y = (a.year ?? '').trim();
-                                    return y.isEmpty ? a.title : '${a.title} ($y)';
-                                  }).toList();
-                                  subtitle = parts.join(' · ');
-                                  if (als.length > 2) subtitle = '$subtitle · +${als.length - 2}';
-                                }
-                                return ListTile(
-                                  dense: true,
-                                  leading: const Icon(Icons.music_note),
-                                  title: _highlightSongTitle(hit.title, q),
-                                  subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  onTap: () => _selectSongSuggestion(hit),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                if (searchingSongs) ...[
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: (_songScanTotal > 0)
-                        ? (_songScanDone / _songScanTotal).clamp(0.0, 1.0)
-                        : null,
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Expanded(
-                  child: Builder(
-                    builder: (_) {
-                      if (loadingAlbums) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (albums.isEmpty) {
-                        return Center(child: Text(context.tr('No hay álbumes.')));
-                      }
-                      if (songFilterActive && !searchingSongs && visibleAlbums.isEmpty) {
-                        return Center(child: Text(context.tr('No encontré esa canción en álbumes.')));
-                      }
-                      return Column(
-                        children: [
-                          Expanded(
-                            child: ListView.separated(
-                              controller: _albumsScrollCtrl,
-                              itemCount: pageAlbums.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 10),
-                              itemBuilder: (_, i) {
-                                final al = pageAlbums[i];
-                                _ensureTrackCountFor(al);
-                                final rgid = al.releaseGroupId.trim();
-                                final cnt = rgid.isEmpty ? null : _trackCountByRg[rgid];
-                                final year = (al.year ?? '').trim().isEmpty ? '—' : (al.year ?? '').trim();
-                                final cntText = (cnt == null) ? '—' : cnt.toString();
-                                final sub = '$year · $cntText ${context.tr('Canciones')}';
-
-                                return Card(
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    leading: AppCoverImage(
-                                      pathOrUrl: al.cover250,
-                                      width: 54,
-                                      height: 54,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    title: Text(
-                                      al.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.w900),
-                                    ),
-                                    subtitle: Text(sub),
-                                    onTap: () => _openAlbum(context, artistName, al),
-                                    onLongPress: () => _showAlbumActionsSheet(artistName, al),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          if (_mbHasMore && !albumFilterActive && !songFilterActive)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6, bottom: 4),
-                              child: Row(
-                                children: [
-                                  TextButton.icon(
-                                    onPressed: _mbLoadingMore ? null : _loadMoreDiscographyPage,
-                                    icon: const Icon(Icons.download),
-                                    label: Text(
-                                      _mbLoadingMore ? context.tr('Cargando...') : '${context.tr('Cargar más')} (+$_mbLimit)',
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    '${albums.length} ${context.tr('álbumes')}',
-                                    style: theme.textTheme.labelSmall,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          AppPager(
-                            page: page,
-                            totalPages: totalPages,
-                            onPrev: () => _changeAlbumPage((page - 1).clamp(1, totalPages)),
-                            onNext: () => _changeAlbumPage((page + 1).clamp(1, totalPages)),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
           ),
         ),
-      );
-    }
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            RawAutocomplete<ArtistHit>(
+              textEditingController: artistCtrl,
+              focusNode: _artistFocus,
+              displayStringForOption: (a) => a.name,
+              optionsBuilder: (TextEditingValue tev) {
+                final q = tev.text.trim();
+                if (q.isEmpty) return const Iterable<ArtistHit>.empty();
 
-    // Fallback: si se abre sin artista (no debería pasar desde Home), guiamos al usuario.
-    return Scaffold(
-      appBar: AppBar(title: Text(context.tr('Discografías'))),
-      body: Center(child: Text(context.tr('Busca un artista para ver su discografía.'))),
+                // Si ya hay artista seleccionado y el texto coincide, no sugerimos.
+                if (pickedArtist != null && _normQ(q) == _normQ(pickedArtist!.name)) {
+                  return const Iterable<ArtistHit>.empty();
+                }
+                return artistResults;
+              },
+              onSelected: (a) => _pickArtist(a),
+              fieldViewBuilder: (context, ctrl, focus, onFieldSubmitted) {
+                return TextField(
+                  controller: ctrl,
+                  focusNode: focus,
+                  onChanged: (v) {
+                    // Asegura que el botón X aparezca/desaparezca al tipear.
+                    setState(() {});
+                    _onArtistTextChanged(v);
+                  },
+                  onSubmitted: (_) => onFieldSubmitted(),
+                  decoration: InputDecoration(
+                    labelText: context.tr('Artista'),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: ctrl.text.trim().isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: context.tr('Limpiar'),
+                            icon: const Icon(Icons.close),
+                            onPressed: () => _clearArtistSearch(),
+                          ),
+                  ),
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                final opts = options.toList();
+                final maxW = MediaQuery.of(context).size.width - 24; // padding del body
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: 320, maxWidth: maxW),
+                      child: ListView.separated(
+                        padding: EdgeInsets.zero,
+                        itemCount: opts.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final a = opts[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text(a.name),
+                            subtitle: Text(
+                              (a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}',
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => onSelected(a),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            SizedBox(height: 10),
+            if (searchingArtists) LinearProgressIndicator(),
+
+            // 💿 Buscador de álbum (aparece solo cuando ya hay artista elegido)
+            if (_showAlbumAndSongFilters && pickedArtist != null && artistResults.isEmpty) ...[
+              TextField(
+                controller: albumCtrl,
+                focusNode: _albumFocus,
+                textInputAction: TextInputAction.search,
+                onChanged: (v) {
+                  setState(() {});
+                  _onAlbumTextChanged(v);
+                },
+                decoration: InputDecoration(
+                  labelText: context.tr('Álbum'),
+                  hintText: context.tr('Escribe un álbum para filtrar álbumes.'),
+                  prefixIcon: const Icon(Icons.album),
+                  suffixIcon: albumCtrl.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: context.tr('Limpiar'),
+                          icon: const Icon(Icons.close),
+                          onPressed: () => _clearAlbumFilter(setText: true),
+                        ),
+                ),
+              ),
+              if (_loadingAlbumGlobalSearch || _mbLoadingMore) ...[
+                const SizedBox(height: 6),
+                LinearProgressIndicator(),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _loadingAlbumGlobalSearch
+                        ? context.tr('Buscando en todas las páginas...')
+                        : context.tr('Cargando más álbumes...'),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ],
+              if (_albumFocus.hasFocus && albumCtrl.text.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Builder(
+                  builder: (_) {
+                    final maxItems = 12;
+                    final list = visibleAlbums.take(maxItems).toList();
+                    if (list.isEmpty) {
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Text(
+                            context.tr('Sin resultados'),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ),
+                      );
+                    }
+                    return ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 260),
+                      child: Material(
+                        elevation: 2,
+                        borderRadius: BorderRadius.circular(12),
+                        clipBehavior: Clip.antiAlias,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListView.separated(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: list.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final al = list[i];
+                              return ListTile(
+                                dense: true,
+                                leading: AppCoverImage(
+                                  pathOrUrl: al.cover250,
+                                  width: 40,
+                                  height: 40,
+                                  fit: BoxFit.cover,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                title: _highlightAlbumTitle(al.title, albumCtrl.text.trim()),
+                                subtitle: Text(((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? ''), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                onTap: () {
+                                  albumCtrl.text = al.title;
+                                  albumCtrl.selection = TextSelection.collapsed(offset: al.title.length);
+                                  FocusScope.of(context).unfocus();
+                                  setState(() => _albumPage = 1);
+                                  _openAlbum(context, artistName, al);
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+              if (albumFilterActive)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 2),
+                    child: Text(
+                      '${context.tr('Coinciden')}: ${visibleAlbums.length}',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+            ],
+
+            // 🎵 Buscador de canción (aparece solo cuando ya hay artista elegido)
+            if (_showAlbumAndSongFilters && pickedArtist != null && artistResults.isEmpty) ...[
+              TextField(
+                controller: songCtrl,
+                focusNode: _songFocus,
+                textInputAction: TextInputAction.search,
+                onChanged: (v) {
+                  setState(() {});
+                  _onSongTextChanged(v);
+                },
+                onSubmitted: (v) {
+                  final raw = v.trim();
+                  if (raw.isEmpty) {
+                    _clearSongFilter(setText: true);
+                    return;
+                  }
+                  FocusScope.of(context).unfocus();
+                  _runSongSearchImmediate(raw, full: true);
+                },
+                decoration: InputDecoration(
+                  labelText: context.tr('Canción'),
+                  hintText: context.trSmart('Escribe una canción y te muestro los álbumes donde aparece.'),
+                  prefixIcon: Icon(Icons.music_note),
+                  suffixIcon: songCtrl.text.trim().isEmpty
+                      ? null
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: context.tr('Filtrar'),
+                              icon: const Icon(Icons.search),
+                              onPressed: () {
+                                final raw = songCtrl.text.trim();
+                                if (raw.isEmpty) {
+                                  _clearSongFilter(setText: true);
+                                  return;
+                                }
+                                FocusScope.of(context).unfocus();
+                                _runSongSearchImmediate(raw, full: true);
+                              },
+                            ),
+                            IconButton(
+                              tooltip: context.tr('Limpiar'),
+                              icon: const Icon(Icons.close),
+                              onPressed: () => _clearSongFilter(setText: true),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              // 🎵 Dropdown: sugerencias de canciones (título completo)
+              // con los álbumes donde aparece (verificado por 1ª edición).
+              if (_songFocus.hasFocus && songNorm.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: Material(
+                    elevation: 2,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Builder(
+                        builder: (_) {
+                          if (_loadingSongSuggestions) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 14),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+
+                          if (_songSuggestions.isEmpty) {
+                            final msg = (songNorm.length < 2)
+                                ? context.trSmart('Escribe al menos 2 letras...')
+                                : context.trSmart('Sin resultados.');
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                              child: Text(msg),
+                            );
+                          }
+
+                          final q = songCtrl.text.trim();
+                          return ListView.separated(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: _songSuggestions.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final hit = _songSuggestions[i];
+                              final loading = _songAlbumsLoading.contains(hit.id);
+                              final als = _songAlbumsByRecording[hit.id];
+
+                              String subtitle;
+                              if (loading) {
+                                subtitle = context.tr('Buscando álbumes...');
+                              } else if (als == null) {
+                                subtitle = '—';
+                              } else if (als.isEmpty) {
+                                subtitle = context.trSmart('No aparece en álbumes.');
+                              } else {
+                                final parts = als.take(3).map((a) {
+                                  final y = (a.year ?? '').trim();
+                                  return y.isEmpty ? a.title : '${a.title} ($y)';
+                                }).toList();
+                                subtitle = parts.join(' · ');
+                                if (als.length > 3) subtitle = '$subtitle · +${als.length - 3}';
+                              }
+
+                              return ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.music_note),
+                                title: _highlightSongTitle(hit.title, q),
+                                subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _selectSongSuggestion(hit),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              SizedBox(height: 8),
+              if (searchingSongs) ...[
+                LinearProgressIndicator(
+                  value: (_songScanTotal > 0)
+                      ? (_songScanDone / _songScanTotal).clamp(0.0, 1.0)
+                      : null,
+                ),
+                if (_songScanTotal == 0 && _songLoadingMorePages)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        context.tr('Buscando en más páginas de álbumes...'),
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                  ),
+                if (_songScanTotal > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${context.tr('Filtrando canciones')}... $_songScanDone/$_songScanTotal',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                  ),
+              ],
+              if (songFilterActive && !searchingSongs)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '${context.tr('Coinciden')}: ${visibleAlbums.length}',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                  ),
+                ),
+              SizedBox(height: 6),
+            ],
+
+            Expanded(
+              child: Builder(
+                builder: (_) {
+
+                  if (loadingAlbums) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (albums.isEmpty) {
+                    return Center(child: Text(context.tr('Busca un artista para ver su discografía.')));
+                  }
+
+                  if (songFilterActive && searchingSongs && visibleAlbums.isEmpty) {
+                    return Center(child: Text(context.tr('Buscando esa canción en tus álbumes...')));
+                  }
+
+                  if (songFilterActive && !searchingSongs && visibleAlbums.isEmpty) {
+                    return Center(child: Text(context.tr('No encontré esa canción en álbumes.')));
+                  }
+
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          controller: _albumsScrollCtrl,
+                          itemCount: pageAlbums.length,
+                          itemBuilder: (_, i) {
+                            final al = pageAlbums[i];
+                            final key = _k(artistName, al.title);
+
+                            // Hidratación en lote se dispara una vez por página visible.
+                            final exists = _exists[key] == true;
+                            final fav = _fav[key] == true;
+                            final inWish = _wish[key] == true;
+                            final busy = _busy[key] == true;
+
+                            final addDisabled = exists || busy;
+                            final wishDisabled = exists || inWish || busy;
+                            final favDisabled = (!exists) || busy;
+
+                            // iconos: contorno blanco + relleno gris cuando activo
+                            IconData addIcon = Icons.format_list_bulleted;
+                            IconData favIcon = fav ? Icons.star : Icons.star_border;
+                            IconData wishIcon = inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined;
+
+                            // 💶 Precios (lazy): se activan por álbum (icono € en cada card)
+                            final rgid = al.releaseGroupId.trim();
+                            final priceEnabled = rgid.isNotEmpty && (_priceEnabledByReleaseGroup[rgid] ?? false);
+                            final priceDisabled = rgid.isEmpty || artistName.trim().isEmpty;
+                            if (priceEnabled) {
+                              // Dispara carga (sin bloquear UI) si aún no está en cache.
+                              _fetchOffersForAlbum(artistName, al, forceRefresh: false);
+                            }
+
+                            final hasOffers = rgid.isNotEmpty && _offersByReleaseGroup.containsKey(rgid);
+                            final offers = rgid.isEmpty ? null : _offersByReleaseGroup[rgid];
+                            String? priceLabel;
+                            if (!priceEnabled) {
+                              priceLabel = null;
+                            } else if (!hasOffers) {
+                              priceLabel = '€ …';
+                            } else {
+                              final l = _priceLabelForOffers(offers ?? const []);
+                              priceLabel = l.isEmpty ? null : l;
+                            }
+
+                            Widget actionItem({
+                              required IconData icon,
+                              required String label,
+                              required VoidCallback? onTap,
+                              required bool disabled,
+                              required String tooltip,
+                              bool active = false,
+                            }) {
+                              final color = disabled
+                                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                                  : (active ? Theme.of(context).colorScheme.primary : null);
+                              return Tooltip(
+                                message: tooltip,
+                                child: InkWell(
+                                  onTap: disabled ? null : onTap,
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(icon, color: color),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          label,
+                                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            return Card(
+                              child: Column(
+                                children: [
+                                  ListTile(
+                                    leading: AppCoverImage(
+                                      pathOrUrl: al.cover250,
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.cover,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    title: Text(
+                                      al.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            AppStrings.labeled(context, 'Año', ((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (priceLabel != null)
+                                          InkWell(
+                                            onTap: (offers != null && offers!.isNotEmpty && !busy)
+                                                ? () => _showPriceSources(context, offers!)
+                                                : null,
+                                            child: Text(
+                                              priceLabel,
+                                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                                    decoration: (offers != null && offers!.isNotEmpty && !busy) ? TextDecoration.underline : null,
+                                                  ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    onTap: () {
+                                      _openAlbum(context, artistName, al);
+                                    },
+                                  ),
+                                  const Divider(height: 1),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        // 🇨🇱 País del artista (misma línea inferior izquierda)
+                                        Expanded(
+                                          child: Builder(
+                                            builder: (_) {
+                                              final c = (pickedArtist?.country ?? '').trim();
+                                              if (c.isEmpty) return const SizedBox.shrink();
+                                              return Text(
+                                                AppStrings.labeled(context, 'País', c),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                    ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            actionItem(
+                                              icon: addIcon,
+                                              label: context.tr('Lista'),
+                                              tooltip: addDisabled ? context.tr('Ya está en tu lista') : context.tr('Agregar a tu lista'),
+                                              disabled: addDisabled,
+                                              onTap: () async {
+                                                _dismissKeyboard();
+                                                final opts = await _askConditionAndFormat(artistName: artistName);
+                                                if (!mounted || opts == null) return;
+                                                await _addAlbumOptimistic(
+                                                  artistName: artistName,
+                                                  album: al,
+                                                  condition: opts['condition'] ?? 'VG+',
+                                                  format: opts['format'] ?? 'LP',
+                                                );
+                                              },
+                                            ),
+                                            actionItem(
+                                              icon: favIcon,
+                                              label: context.tr('Fav'),
+                                              tooltip: favDisabled
+                                                  ? (exists ? context.tr('Cargando...') : context.tr('Primero agrega a tu lista'))
+                                                  : (fav ? context.tr('Quitar favorito') : context.tr('Marcar favorito')),
+                                              disabled: favDisabled,
+                                              onTap: () => _toggleFavorite(artistName, al),
+                                            ),
+                                            actionItem(
+                                              icon: wishIcon,
+                                              label: context.tr('Deseos'),
+                                              tooltip: wishDisabled ? context.tr('No disponible') : context.tr('Agregar a deseos'),
+                                              disabled: wishDisabled,
+                                              onTap: () async {
+                                                final st = await _askWishlistStatus();
+                                                if (!mounted || st == null) return;
+                                                await _addWishlist(artistName, al, st);
+                                              },
+                                            ),
+                                            actionItem(
+                                              icon: Icons.euro_symbol,
+                                              label: '€',
+                                              tooltip: priceEnabled ? context.tr('Actualizar precios') : context.tr('Buscar precios'),
+                                              disabled: priceDisabled,
+                                              active: priceEnabled && (offers != null && offers.isNotEmpty),
+                                              onTap: () => _onEuroPressed(
+                                                artistName,
+                                                al,
+                                                forceRefresh: true,
+                                              ),
+                                            ),
+                                            if (busy)
+                                              const Padding(
+                                                padding: EdgeInsets.only(left: 8),
+                                                child: SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      if (pickedArtist != null && artistResults.isEmpty && _mbHasMore && !albumFilterActive && !songFilterActive)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6, bottom: 4),
+                          child: Row(
+                            children: [
+                              TextButton.icon(
+                                onPressed: _mbLoadingMore ? null : _loadMoreDiscographyPage,
+                                icon: const Icon(Icons.download),
+                                label: Text(
+                                  _mbLoadingMore ? context.tr('Cargando...') : '${context.tr('Cargar más')} (+$_mbLimit)',
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${albums.length} ${context.tr('álbumes')}',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      AppPager(
+                        page: page,
+                        totalPages: totalPages,
+                        onPrev: () => _changeAlbumPage((page - 1).clamp(1, totalPages)),
+                        onNext: () => _changeAlbumPage((page + 1).clamp(1, totalPages)),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1637,20 +1637,31 @@ Future<void> deleteTrashById(int trashId) async {
 
   Future<List<Map<String, dynamic>>> getLikedTracksWithStatus() async {
     final d = await db;
+
+    // ✅ Primero intentamos match por ReleaseGroupID (mbid), que es más estable.
+    // ✅ Fallback por artista+álbum usando COLLATE NOCASE (aprovecha índices NOCASE).
     return d.rawQuery('''
       SELECT
         t.*,
         EXISTS(
           SELECT 1
           FROM vinyls v
-          WHERE LOWER(v.artista) = LOWER(t.artista)
-            AND LOWER(v.album) = LOWER(t.album)
+          WHERE
+            (
+              TRIM(t.releaseGroupId) != ''
+              AND TRIM(v.mbid) = TRIM(t.releaseGroupId)
+            )
+            OR (
+              v.artista = t.artista COLLATE NOCASE
+              AND v.album = t.album COLLATE NOCASE
+            )
         ) AS inVinyls,
         EXISTS(
           SELECT 1
           FROM wishlist w
-          WHERE LOWER(w.artista) = LOWER(t.artista)
-            AND LOWER(w.album) = LOWER(t.album)
+          WHERE
+            w.artista = t.artista COLLATE NOCASE
+            AND w.album = t.album COLLATE NOCASE
         ) AS inWishlist
       FROM liked_tracks t
       ORDER BY t.createdAt DESC;

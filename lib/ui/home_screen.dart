@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,7 +12,7 @@ import '../services/add_defaults_service.dart';
 import '../services/backup_service.dart';
 import '../services/view_mode_service.dart';
 import '../services/app_theme_service.dart';
-import 'discography_artist_picker_screen.dart';
+import 'discography_screen.dart';
 import 'similar_artists_screen.dart';
 import 'scanner_screen.dart';
 import 'settings_screen.dart';
@@ -127,7 +128,7 @@ class _DiamondLogoPainter extends CustomPainter {
   bool shouldRepaint(covariant _DiamondLogoPainter oldDelegate) => oldDelegate.color != color;
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   // 🧭 Scroll controllers para que la paginación vuelva arriba al cambiar de página.
   final ScrollController _scrollAll = ScrollController();
@@ -203,6 +204,15 @@ class _HomeScreenState extends State<HomeScreen> {
   // ✅ Contadores para badges en los botones del inicio
   Future<Map<String, int>>? _homeCountsFuture;
   Map<String, int> _homeCounts = const {'all': 0, 'fav': 0, 'wish': 0};
+
+  // 🎲 Home: rotación aleatoria de 12 vinilos en "Últimos agregados"
+  static const int _kHomeRotateCount = 12;
+  static const Duration _kHomeRotateInterval = Duration(seconds: 60);
+  Timer? _homeRotateTimer;
+  DateTime _homeLastRotate = DateTime.fromMillisecondsSinceEpoch(0);
+  List<Map<String, dynamic>> _homeAllCache = <Map<String, dynamic>>[];
+  List<int> _homeRotatingIds = <int>[];
+
 
   // ✅ Cache de la lista completa (evita recargar en cada setState y permite favorito instantáneo)
   late Future<List<Map<String, dynamic>>> _futureAll;
@@ -339,6 +349,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _futureFav = VinylDb.instance.getFavorites();
     _futureTrash = VinylDb.instance.getTrash();
 
+
+    WidgetsBinding.instance.addObserver(this);
+    _homeRotateTimer = Timer.periodic(_kHomeRotateInterval, (_) {
+      if (!mounted) return;
+      // Solo rotar cuando estás en el Home (vista inicio).
+      if (vista == Vista.inicio) {
+        _rotateHomeSelection(force: true);
+      }
+    });
+
     // Aviso: deseos marcados como "Comprado".
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybePromptPurchasedWishlist();
@@ -411,6 +431,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
+
   Future<void> _refreshHomeCounts() async {
     if (!mounted) return;
 
@@ -437,7 +458,44 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  
+  // ----------------- HOME: ROTACIÓN "ÚLTIMOS AGREGADOS" -----------------
+
+  void _syncHomeAllCache(List<Map<String, dynamic>> items) {
+    _homeAllCache = items;
+    // Primera carga: generar selección inicial.
+    if (_homeRotatingIds.isEmpty && items.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _rotateHomeSelection(force: true);
+      });
+    }
+  }
+
+  void _rotateHomeSelection({bool force = false}) {
+    if (!mounted) return;
+    final items = _homeAllCache;
+    if (items.isEmpty) return;
+
+    final now = DateTime.now();
+    if (!force && now.difference(_homeLastRotate) < _kHomeRotateInterval) return;
+
+    _homeLastRotate = now;
+
+    final ids = <int>[];
+    for (final it in items) {
+      final id = _asInt(it['id']);
+      if (id > 0) ids.add(id);
+    }
+    if (ids.isEmpty) return;
+
+    ids.shuffle(Random(now.microsecondsSinceEpoch));
+    final takeN = ids.take(min(_kHomeRotateCount, ids.length)).toList();
+
+    setState(() {
+      _homeRotatingIds = takeN;
+    });
+  }
+
   // ----------------- AVISO AL INICIAR (DESEOS COMPRADOS) -----------------
 
   Future<void> _maybePromptPurchasedWishlist() async {
@@ -664,11 +722,15 @@ void _reloadAllData() {
   if (!mounted) return;
   setState(() {
     _favCache.clear();
+    // Al recargar datos, forzamos nueva rotación cuando vuelva la lista.
+    _homeRotatingIds = <int>[];
+    _homeLastRotate = DateTime.fromMillisecondsSinceEpoch(0);
+
     _futureAll = VinylDb.instance.getAll();
     _futureArtists = VinylDb.instance.getArtistSummaries();
     _futureFav = VinylDb.instance.getFavorites();
     _futureTrash = VinylDb.instance.getTrash();
-    });
+  });
   _refreshHomeCounts();
 }
 
@@ -692,6 +754,14 @@ Future<void> _loadViewMode() async {
     });
     FocusScope.of(context).unfocus();
     _persistVista(v);
+
+    if (v == Vista.inicio) {
+      // Al volver al Home, refrescar selección de "Últimos agregados".
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _rotateHomeSelection(force: true);
+      });
+    }
   }
 
   void _setVinylScope(VinylScope s) {
@@ -873,6 +943,16 @@ Future<void> _loadViewMode() async {
     _pageFavoritos = 1;
     _pageBorrar = 1;
   }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.resumed) {
+      // Al volver a la app, refrescamos la selección.
+      _rotateHomeSelection(force: true);
+    }
+  }
+
+
 
   @override
   void dispose() {
@@ -889,6 +969,8 @@ Future<void> _loadViewMode() async {
     _scrollAll.dispose();
     _scrollFav.dispose();
     _scrollTrash.dispose();
+    _homeRotateTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -1980,7 +2062,7 @@ Future<void> _loadViewMode() async {
     final wish = _homeCounts['wish'] ?? 0;
 
     void openDiscografias() {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyArtistPickerScreen())).then((_) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => DiscographyScreen())).then((_) {
         if (!mounted) return;
         _reloadAllData();
       });
@@ -2043,7 +2125,7 @@ Future<void> _loadViewMode() async {
               subtitle: 'Agrega tu primer vinilo para empezar tu colección.',
               actionText: 'Ir a Discografías',
               onAction: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyArtistPickerScreen())).then((_) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => DiscographyScreen())).then((_) {
                   if (!mounted) return;
                   _reloadAllData();
                 });
@@ -2051,21 +2133,44 @@ Future<void> _loadViewMode() async {
             );
           }
 
-          final sorted = List<Map<String, dynamic>>.from(items);
-          sorted.sort((a, b) => _asInt(b['id']).compareTo(_asInt(a['id'])));
-          final recent = sorted.take(8).toList();
+          _syncHomeAllCache(items);
+
+          final byId = <int, Map<String, dynamic>>{};
+          for (final it in items) {
+            final id = _asInt(it['id']);
+            if (id > 0) byId[id] = it;
+          }
+
+          // Selección actual (rotatoria).
+          final pickIds = _homeRotatingIds;
+          final picked = <Map<String, dynamic>>[];
+          for (final id in pickIds) {
+            final it = byId[id];
+            if (it != null) picked.add(it);
+          }
+
+          // Si por alguna razón quedó corta (borrados/recarga), regeneramos.
+          final expected = min(_kHomeRotateCount, byId.length);
+          if (picked.length < expected && items.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _rotateHomeSelection(force: true);
+            });
+          }
+
+          final shown = picked.isNotEmpty ? picked : items.take(expected).toList();
 
           return SizedBox(
             height: 280,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 4),
-              itemCount: recent.length,
+              itemCount: shown.length,
               separatorBuilder: (_, __) => SizedBox(width: 12),
               itemBuilder: (context, i) {
                 return SizedBox(
                   width: 220,
-                  child: _gridVinylCard(recent[i], conBorrar: false),
+                  child: _gridVinylCard(shown[i], conBorrar: false),
                 );
               },
             ),
@@ -2110,7 +2215,10 @@ Future<void> _loadViewMode() async {
             if (!mounted) return;
             _setVista(Vista.borrar);
           },
-          onSettings: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsScreen())),
+          onSettings: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsScreen())).then((_) {
+            if (!mounted) return;
+            _rotateHomeSelection(force: true);
+          }),
         ),
 
         sectionHeader(
@@ -2167,6 +2275,16 @@ Widget vistaBorrar({bool embedInScroll = true}) {
                       setState(() {
                         _borrarPapelera = true;
                         _futureTrash = VinylDb.instance.getTrash();
+
+
+    WidgetsBinding.instance.addObserver(this);
+    _homeRotateTimer = Timer.periodic(_kHomeRotateInterval, (_) {
+      if (!mounted) return;
+      // Solo rotar cuando estás en el Home (vista inicio).
+      if (vista == Vista.inicio) {
+        _rotateHomeSelection(force: true);
+      }
+    });
                       });
                     },
                     icon: Icon(Icons.restore),

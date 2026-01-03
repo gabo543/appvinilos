@@ -23,9 +23,3 @@ String normalizeKey(String input) {
   out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
   return out;
 }
-
-/// Alias histórico usado por algunas pantallas (Discografías) para normalizar
-/// strings de búsqueda.
-///
-/// Mantiene el mismo comportamiento que [normalizeKey].
-String normBasic(String input) => normalizeKey(input);

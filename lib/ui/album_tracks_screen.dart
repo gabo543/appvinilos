@@ -297,6 +297,10 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
       if (!mounted) return;
       setState(() => _likedKeys = {..._likedKeys}..remove(key));
       _snack('Quitada de canciones');
+      // Si el auto-backup está activo, respalda también cambios en canciones.
+      try {
+        await BackupService.autoSaveIfEnabled();
+      } catch (_) {}
       return;
     }
 
@@ -317,6 +321,11 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
     if (!mounted) return;
     setState(() => _likedKeys = {..._likedKeys}..add(key));
     _snack('Canción guardada ❤️');
+
+    // Si el auto-backup está activo, respalda también cambios en canciones.
+    try {
+      await BackupService.autoSaveIfEnabled();
+    } catch (_) {}
 
     // Solo en el primer "me gusta" del álbum mostramos la pregunta.
     if (!alreadyAlbumInSongs) {
