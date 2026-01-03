@@ -160,6 +160,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   void _clearArtistSearch({bool keepFocus = true}) {
     _debounce?.cancel();
+    // Invalida cualquier búsqueda de artistas en vuelo.
+    _artistSearchSeq++;
     artistCtrl.clear();
 
     _clearSongFilter(setText: true);
@@ -520,6 +522,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   // entramos directo a la discografía. Si hay duda, mostramos la lista.
   String _lastAutoPickedQuery = '';
 
+  // 🧠 Anti-race: invalidación de búsquedas asíncronas de artistas.
+  // Evita que resultados "viejos" repueblen la lista después de elegir un artista,
+  // lo que hacía que Álbum/Canción aparecieran y desaparecieran solos.
+  int _artistSearchSeq = 0;
+
   String _normQ(String s) {
     var out = s.toLowerCase().trim();
     const rep = {
@@ -559,6 +566,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Rebuild cuando el campo de artista gana/pierde foco (para mostrar/ocultar la lista).
+    _artistFocus.addListener(() {
+      if (!mounted) return;
+      setState(() {});
+    });
+
     // Rebuild cuando el campo de álbum gana/pierde foco (para mostrar/ocultar autocompletado).
     _albumFocus.addListener(() {
       if (!mounted) return;
@@ -1154,6 +1168,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   void _onArtistTextChanged(String _) {
     _debounce?.cancel();
     final q = artistCtrl.text.trim();
+
+    // Invalida cualquier request anterior. Esto evita que una respuesta "vieja"
+    // vuelva a llenar artistResults después de haber seleccionado un artista.
+    final int mySeq = ++_artistSearchSeq;
     // Si el usuario cambia el texto, invalidamos la selección anterior.
     if (pickedArtist != null && _normQ(q) != _normQ(pickedArtist!.name)) {
       _clearSongFilter(setText: true);
@@ -1200,11 +1218,18 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
 
     _debounce = Timer(Duration(milliseconds: 260), () async {
-      if (!mounted) return;
+      if (!mounted || mySeq != _artistSearchSeq) return;
       setState(() => searchingArtists = true);
       try {
         final hits = await DiscographyService.searchArtists(q);
-        if (!mounted) return;
+        if (!mounted || mySeq != _artistSearchSeq) return;
+
+        // Si ya se eligió un artista mientras esta búsqueda estaba en vuelo,
+        // no repoblamos sugerencias ni cambiamos el estado.
+        if (pickedArtist != null) {
+          setState(() => searchingArtists = false);
+          return;
+        }
 
         final qNorm = _normQ(q);
 
@@ -1227,7 +1252,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
           searchingArtists = false;
         });
       } catch (_) {
-        if (!mounted) return;
+        if (!mounted || mySeq != _artistSearchSeq) return;
         setState(() {
           searchingArtists = false;
           artistResults = [];
@@ -1237,6 +1262,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   }
 
   Future<void> _pickArtist(ArtistHit a) async {
+    // Invalida búsquedas pendientes del autocompletado para que no repueblen la lista.
+    _debounce?.cancel();
+    _artistSearchSeq++;
+
     FocusScope.of(context).unfocus();
     _clearSongFilter(setText: true);
     _clearAlbumFilter(setText: true);
@@ -1244,6 +1273,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       pickedArtist = a;
       artistCtrl.text = a.name;
       artistResults = [];
+      searchingArtists = false;
       albums = [];
       loadingAlbums = true;
       _albumPage = 1;
@@ -1734,6 +1764,22 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   Widget build(BuildContext context) {
     final artistName = pickedArtist?.name ?? artistCtrl.text.trim();
 
+    // Sugerencias de artistas: en vez de RawAutocomplete (que no siempre refrescaba
+    // cuando llegaban resultados async), mostramos una lista controlada por estado.
+    final artistQuery = artistCtrl.text.trim();
+    final artistQueryNorm = _normQ(artistQuery);
+    final pickedNorm = pickedArtist == null ? '' : _normQ(pickedArtist!.name);
+    final showArtistSuggestions = _artistFocus.hasFocus && artistQuery.isNotEmpty
+        && (pickedArtist == null || artistQueryNorm != pickedNorm)
+        && artistResults.isNotEmpty;
+    final showArtistNoResults = _artistFocus.hasFocus && artistQuery.isNotEmpty
+        && !searchingArtists
+        && (pickedArtist == null || artistQueryNorm != pickedNorm)
+        && artistResults.isEmpty;
+    final maxArtistListH = (MediaQuery.of(context).size.height * 0.35)
+        .clamp(180.0, 320.0)
+        .toDouble();
+
     final songRaw = songCtrl.text.trim();
     final songNorm = _normQ(songRaw);
     // Filtro de canción (pro): solo se activa cuando el usuario selecciona
@@ -1772,7 +1818,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
     // ✅ Perf: hidratar (colección/wishlist/fav) en lote para la página visible,
     // evitando 2 queries por item y múltiples setState.
-    if (pickedArtist != null && artistResults.isEmpty && !loadingAlbums) {
+    if (pickedArtist != null && !loadingAlbums) {
       _scheduleHydrateForVisiblePage(artistName, pageAlbums);
     }
 
@@ -1849,82 +1895,85 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            RawAutocomplete<ArtistHit>(
-              textEditingController: artistCtrl,
+            TextField(
+              controller: artistCtrl,
               focusNode: _artistFocus,
-              displayStringForOption: (a) => a.name,
-              optionsBuilder: (TextEditingValue tev) {
-                final q = tev.text.trim();
-                if (q.isEmpty) return const Iterable<ArtistHit>.empty();
-
-                // Si ya hay artista seleccionado y el texto coincide, no sugerimos.
-                if (pickedArtist != null && _normQ(q) == _normQ(pickedArtist!.name)) {
-                  return const Iterable<ArtistHit>.empty();
-                }
-                return artistResults;
+              textInputAction: TextInputAction.search,
+              onChanged: (v) {
+                // Asegura que el botón X aparezca/desaparezca al tipear.
+                setState(() {});
+                _onArtistTextChanged(v);
               },
-              onSelected: (a) => _pickArtist(a),
-              fieldViewBuilder: (context, ctrl, focus, onFieldSubmitted) {
-                return TextField(
-                  controller: ctrl,
-                  focusNode: focus,
-                  onChanged: (v) {
-                    // Asegura que el botón X aparezca/desaparezca al tipear.
-                    setState(() {});
-                    _onArtistTextChanged(v);
-                  },
-                  onSubmitted: (_) => onFieldSubmitted(),
-                  decoration: InputDecoration(
-                    labelText: context.tr('Artista'),
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: ctrl.text.trim().isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: context.tr('Limpiar'),
-                            icon: const Icon(Icons.close),
-                            onPressed: () => _clearArtistSearch(),
-                          ),
-                  ),
-                );
+              onSubmitted: (_) {
+                // No dependemos de un overlay (RawAutocomplete). Al enviar, intentamos
+                // disparar búsqueda inmediata si hay texto.
+                final q = artistCtrl.text.trim();
+                if (q.isNotEmpty) _onArtistTextChanged(q);
               },
-              optionsViewBuilder: (context, onSelected, options) {
-                final opts = options.toList();
-                final maxW = MediaQuery.of(context).size.width - 24; // padding del body
-                return Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(12),
-                    clipBehavior: Clip.antiAlias,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: 320, maxWidth: maxW),
-                      child: ListView.separated(
-                        padding: EdgeInsets.zero,
-                        itemCount: opts.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
-                          final a = opts[i];
-                          return ListTile(
-                            dense: true,
-                            title: Text(a.name),
-                            subtitle: Text(
-                              (a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}',
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => onSelected(a),
-                          );
-                        },
+              decoration: InputDecoration(
+                labelText: context.tr('Artista'),
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: artistCtrl.text.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: context.tr('Limpiar'),
+                        icon: const Icon(Icons.close),
+                        onPressed: () => _clearArtistSearch(),
                       ),
-                    ),
-                  ),
-                );
-              },
+              ),
             ),
             SizedBox(height: 10),
             if (searchingArtists) LinearProgressIndicator(),
 
+            // 📜 Lista de sugerencias de artista (estado-controlado)
+            if (showArtistSuggestions) ...[
+              const SizedBox(height: 8),
+              Material(
+                elevation: 2,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxArtistListH),
+                  child: ListView.separated(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    itemCount: artistResults.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final a = artistResults[i];
+                      return ListTile(
+                        dense: true,
+                        title: Text(a.name),
+                        subtitle: Text(
+                          (a.country ?? '').trim().isEmpty
+                              ? '—'
+                              : '${context.tr('País')} ${(a.country ?? '').trim()}',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _pickArtist(a),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ] else if (showArtistNoResults) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Text(
+                    context.tr('Sin resultados'),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+
             // 💿 Buscador de álbum (aparece solo cuando ya hay artista elegido)
-            if (_showAlbumAndSongFilters && pickedArtist != null && artistResults.isEmpty) ...[
+            if (_showAlbumAndSongFilters && pickedArtist != null) ...[
               TextField(
                 controller: albumCtrl,
                 focusNode: _albumFocus,
@@ -2038,7 +2087,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             ],
 
             // 🎵 Buscador de canción (aparece solo cuando ya hay artista elegido)
-            if (_showAlbumAndSongFilters && pickedArtist != null && artistResults.isEmpty) ...[
+            if (_showAlbumAndSongFilters && pickedArtist != null) ...[
               TextField(
                 controller: songCtrl,
                 focusNode: _songFocus,
