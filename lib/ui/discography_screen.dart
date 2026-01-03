@@ -1897,284 +1897,291 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
               SizedBox(height: 6),
             ],
 
-            if (artistResults.isNotEmpty)
-              Expanded(
-                child: ListView.separated(
-                  itemCount: artistResults.length,
-                  separatorBuilder: (_, __) => Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final a = artistResults[i];
-                    return ListTile(
-                      title: Text(a.name),
-                      subtitle: Text((a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}'),
-                      trailing: Icon(Icons.chevron_right),
-                      onTap: () => _pickArtist(a),
+            Expanded(
+              child: Builder(
+                builder: (_) {
+                  if (artistResults.isNotEmpty) {
+                    return ListView.separated(
+                      itemCount: artistResults.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final a = artistResults[i];
+                        return ListTile(
+                          title: Text(a.name),
+                          subtitle: Text(
+                            (a.country ?? '').trim().isEmpty ? '—' : '${context.tr('País')} ${(a.country ?? '').trim()}',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => _pickArtist(a),
+                        );
+                      },
                     );
-                  },
-                ),
-              )
-            else
-              Expanded(
-                child: loadingAlbums
-                    ? Center(child: CircularProgressIndicator())
-                    : (albums.isEmpty
-                        ? Center(child: Text(context.tr('Busca un artista para ver su discografía.')))
-                        : (songFilterActive && searchingSongs && visibleAlbums.isEmpty
-                            ? Center(child: Text(context.tr('Buscando esa canción en tus álbumes...')))
-                            : (songFilterActive && !searchingSongs && visibleAlbums.isEmpty
-                                ? Center(child: Text(context.tr('No encontré esa canción en álbumes.')))
-                                : Column(
-                                children: [
-                                  Expanded(
-                                    child: ListView.builder(
-                                      controller: _albumsScrollCtrl,
-                                      itemCount: pageAlbums.length,
-                                      itemBuilder: (_, i) {
-                                        final al = pageAlbums[i];
-                              final key = _k(artistName, al.title);
+                  }
 
-                              // Hidratación en lote se dispara una vez por página visible.
+                  if (loadingAlbums) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                              final exists = _exists[key] == true;
-                              final fav = _fav[key] == true;
-                              final inWish = _wish[key] == true;
-                              final busy = _busy[key] == true;
+                  if (albums.isEmpty) {
+                    return Center(child: Text(context.tr('Busca un artista para ver su discografía.')));
+                  }
 
-                              final addDisabled = exists || busy;
-                              final wishDisabled = exists || inWish || busy;
-                              final favDisabled = (!exists) || busy;
+                  if (songFilterActive && searchingSongs && visibleAlbums.isEmpty) {
+                    return Center(child: Text(context.tr('Buscando esa canción en tus álbumes...')));
+                  }
 
-                              // iconos: contorno blanco + relleno gris cuando activo
-                              IconData addIcon = Icons.format_list_bulleted;
-                              IconData favIcon = fav ? Icons.star : Icons.star_border;
-                              IconData wishIcon = inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined;
+                  if (songFilterActive && !searchingSongs && visibleAlbums.isEmpty) {
+                    return Center(child: Text(context.tr('No encontré esa canción en álbumes.')));
+                  }
 
-                              // 💶 Precios (lazy): se activan por álbum (icono € en cada card)
-                              final rgid = al.releaseGroupId.trim();
-                              final priceEnabled = rgid.isNotEmpty && (_priceEnabledByReleaseGroup[rgid] ?? false);
-                              final priceDisabled = rgid.isEmpty || artistName.trim().isEmpty;
-                              if (priceEnabled) {
-                                // Dispara carga (sin bloquear UI) si aún no está en cache.
-                                _fetchOffersForAlbum(artistName, al, forceRefresh: false);
-                              }
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          controller: _albumsScrollCtrl,
+                          itemCount: pageAlbums.length,
+                          itemBuilder: (_, i) {
+                            final al = pageAlbums[i];
+                            final key = _k(artistName, al.title);
 
-                              final hasOffers = rgid.isNotEmpty && _offersByReleaseGroup.containsKey(rgid);
-                              final offers = rgid.isEmpty ? null : _offersByReleaseGroup[rgid];
-                              String? priceLabel;
-                              if (!priceEnabled) {
-                                priceLabel = null;
-                              } else if (!hasOffers) {
-                                priceLabel = '€ …';
-                              } else {
-                                final l = _priceLabelForOffers(offers ?? const []);
-                                priceLabel = l.isEmpty ? null : l;
-                              }
+                            // Hidratación en lote se dispara una vez por página visible.
+                            final exists = _exists[key] == true;
+                            final fav = _fav[key] == true;
+                            final inWish = _wish[key] == true;
+                            final busy = _busy[key] == true;
 
-                              Widget actionItem({
-                                required IconData icon,
-                                required String label,
-                                required VoidCallback? onTap,
-                                required bool disabled,
-                                required String tooltip,
-                                bool active = false,
-                              }) {
-                                final color = disabled
-                                    ? Theme.of(context).colorScheme.onSurfaceVariant
-                                    : (active ? Theme.of(context).colorScheme.primary : null);
-                                return Tooltip(
-                                  message: tooltip,
-                                  child: InkWell(
-                                    onTap: disabled ? null : onTap,
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(icon, color: color),
-                                          SizedBox(height: 2),
-                                          Text(
-                                            label,
-                                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
-                                          ),
-                                        ],
-                                      ),
+                            final addDisabled = exists || busy;
+                            final wishDisabled = exists || inWish || busy;
+                            final favDisabled = (!exists) || busy;
+
+                            // iconos: contorno blanco + relleno gris cuando activo
+                            IconData addIcon = Icons.format_list_bulleted;
+                            IconData favIcon = fav ? Icons.star : Icons.star_border;
+                            IconData wishIcon = inWish ? Icons.shopping_cart : Icons.shopping_cart_outlined;
+
+                            // 💶 Precios (lazy): se activan por álbum (icono € en cada card)
+                            final rgid = al.releaseGroupId.trim();
+                            final priceEnabled = rgid.isNotEmpty && (_priceEnabledByReleaseGroup[rgid] ?? false);
+                            final priceDisabled = rgid.isEmpty || artistName.trim().isEmpty;
+                            if (priceEnabled) {
+                              // Dispara carga (sin bloquear UI) si aún no está en cache.
+                              _fetchOffersForAlbum(artistName, al, forceRefresh: false);
+                            }
+
+                            final hasOffers = rgid.isNotEmpty && _offersByReleaseGroup.containsKey(rgid);
+                            final offers = rgid.isEmpty ? null : _offersByReleaseGroup[rgid];
+                            String? priceLabel;
+                            if (!priceEnabled) {
+                              priceLabel = null;
+                            } else if (!hasOffers) {
+                              priceLabel = '€ …';
+                            } else {
+                              final l = _priceLabelForOffers(offers ?? const []);
+                              priceLabel = l.isEmpty ? null : l;
+                            }
+
+                            Widget actionItem({
+                              required IconData icon,
+                              required String label,
+                              required VoidCallback? onTap,
+                              required bool disabled,
+                              required String tooltip,
+                              bool active = false,
+                            }) {
+                              final color = disabled
+                                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                                  : (active ? Theme.of(context).colorScheme.primary : null);
+                              return Tooltip(
+                                message: tooltip,
+                                child: InkWell(
+                                  onTap: disabled ? null : onTap,
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(icon, color: color),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          label,
+                                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                );
-                              }
+                                ),
+                              );
+                            }
 
-                                        return Card(
-                                          child: Column(
-                                            children: [
-                                    ListTile(
-                                      leading: AppCoverImage(
-                                        pathOrUrl: al.cover250,
-                                        width: 56,
-                                        height: 56,
-                                        fit: BoxFit.cover,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      title: Text(
-                                        al.title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      subtitle: Row(
-                                        children: [
-                                          Expanded(
+                            return Card(
+                              child: Column(
+                                children: [
+                                  ListTile(
+                                    leading: AppCoverImage(
+                                      pathOrUrl: al.cover250,
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.cover,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    title: Text(
+                                      al.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            AppStrings.labeled(context, 'Año', ((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (priceLabel != null)
+                                          InkWell(
+                                            onTap: (offers != null && offers!.isNotEmpty && !busy)
+                                                ? () => _showPriceSources(context, offers!)
+                                                : null,
                                             child: Text(
-                                              AppStrings.labeled(context, 'Año', ((al.year ?? '').trim().isEmpty) ? '—' : (al.year ?? '')),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
+                                              priceLabel,
+                                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                                    decoration: (offers != null && offers!.isNotEmpty && !busy) ? TextDecoration.underline : null,
+                                                  ),
                                             ),
                                           ),
-                                          if (priceLabel != null)
-                                            InkWell(
-                                              onTap: (offers != null && offers!.isNotEmpty && !(busy))
-                                                  ? () => _showPriceSources(context, offers!)
-                                                  : null,
-                                              child: Text(
-                                                priceLabel,
-                                                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                                      decoration: (offers != null && offers!.isNotEmpty && !(busy))
-                                                          ? TextDecoration.underline
-                                                          : null,
-                                                    ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      onTap: () {
-                                        _openAlbum(context, artistName, al);
-                                      },
+                                      ],
                                     ),
-                                    Divider(height: 1),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                                      child: Row(
-                                        children: [
-                                          // 🇨🇱 País del artista (misma línea inferior izquierda)
-                                          Expanded(
-                                            child: Builder(
-                                              builder: (_) {
-                                                final c = (pickedArtist?.country ?? '').trim();
-                                                if (c.isEmpty) return const SizedBox.shrink();
-                                                return Text(
-                                                  AppStrings.labeled(context, 'País', c),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                      ),
+                                    onTap: () {
+                                      _openAlbum(context, artistName, al);
+                                    },
+                                  ),
+                                  const Divider(height: 1),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Row(
+                                      children: [
+                                        // 🇨🇱 País del artista (misma línea inferior izquierda)
+                                        Expanded(
+                                          child: Builder(
+                                            builder: (_) {
+                                              final c = (pickedArtist?.country ?? '').trim();
+                                              if (c.isEmpty) return const SizedBox.shrink();
+                                              return Text(
+                                                AppStrings.labeled(context, 'País', c),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                    ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            actionItem(
+                                              icon: addIcon,
+                                              label: context.tr('Lista'),
+                                              tooltip: addDisabled ? context.tr('Ya está en tu lista') : context.tr('Agregar a tu lista'),
+                                              disabled: addDisabled,
+                                              onTap: () async {
+                                                _dismissKeyboard();
+                                                final opts = await _askConditionAndFormat(artistName: artistName);
+                                                if (!mounted || opts == null) return;
+                                                await _addAlbumOptimistic(
+                                                  artistName: artistName,
+                                                  album: al,
+                                                  condition: opts['condition'] ?? 'VG+',
+                                                  format: opts['format'] ?? 'LP',
                                                 );
                                               },
                                             ),
-                                          ),
-
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              actionItem(
-                                                icon: addIcon,
-                                                label: context.tr('Lista'),
-                                                tooltip: addDisabled ? context.tr('Ya está en tu lista') : context.tr('Agregar a tu lista'),
-                                                disabled: addDisabled,
-                                                onTap: () async {
-                                                  _dismissKeyboard();
-                                                  final opts = await _askConditionAndFormat(artistName: artistName);
-                                                  if (!mounted || opts == null) return;
-                                                  await _addAlbumOptimistic(
-                                                    artistName: artistName,
-                                                    album: al,
-                                                    condition: opts['condition'] ?? 'VG+',
-                                                    format: opts['format'] ?? 'LP',
-                                                  );
-                                                },
-                                              ),
-                                              actionItem(
-                                                icon: favIcon,
-                                                label: context.tr('Fav'),
-                                                tooltip: favDisabled
-                                                    ? (exists ? context.tr('Cargando...') : context.tr('Primero agrega a tu lista'))
-                                                    : (fav ? context.tr('Quitar favorito') : context.tr('Marcar favorito')),
-                                                disabled: favDisabled,
-                                                onTap: () => _toggleFavorite(artistName, al),
-                                              ),
-                                              actionItem(
-                                                icon: wishIcon,
-                                                label: context.tr('Deseos'),
-                                                tooltip: wishDisabled ? context.tr('No disponible') : context.tr('Agregar a deseos'),
-                                                disabled: wishDisabled,
-                                                onTap: () async {
-                                                  final st = await _askWishlistStatus();
-                                                  if (!mounted || st == null) return;
-                                                  await _addWishlist(artistName, al, st);
-                                                },
-                                              ),
-                                              actionItem(
-                                                icon: Icons.euro_symbol,
-                                                label: '€',
-                                                tooltip: priceEnabled ? context.tr('Actualizar precios') : context.tr('Buscar precios'),
-                                                disabled: priceDisabled,
-                                                active: priceEnabled && (offers != null && offers.isNotEmpty),
-                                                onTap: () => _onEuroPressed(
-                                                  artistName,
-                                                  al,
-                                                  forceRefresh: true,
-                                                ),
-                                              ),
-                                              if (busy)
-                                                Padding(
-                                                  padding: EdgeInsets.only(left: 8),
-                                                  child: SizedBox(
-                                                    width: 16,
-                                                    height: 16,
-                                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  if (pickedArtist != null && artistResults.isEmpty && _mbHasMore && !albumFilterActive && !songFilterActive)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 6, bottom: 4),
-                                      child: Row(
-                                        children: [
-                                          TextButton.icon(
-                                            onPressed: _mbLoadingMore ? null : _loadMoreDiscographyPage,
-                                            icon: const Icon(Icons.download),
-                                            label: Text(
-                                              _mbLoadingMore
-                                                  ? context.tr('Cargando...')
-                                                  : '${context.tr('Cargar más')} (+$_mbLimit)',
+                                            actionItem(
+                                              icon: favIcon,
+                                              label: context.tr('Fav'),
+                                              tooltip: favDisabled
+                                                  ? (exists ? context.tr('Cargando...') : context.tr('Primero agrega a tu lista'))
+                                                  : (fav ? context.tr('Quitar favorito') : context.tr('Marcar favorito')),
+                                              disabled: favDisabled,
+                                              onTap: () => _toggleFavorite(artistName, al),
                                             ),
-                                          ),
-                                          const Spacer(),
-                                          Text(
-                                            '${albums.length} ${context.tr('álbumes')}',
-                                            style: Theme.of(context).textTheme.labelSmall,
-                                          ),
-                                        ],
-                                      ),
+                                            actionItem(
+                                              icon: wishIcon,
+                                              label: context.tr('Deseos'),
+                                              tooltip: wishDisabled ? context.tr('No disponible') : context.tr('Agregar a deseos'),
+                                              disabled: wishDisabled,
+                                              onTap: () async {
+                                                final st = await _askWishlistStatus();
+                                                if (!mounted || st == null) return;
+                                                await _addWishlist(artistName, al, st);
+                                              },
+                                            ),
+                                            actionItem(
+                                              icon: Icons.euro_symbol,
+                                              label: '€',
+                                              tooltip: priceEnabled ? context.tr('Actualizar precios') : context.tr('Buscar precios'),
+                                              disabled: priceDisabled,
+                                              active: priceEnabled && (offers != null && offers.isNotEmpty),
+                                              onTap: () => _onEuroPressed(
+                                                artistName,
+                                                al,
+                                                forceRefresh: true,
+                                              ),
+                                            ),
+                                            if (busy)
+                                              const Padding(
+                                                padding: EdgeInsets.only(left: 8),
+                                                child: SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
-                                  AppPager(
-                                    page: page,
-                                    totalPages: totalPages,
-                                    onPrev: () => _changeAlbumPage((page - 1).clamp(1, totalPages)),
-                                    onNext: () => _changeAlbumPage((page + 1).clamp(1, totalPages)),
                                   ),
                                 ],
-                              ))),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      if (pickedArtist != null && artistResults.isEmpty && _mbHasMore && !albumFilterActive && !songFilterActive)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6, bottom: 4),
+                          child: Row(
+                            children: [
+                              TextButton.icon(
+                                onPressed: _mbLoadingMore ? null : _loadMoreDiscographyPage,
+                                icon: const Icon(Icons.download),
+                                label: Text(
+                                  _mbLoadingMore ? context.tr('Cargando...') : '${context.tr('Cargar más')} (+$_mbLimit)',
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${albums.length} ${context.tr('álbumes')}',
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      AppPager(
+                        page: page,
+                        totalPages: totalPages,
+                        onPrev: () => _changeAlbumPage((page - 1).clamp(1, totalPages)),
+                        onNext: () => _changeAlbumPage((page + 1).clamp(1, totalPages)),
+                      ),
+                    ],
+                  );
+                },
               ),
+            ),
           ],
         ),
       ),
