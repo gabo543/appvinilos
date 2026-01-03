@@ -109,6 +109,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   final TextEditingController artistCtrl = TextEditingController();
   final FocusNode _artistFocus = FocusNode();
+  final ScrollController _artistScrollCtrl = ScrollController();
   Timer? _debounce;
 
   // 💿 Buscador por álbum (filtra la lista de álbumes)
@@ -545,6 +546,65 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     return out;
   }
 
+
+  Widget _highlightArtistName(BuildContext context, String name, String query) {
+    final q = query.trim();
+    final baseStyle = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+    if (q.isEmpty) {
+      return Text(name, maxLines: 1, overflow: TextOverflow.ellipsis);
+    }
+
+    final nameLower = name.toLowerCase();
+    final tokens = q
+        .split(RegExp(r'\s+'))
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (tokens.isEmpty) {
+      return Text(name, maxLines: 1, overflow: TextOverflow.ellipsis);
+    }
+
+    final hiStyle = baseStyle.copyWith(
+      fontWeight: FontWeight.w700,
+      color: Theme.of(context).colorScheme.primary,
+    );
+
+    int i = 0;
+    final spans = <TextSpan>[];
+    while (i < name.length) {
+      int nextPos = -1;
+      int nextLen = 0;
+
+      for (final t in tokens) {
+        final tLower = t.toLowerCase();
+        final p = nameLower.indexOf(tLower, i);
+        if (p >= 0 && (nextPos == -1 || p < nextPos)) {
+          nextPos = p;
+          nextLen = t.length;
+        }
+      }
+
+      if (nextPos == -1) {
+        spans.add(TextSpan(text: name.substring(i)));
+        break;
+      }
+
+      if (nextPos > i) {
+        spans.add(TextSpan(text: name.substring(i, nextPos)));
+      }
+
+      final end = (nextPos + nextLen).clamp(0, name.length);
+      spans.add(TextSpan(text: name.substring(nextPos, end), style: hiStyle));
+      i = end;
+    }
+
+    return RichText(
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      text: TextSpan(style: baseStyle, children: spans),
+    );
+  }
+
   bool _shouldAutoPick(String qNorm, List<ArtistHit> hits) {
     if (qNorm.length < 4) return false;
     if (hits.isEmpty) return false;
@@ -612,6 +672,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     _artistFocus.dispose();
     _albumFocus.dispose();
     _songFocus.dispose();
+    _artistScrollCtrl.dispose();
     _albumsScrollCtrl.dispose();
     super.dispose();
   }
@@ -1929,43 +1990,97 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
             if (showArtistSuggestions) ...[
               const SizedBox(height: 8),
               Material(
-                elevation: 2,
-                borderRadius: BorderRadius.circular(12),
+                elevation: 3,
+                borderRadius: BorderRadius.circular(14),
                 clipBehavior: Clip.antiAlias,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: maxArtistListH),
-                  child: ListView.separated(
-                    padding: EdgeInsets.zero,
-                    shrinkWrap: true,
-                    itemCount: artistResults.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final a = artistResults[i];
-                      return ListTile(
-                        dense: true,
-                        title: Text(a.name),
-                        subtitle: Text(
-                          (a.country ?? '').trim().isEmpty
-                              ? '—'
-                              : '${context.tr('País')} ${(a.country ?? '').trim()}',
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_search, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              context.tr('Artistas'),
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                          Text(
+                            '${artistResults.length}',
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: maxArtistListH),
+                      child: Scrollbar(
+                        controller: _artistScrollCtrl,
+                        child: ListView.separated(
+                          controller: _artistScrollCtrl,
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          itemCount: artistResults.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final a = artistResults[i];
+                            final name = a.name.trim();
+                            final initial = name.isEmpty ? '?' : name.substring(0, 1).toUpperCase();
+                            final c = (a.country ?? '').trim();
+                            return ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                              leading: CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                                child: Text(initial),
+                              ),
+                              title: _highlightArtistName(context, a.name, artistQuery),
+                              subtitle: c.isEmpty
+                                  ? null
+                                  : Text(
+                                      '${context.tr('País')} $c',
+                                      style: Theme.of(context).textTheme.labelSmall,
+                                    ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => _pickArtist(a),
+                            );
+                          },
                         ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _pickArtist(a),
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 10),
             ] else if (showArtistNoResults) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: Text(
-                    context.tr('Sin resultados'),
-                    style: Theme.of(context).textTheme.labelSmall,
+                child: Material(
+                  elevation: 1,
+                  borderRadius: BorderRadius.circular(12),
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.search_off, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          context.tr('Sin resultados'),
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
