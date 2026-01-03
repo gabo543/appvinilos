@@ -1674,18 +1674,36 @@ class DiscographyService {
     }
 
     int yearGroupRank(Map<String, dynamic> r) {
-      // Preferimos releases cuya fecha coincide con el año objetivo.
-      // Si falta fecha, NO los mandamos al final automáticamente; los tratamos
-      // como candidatos tempranos porque en MusicBrainz muchos originales vienen
-      // sin fecha completa.
+      // Preferimos releases cuya fecha se acerque a la "primera edición" real.
+      // Si el release-group trae first-release-date completo (YYYY-MM-DD), le damos
+      // prioridad absoluta a la coincidencia exacta.
       final d = dateStr(r['date']);
-      final y = yearOf(d);
       final hasDate = d.isNotEmpty;
+
+      // targetDate puede venir vacío o solo con año. Si viene completo, úsalo.
+      final targetDate = frd; // usa first-release-date del release-group (string)
+      final hasTargetDate = targetDate.length >= 10; // YYYY-MM-DD
+      final y = yearOf(d);
+
+      if (hasTargetDate) {
+        if (hasDate && d == targetDate) return 0;           // exact match
+        if (hasDate && targetYear > 0 && y == targetYear) return 1; // mismo año, distinta fecha
+        if (!hasDate) return 2;                              // sin fecha
+        return 3;                                            // otro año
+      }
+
+      // Si solo hay año objetivo:
       if (targetYear > 0) {
         if (hasDate && y == targetYear) return 0;
         if (!hasDate) return 1;
-        return 2; // otros años
+        return 2;
       }
+
+      // Sin target: preferimos que tenga fecha (pero permitimos sin fecha).
+      if (!hasDate) return 1;
+      return 0;
+    }
+
       if (!hasDate) return 1;
       return 0;
     }
@@ -1779,12 +1797,12 @@ class DiscographyService {
         better = yr < bestScoreYr;
       } else if (bp != bestScoreBp) {
         better = bp < bestScoreBp;
-      } else if (vr != bestVinylRank) {
-        // Preferimos vinilo como referencia de tracklist (más alineado al uso de la app).
-        better = vr < bestVinylRank;
       } else if (tc != bestTrackCount) {
-        // Preferimos menos tracks para evitar bonus tracks.
+        // Preferimos menos tracks para evitar bonus tracks (más importante que el formato).
         better = tc < bestTrackCount;
+      } else if (vr != bestVinylRank) {
+        // Entre tracklists equivalentes, preferimos vinilo como referencia.
+        better = vr < bestVinylRank;
       } else {
         // fecha más antigua (si existe)
         final dd = d.isEmpty ? '9999-99-99' : d;

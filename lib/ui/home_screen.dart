@@ -11,7 +11,7 @@ import '../services/add_defaults_service.dart';
 import '../services/backup_service.dart';
 import '../services/view_mode_service.dart';
 import '../services/app_theme_service.dart';
-import 'discography_screen.dart';
+import 'discography_artist_picker_screen.dart';
 import 'similar_artists_screen.dart';
 import 'scanner_screen.dart';
 import 'settings_screen.dart';
@@ -1980,7 +1980,7 @@ Future<void> _loadViewMode() async {
     final wish = _homeCounts['wish'] ?? 0;
 
     void openDiscografias() {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => DiscographyScreen())).then((_) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyArtistPickerScreen())).then((_) {
         if (!mounted) return;
         _reloadAllData();
       });
@@ -2043,7 +2043,7 @@ Future<void> _loadViewMode() async {
               subtitle: 'Agrega tu primer vinilo para empezar tu colección.',
               actionText: 'Ir a Discografías',
               onAction: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => DiscographyScreen())).then((_) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscographyArtistPickerScreen())).then((_) {
                   if (!mounted) return;
                   _reloadAllData();
                 });
