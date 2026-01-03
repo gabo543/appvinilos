@@ -1754,10 +1754,6 @@ class DiscographyService {
       return 0;
     }
 
-      if (!hasDate) return 1;
-      return 0;
-    }
-
     final rels = <Map<String, dynamic>>[];
     for (final r in releases) {
       if (r is! Map) continue;
