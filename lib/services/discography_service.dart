@@ -5,6 +5,56 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/normalize.dart';
 
+// -----------------------------------------------------------------------------
+// Compat layer (build-fix):
+// En algunos merges, partes del filtro de canciones quedaron como helpers fuera de
+// DiscographyService. Estos símbolos a nivel de librería garantizan que compile
+// en release, sin afectar el comportamiento cuando se usan los miembros estáticos
+// dentro de DiscographyService.
+// -----------------------------------------------------------------------------
+const String _mbBase = 'https://musicbrainz.org/ws/2';
+
+DateTime _mbLastCall = DateTime.fromMillisecondsSinceEpoch(0);
+
+final Map<String, _CacheEntry<bool>> _rgHasArtistCache = {};
+
+Map<String, String> _headers() => const {
+      'User-Agent': 'GaBoLP/1.0 (contact: gabo.hachim@gmail.com)',
+      'Accept': 'application/json',
+    };
+
+Future<void> _throttle() async {
+  final now = DateTime.now();
+  final diff = now.difference(_mbLastCall);
+  if (diff.inMilliseconds < 1100) {
+    await Future.delayed(Duration(milliseconds: 1100 - diff.inMilliseconds));
+  }
+  _mbLastCall = DateTime.now();
+}
+
+bool _isRetryableStatus(int statusCode) =>
+    statusCode == 429 || (statusCode >= 500 && statusCode <= 599);
+
+Future<http.Response> _get(Uri url, {int retries = 2}) async {
+  http.Response? last;
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    await _throttle();
+    try {
+      final res = await http
+          .get(url, headers: _headers())
+          .timeout(const Duration(seconds: 15));
+      last = res;
+      if (res.statusCode == 200) return res;
+      if (!_isRetryableStatus(res.statusCode)) return res;
+    } catch (_) {
+      // retry
+    }
+  }
+  return last ??
+      http.Response('{"error":"network"}', 599, request: http.Request('GET', url));
+}
+
+
 class ArtistHit {
   final String id;
   final String name;
@@ -1889,7 +1939,25 @@ class DiscographyService {
   ///
   /// Se usa para el autocompletado de canciones: el usuario escribe "forget" y
   /// el dropdown muestra el título completo + los álbumes donde realmente aparece.
+  
+  /// Devuelve álbumes (release-groups) donde aparece un recording,
+  /// validando que la canción esté en el tracklist de la **primera edición**.
+  ///
+  /// API pública usada por la UI.
   static Future<List<AlbumItem>> albumsForRecordingFirstEditionVerified({
+    required String artistId,
+    required String recordingId,
+    required String songTitle,
+    int maxAlbums = 8,
+  }) =>
+      _albumsForRecordingFirstEditionVerifiedImpl(
+        artistId: artistId,
+        recordingId: recordingId,
+        songTitle: songTitle,
+        maxAlbums: maxAlbums,
+      );
+
+static Future<List<AlbumItem>> _albumsForRecordingFirstEditionVerifiedImpl({
     required String artistId,
     required String recordingId,
     required String songTitle,
