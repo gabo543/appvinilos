@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../db/vinyl_db.dart';
+import '../utils/normalize.dart';
 import 'app_theme_service.dart';
 import 'view_mode_service.dart';
 
@@ -26,6 +27,7 @@ class BackupPreview {
   final int vinyls;
   final int wishlist;
   final int trash;
+  final int likedTracks;
   final bool hasPrefs;
 
   const BackupPreview({
@@ -36,6 +38,7 @@ class BackupPreview {
     required this.vinyls,
     required this.wishlist,
     required this.trash,
+    required this.likedTracks,
     required this.hasPrefs,
   });
 
@@ -48,6 +51,7 @@ class BackupPreview {
     parts.add('Vinilos: $vinyls');
     if (wishlist > 0) parts.add('Wishlist: $wishlist');
     if (trash > 0) parts.add('Papelera: $trash');
+    if (likedTracks > 0) parts.add('Canciones: $likedTracks');
     if (hasPrefs) parts.add('Incluye ajustes');
     return parts.join(' • ');
   }
@@ -63,6 +67,7 @@ class BackupPreview {
         vinyls: decoded.length,
         wishlist: 0,
         trash: 0,
+        likedTracks: 0,
         hasPrefs: false,
       );
     }
@@ -91,6 +96,11 @@ class BackupPreview {
       final vinyls = (m['vinyls'] is List) ? (m['vinyls'] as List).length : (m['payload'] is Map && (m['payload'] as Map)['vinyls'] is List) ? ((m['payload'] as Map)['vinyls'] as List).length : 0;
       final wishlist = (m['wishlist'] is List) ? (m['wishlist'] as List).length : (m['payload'] is Map && (m['payload'] as Map)['wishlist'] is List) ? ((m['payload'] as Map)['wishlist'] as List).length : 0;
       final trash = (m['trash'] is List) ? (m['trash'] as List).length : (m['payload'] is Map && (m['payload'] as Map)['trash'] is List) ? ((m['payload'] as Map)['trash'] as List).length : 0;
+      final likedTracks = (m['likedTracks'] is List)
+          ? (m['likedTracks'] as List).length
+          : (m['payload'] is Map && (m['payload'] as Map)['likedTracks'] is List)
+              ? ((m['payload'] as Map)['likedTracks'] as List).length
+              : 0;
 
       final hasPrefs = (m['prefs'] is Map) || (m['payload'] is Map && (m['payload'] as Map)['prefs'] is Map);
 
@@ -102,6 +112,7 @@ class BackupPreview {
         vinyls: vinyls,
         wishlist: wishlist,
         trash: trash,
+        likedTracks: likedTracks,
         hasPrefs: hasPrefs,
       );
     }
@@ -114,6 +125,7 @@ class BackupPreview {
       vinyls: 0,
       wishlist: 0,
       trash: 0,
+      likedTracks: 0,
       hasPrefs: false,
     );
   }
@@ -135,6 +147,11 @@ class BackupImportResult {
   int skippedTrash = 0;
   int invalidTrash = 0;
 
+  int insertedLikedTracks = 0;
+  int updatedLikedTracks = 0;
+  int skippedLikedTracks = 0;
+  int invalidLikedTracks = 0;
+
   bool prefsApplied = false;
 
   String summary() {
@@ -154,6 +171,8 @@ class BackupImportResult {
         line('Wishlist', insertedWishlist, updatedWishlist, skippedWishlist, invalidWishlist),
       if (insertedTrash + updatedTrash + skippedTrash + invalidTrash > 0)
         line('Papelera', insertedTrash, updatedTrash, skippedTrash, invalidTrash),
+      if (insertedLikedTracks + updatedLikedTracks + skippedLikedTracks + invalidLikedTracks > 0)
+        line('Canciones', insertedLikedTracks, updatedLikedTracks, skippedLikedTracks, invalidLikedTracks),
       if (prefsApplied) 'Ajustes: importados',
     ];
     return s.join(' • ');
@@ -172,7 +191,7 @@ class BackupService {
   static const int _kKeep = 10;
 
   // Formato del backup (independiente de la versión de la DB)
-  static const int _schemaVersion = 2;
+  static const int _schemaVersion = 3; // ✅ v3: incluye liked_tracks
 
   static Future<bool> isAutoEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -356,6 +375,7 @@ class BackupService {
     final vinyls = await VinylDb.instance.getAll();
     final wishlist = await VinylDb.instance.getWishlist();
     final trash = await VinylDb.instance.getTrash();
+    final likedTracks = await db.query('liked_tracks');
 
     // prefs relevantes
     final prefs = await SharedPreferences.getInstance();
@@ -398,11 +418,13 @@ class BackupService {
         'vinyls': normVinyls.length,
         'wishlist': wishlist.length,
         'trash': trash.length,
+        'likedTracks': likedTracks.length,
       },
       'prefs': prefsOut..removeWhere((k, v) => v == null),
       'vinyls': normVinyls,
       'wishlist': wishlist,
       'trash': trash,
+      'likedTracks': likedTracks,
     };
   }
 
@@ -609,6 +631,43 @@ class BackupService {
     return out;
   }
 
+  static Map<String, dynamic>? _normLikedTrack(dynamic raw) {
+    final m = _asMap(raw);
+    if (m == null) return null;
+
+    final artista = _trim(m['artista']);
+    final album = _trim(m['album']);
+    final releaseGroupId = _trim(m['releaseGroupId']);
+    final trackTitle = _trim(m['trackTitle']);
+
+    if (artista.isEmpty || album.isEmpty || releaseGroupId.isEmpty || trackTitle.isEmpty) return null;
+
+    final artistKeyIn = _trim(m['artistKey']);
+    final artistKey = artistKeyIn.isNotEmpty ? artistKeyIn : _makeArtistKey(artista);
+
+    final trackKeyIn = _trim(m['trackKey']);
+    final trackKey = trackKeyIn.isNotEmpty ? trackKeyIn : normalizeKey(trackTitle);
+
+    final createdAt = _asInt(m['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch) ?? DateTime.now().millisecondsSinceEpoch;
+
+    final out = <String, dynamic>{
+      'artistKey': artistKey,
+      'artista': artista,
+      'album': album,
+      'year': m['year']?.toString().trim(),
+      'releaseGroupId': releaseGroupId,
+      'cover250': m['cover250']?.toString().trim(),
+      'cover500': m['cover500']?.toString().trim(),
+      'trackTitle': trackTitle,
+      'trackKey': trackKey,
+      'trackNo': _asInt(m['trackNo'], fallback: null),
+      'createdAt': createdAt,
+    };
+
+    out.removeWhere((k, v) => v == null || (v is String && v.trim().isEmpty));
+    return out;
+  }
+
   static Future<void> _applyPrefs(Map<String, dynamic> prefsIn) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -673,6 +732,7 @@ class BackupService {
     List vinylsRaw = [];
     List wishRaw = [];
     List trashRaw = [];
+    List likedRaw = [];
     Map<String, dynamic> prefsIn = {};
 
     if (decoded is List) {
@@ -683,12 +743,14 @@ class BackupService {
         vinylsRaw = _asList(payload['vinyls']);
         wishRaw = _asList(payload['wishlist']);
         trashRaw = _asList(payload['trash']);
+        likedRaw = _asList(payload['likedTracks']);
         final pmap = _asMap(payload['prefs']);
         if (pmap != null) prefsIn = pmap;
       } else {
         vinylsRaw = _asList(m['vinyls']);
         wishRaw = _asList(m['wishlist']);
         trashRaw = _asList(m['trash']);
+        likedRaw = _asList(m['likedTracks']);
         final pmap = _asMap(m['prefs']);
         if (pmap != null) prefsIn = pmap;
       }
@@ -699,21 +761,24 @@ class BackupService {
       }
     }
 
-    if (vinylsRaw.isEmpty && wishRaw.isEmpty && trashRaw.isEmpty) {
-      throw Exception('El archivo no tiene datos que importar (vinyls/wishlist/trash).');
+    if (vinylsRaw.isEmpty && wishRaw.isEmpty && trashRaw.isEmpty && likedRaw.isEmpty) {
+      throw Exception('El archivo no tiene datos que importar (vinyls/wishlist/trash/canciones).');
     }
 
     final vinyls = <Map<String, dynamic>>[];
     final wishlist = <Map<String, dynamic>>[];
     final trash = <Map<String, dynamic>>[];
+    final likedTracks = <Map<String, dynamic>>[];
 
     final result = BackupImportResult();
 
     final seenVinyl = <String>{};
     final seenWish = <String>{};
     final seenTrash = <String>{};
+    final seenLiked = <String>{};
 
     String _k(String artista, String album) => '${artista.trim().toLowerCase()}|${album.trim().toLowerCase()}';
+    String _lk(String rg, String tk) => '${rg.trim().toLowerCase()}|${tk.trim().toLowerCase()}';
 
     for (final it in vinylsRaw) {
       final v = _normVinyl(it);
@@ -760,6 +825,21 @@ class BackupService {
       }
     }
 
+    for (final it in likedRaw) {
+      final lt = _normLikedTrack(it);
+      if (lt == null) {
+        result.invalidLikedTracks++;
+      } else {
+        final k = _lk(lt['releaseGroupId'].toString(), lt['trackKey'].toString());
+        if (seenLiked.contains(k)) {
+          result.invalidLikedTracks++;
+        } else {
+          seenLiked.add(k);
+          likedTracks.add(lt);
+        }
+      }
+    }
+
     final db = await VinylDb.instance.db;
 
     await db.transaction((txn) async {
@@ -768,6 +848,7 @@ class BackupService {
         await txn.delete('vinyls');
         await txn.delete('wishlist');
         await txn.delete('trash');
+        try { await txn.delete('liked_tracks'); } catch (_) {}
         try { await txn.delete('artist_orders'); } catch (_) {}
 
         // numeración estable
@@ -880,6 +961,27 @@ class BackupService {
             conflictAlgorithm: ConflictAlgorithm.abort,
           );
           result.insertedTrash++;
+        }
+
+        for (final lt in likedTracks) {
+          await txn.insert(
+            'liked_tracks',
+            {
+              'artistKey': _trim(lt['artistKey']),
+              'artista': _trim(lt['artista']),
+              'album': _trim(lt['album']),
+              'year': lt['year']?.toString().trim(),
+              'releaseGroupId': _trim(lt['releaseGroupId']),
+              'cover250': lt['cover250']?.toString().trim(),
+              'cover500': lt['cover500']?.toString().trim(),
+              'trackTitle': _trim(lt['trackTitle']),
+              'trackKey': _trim(lt['trackKey']),
+              'trackNo': _asInt(lt['trackNo'], fallback: null),
+              'createdAt': _asInt(lt['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch),
+            }..removeWhere((k, val) => val == null || (val is String && val.trim().isEmpty)),
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+          result.insertedLikedTracks++;
         }
 
         return;
@@ -1163,6 +1265,82 @@ class BackupService {
             conflictAlgorithm: ConflictAlgorithm.abort,
           );
           result.insertedTrash++;
+        }
+      }
+
+      // LIKED TRACKS (canciones favoritas)
+      for (final lt in likedTracks) {
+        final rg = _trim(lt['releaseGroupId']);
+        final tk = _trim(lt['trackKey']);
+        if (rg.isEmpty || tk.isEmpty) {
+          result.invalidLikedTracks++;
+          continue;
+        }
+
+        final rows = await txn.query(
+          'liked_tracks',
+          where: 'releaseGroupId = ? AND trackKey = ?',
+          whereArgs: [rg, tk],
+          limit: 1,
+        );
+
+        String? chooseStr(String? incoming, dynamic cur) {
+          final a = incoming?.trim() ?? '';
+          if (a.isNotEmpty) return a;
+          final b = cur?.toString().trim() ?? '';
+          return b.isEmpty ? null : b;
+        }
+
+        if (rows.isNotEmpty) {
+          if (mode == BackupImportMode.onlyMissing) {
+            result.skippedLikedTracks++;
+            continue;
+          }
+
+          final existing = rows.first;
+          final existingAt = _asInt(existing['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch) ?? DateTime.now().millisecondsSinceEpoch;
+          final incomingAt = _asInt(lt['createdAt'], fallback: existingAt) ?? existingAt;
+          final keepAt = (incomingAt < existingAt) ? incomingAt : existingAt;
+
+          final update = <String, dynamic>{
+            'artistKey': chooseStr(lt['artistKey']?.toString(), existing['artistKey']),
+            'artista': chooseStr(lt['artista']?.toString(), existing['artista']),
+            'album': chooseStr(lt['album']?.toString(), existing['album']),
+            'year': chooseStr(lt['year']?.toString(), existing['year']),
+            'cover250': chooseStr(lt['cover250']?.toString(), existing['cover250']),
+            'cover500': chooseStr(lt['cover500']?.toString(), existing['cover500']),
+            'trackTitle': chooseStr(lt['trackTitle']?.toString(), existing['trackTitle']),
+            'trackNo': _asInt(lt['trackNo'], fallback: _asInt(existing['trackNo'], fallback: null)),
+            'createdAt': keepAt,
+          }..removeWhere((k, val) => val == null || (val is String && val.trim().isEmpty));
+
+          // releaseGroupId + trackKey son la llave, no se actualizan.
+          await txn.update(
+            'liked_tracks',
+            update,
+            where: 'id=?',
+            whereArgs: [existing['id']],
+          );
+          result.updatedLikedTracks++;
+        } else {
+          await txn.insert(
+            'liked_tracks',
+            {
+              'artistKey': _trim(lt['artistKey']),
+              'artista': _trim(lt['artista']),
+              'album': _trim(lt['album']),
+              'year': lt['year']?.toString().trim(),
+              'releaseGroupId': rg,
+              'cover250': lt['cover250']?.toString().trim(),
+              'cover500': lt['cover500']?.toString().trim(),
+              'trackTitle': _trim(lt['trackTitle']),
+              'trackKey': tk,
+              'trackNo': _asInt(lt['trackNo'], fallback: null),
+              'createdAt': _asInt(lt['createdAt'], fallback: DateTime.now().millisecondsSinceEpoch),
+            }..removeWhere((k, val) => val == null || (val is String && val.trim().isEmpty)),
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+          result.insertedLikedTracks++;
         }
       }
     });

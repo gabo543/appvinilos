@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/normalize.dart';
+
 class ArtistHit {
   final String id;
   final String name;
@@ -200,6 +202,15 @@ class DiscographyService {
   static const Duration _similarTtl = Duration(hours: 12);
   static final Map<String, _CacheEntry<List<SimilarArtistHit>>> _similarCache = {};
   static final Map<String, _CacheEntry<List<_TagCount>>> _artistTagsCache = {};
+
+  // Cache de tracklists (primera edición) por release-group.
+  // Es caro consultar releases/recordings; esto mantiene el autocompletado
+  // de canciones rápido y consistente.
+  static const Duration _tracksTtl = Duration(hours: 24);
+  static final Map<String, _CacheEntry<List<String>>> _firstEditionTracksCache = {};
+  // Cache simple para validar si un release-group pertenece al artista.
+  // (evita mostrar "various artists" cuando estás en Discografía del artista)
+  static final Map<String, _CacheEntry<bool>> _rgHasArtistCache = {};
 
   static const _luceneSpecial = '+-!(){}[]^"~*?:\\/&|';
 
@@ -533,6 +544,234 @@ class DiscographyService {
     return out;
   }
 
+
+
+  /// ✅ Pro: devuelve álbumes (release-groups) donde aparece una canción.
+  ///
+  /// Esto permite mostrar al tipear la canción una lista de *álbumes* (con año)
+  /// sin depender de que la discografía esté completamente cargada/paginada.
+  ///
+  /// Estrategia (rápida):
+  /// 1) Search de recordings por (título + artista)
+  /// 2) Tomar pocos `recordingId` candidatos
+  /// 3) Lookup de cada recording -> releases -> release-groups (filtra a Album)
+  /// 4) Dedupe y ordena por año
+  static Future<List<AlbumItem>> searchSongAlbums({
+    required String artistId,
+    required String songQuery,
+    int maxAlbums = 25,
+    int recordingSearchLimit = 18,
+    int maxRecordings = 4,
+    String? preferredRecordingId,
+  }) async {
+    final arid = artistId.trim();
+    final q = songQuery.trim();
+    if (arid.isEmpty || q.isEmpty) return <AlbumItem>[];
+
+    String norm(String s) {
+      var out = s.toLowerCase().trim();
+      const rep = {
+        'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a',
+        'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+        'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+        'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o',
+        'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+        'ñ': 'n',
+      };
+      rep.forEach((k, v) => out = out.replaceAll(k, v));
+      out = out.replaceAll(RegExp(r'[^a-z0-9 ]'), ' ');
+      out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
+      return out;
+    }
+
+    // Construye query Lucene (MusicBrainz search)
+    final tokens = q.split(RegExp(r'\s+')).where((t) => t.trim().isNotEmpty).toList();
+    if (tokens.isEmpty) return <AlbumItem>[];
+
+    late final String recPart;
+    if (tokens.length == 1) {
+      final term = _escLucene(tokens.first);
+      recPart = 'recording:${term}*';
+    } else {
+      final phrase = _escLucene(q);
+      final terms = tokens.map(_escLucene).toList();
+      recPart = '(recording:"$phrase" OR recording:(${terms.join(' AND ')}))';
+    }
+
+    final lucene = '$recPart AND arid:$arid';
+    final searchUrl = Uri.parse(
+      '$_mbBase/recording/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$recordingSearchLimit',
+    );
+
+    final res = await _get(searchUrl);
+    if (res.statusCode != 200) return <AlbumItem>[];
+
+    dynamic data;
+    try {
+      data = jsonDecode(res.body);
+    } catch (_) {
+      return <AlbumItem>[];
+    }
+
+    final recs = (data is Map ? (data['recordings'] as List?) : null) ?? const <dynamic>[];
+    if (recs.isEmpty && (preferredRecordingId ?? '').trim().isEmpty) return <AlbumItem>[];
+
+    final want = norm(q);
+    final wantTokens = want.split(' ').where((t) => t.trim().isNotEmpty).toList();
+
+    bool matchesTitle(String titleNorm) {
+      if (wantTokens.isEmpty) return true;
+      if (wantTokens.length == 1) {
+        final w = wantTokens.first;
+        if (w.length <= 1) return true; // con 1 letra, no filtramos fuerte
+        return titleNorm.contains(w);
+      }
+      final strong = wantTokens.where((t) => t.length >= 2).toList();
+      if (strong.isEmpty) return true;
+      return strong.every((t) => titleNorm.contains(t));
+    }
+
+    final candidates = <String>[];
+    final seenRec = <String>{};
+
+    void addRec(String id) {
+      final rid = id.trim();
+      if (rid.isEmpty) return;
+      if (seenRec.contains(rid)) return;
+      seenRec.add(rid);
+      candidates.add(rid);
+    }
+
+    if ((preferredRecordingId ?? '').trim().isNotEmpty) {
+      addRec(preferredRecordingId!.trim());
+    }
+
+    for (final r in recs) {
+      if (r is! Map) continue;
+      final rid = (r['id'] ?? '').toString().trim();
+      final title = (r['title'] ?? '').toString().trim();
+      if (rid.isEmpty || title.isEmpty) continue;
+      final ok = matchesTitle(norm(title));
+      if (!ok && want.length >= 4 && candidates.isNotEmpty) {
+        // Si escribió bastante y ya tenemos uno, evitamos ruido.
+        continue;
+      }
+      addRec(rid);
+      if (candidates.length >= maxRecordings) break;
+    }
+
+    if (candidates.isEmpty) return <AlbumItem>[];
+
+    // Aggregate por release-group
+    final Map<String, Map<String, String?>> agg = {}; // id -> {title, year}
+
+    String? yearFrom(dynamic v) {
+      final s = (v ?? '').toString().trim();
+      if (s.length >= 4) return s.substring(0, 4);
+      return null;
+    }
+
+    for (final rid in candidates) {
+      final lookupUrl = Uri.parse('$_mbBase/recording/$rid?inc=releases+release-groups&fmt=json');
+      final rr = await _get(lookupUrl);
+      if (rr.statusCode != 200) continue;
+
+      dynamic d;
+      try {
+        d = jsonDecode(rr.body);
+      } catch (_) {
+        continue;
+      }
+
+      final releases = (d is Map ? (d['releases'] as List?) : null) ?? const <dynamic>[];
+      for (final rel in releases) {
+        if (rel is! Map) continue;
+        final rg = rel['release-group'];
+
+        if (rg is Map) {
+          final id = (rg['id'] ?? '').toString().trim();
+          if (id.isEmpty) continue;
+          final pt = (rg['primary-type'] ?? '').toString().trim();
+          if (pt.isNotEmpty && pt.toLowerCase() != 'album') continue;
+
+          final title = (rg['title'] ?? '').toString().trim();
+          // MusicBrainz suele incluir first-release-date en release-group.
+          final y = yearFrom(rg['first-release-date']) ?? yearFrom(rel['date']);
+
+          final cur = agg[id] ?? <String, String?>{'title': null, 'year': null};
+          if ((cur['title'] ?? '').trim().isEmpty && title.isNotEmpty) cur['title'] = title;
+          // Si hay múltiples años, nos quedamos con el más antiguo.
+          final curY = int.tryParse(cur['year'] ?? '') ?? 9999;
+          final newY = int.tryParse(y ?? '') ?? 9999;
+          if (newY < curY) cur['year'] = y;
+          agg[id] = cur;
+        } else if (rg is String) {
+          final id = rg.trim();
+          if (id.isEmpty) continue;
+          final cur = agg[id] ?? <String, String?>{'title': null, 'year': null};
+          final y = yearFrom(rel['date']);
+          final curY = int.tryParse(cur['year'] ?? '') ?? 9999;
+          final newY = int.tryParse(y ?? '') ?? 9999;
+          if (newY < curY) cur['year'] = y;
+          agg[id] = cur;
+        }
+      }
+
+      if (agg.length >= maxAlbums) break;
+    }
+
+    if (agg.isEmpty) return <AlbumItem>[];
+
+    // Si falta título en algunos, hacemos lookups puntuales (capados).
+    final missingTitle = agg.entries.where((e) => (e.value['title'] ?? '').trim().isEmpty).map((e) => e.key).toList();
+    for (final id in missingTitle.take(6)) {
+      try {
+        final u = Uri.parse('$_mbBase/release-group/$id?fmt=json');
+        final r = await _get(u);
+        if (r.statusCode != 200) continue;
+        final j = jsonDecode(r.body);
+        if (j is! Map) continue;
+        final title = (j['title'] ?? '').toString().trim();
+        final y = yearFrom(j['first-release-date']);
+        final cur = agg[id] ?? <String, String?>{'title': null, 'year': null};
+        if ((cur['title'] ?? '').trim().isEmpty && title.isNotEmpty) cur['title'] = title;
+        final curY = int.tryParse(cur['year'] ?? '') ?? 9999;
+        final newY = int.tryParse(y ?? '') ?? 9999;
+        if (newY < curY) cur['year'] = y;
+        agg[id] = cur;
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    final out = <AlbumItem>[];
+    for (final e in agg.entries) {
+      final id = e.key;
+      final title = (e.value['title'] ?? '').toString().trim();
+      if (title.isEmpty) continue;
+      final year = (e.value['year'] ?? '').toString().trim();
+      out.add(
+        AlbumItem(
+          releaseGroupId: id,
+          title: title,
+          year: year.isEmpty ? null : year,
+          cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+          cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+        ),
+      );
+      if (out.length >= maxAlbums) break;
+    }
+
+    out.sort((a, b) {
+      final ay = int.tryParse(a.year ?? '') ?? 9999;
+      final by = int.tryParse(b.year ?? '') ?? 9999;
+      final c = ay.compareTo(by);
+      if (c != 0) return c;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+
+    return out;
+  }
   /// Resuelve release-groups (preferentemente "Album") para un recording id.
   ///
   /// Esto es más preciso que buscar por texto cuando el usuario selecciona
@@ -1356,6 +1595,271 @@ class DiscographyService {
     }
 
     return <String>[];
+  }
+
+  // ================================
+  // 🎵 TRACKLIST (PRIMERA EDICIÓN)
+  // ================================
+  /// Devuelve títulos de tracklist usando la **primera edición** (release más
+  /// antigua y oficial) de un release-group.
+  ///
+  /// Esto es clave para el filtro de canciones: evita falsos positivos por
+  /// reediciones/deluxe que agregan bonus tracks.
+  static Future<List<String>> getTrackTitlesFromReleaseGroupFirstEdition(
+    String rgid, {
+    int maxReleaseLookups = 6,
+  }) async {
+    final id = rgid.trim();
+    if (id.isEmpty) return <String>[];
+
+    // Cache con TTL
+    final cached = _firstEditionTracksCache[id];
+    if (cached != null && DateTime.now().difference(cached.ts) < _tracksTtl) {
+      return cached.value;
+    }
+
+    final urlRg = Uri.parse('$_mbBase/release-group/$id?inc=releases&fmt=json');
+    final resRg = await _get(urlRg);
+    if (resRg.statusCode != 200) {
+      _firstEditionTracksCache[id] = _CacheEntry(<String>[], DateTime.now());
+      return <String>[];
+    }
+
+    final data = jsonDecode(resRg.body);
+    final releases = (data is Map ? (data['releases'] as List?) : null) ?? const <dynamic>[];
+    if (releases.isEmpty) {
+      _firstEditionTracksCache[id] = _CacheEntry(<String>[], DateTime.now());
+      return <String>[];
+    }
+
+    // Orden: Official primero, luego por fecha más antigua.
+    int yearOf(dynamic v) {
+      final s = (v ?? '').toString().trim();
+      if (s.length >= 4) return int.tryParse(s.substring(0, 4)) ?? 9999;
+      return 9999;
+    }
+
+    int statusRank(dynamic v) {
+      final s = (v ?? '').toString().trim().toLowerCase();
+      if (s.isEmpty || s == 'official') return 0;
+      // Bootleg/Other -> atrás
+      if (s == 'bootleg') return 3;
+      return 1;
+    }
+
+    final rels = <Map<String, dynamic>>[];
+    for (final r in releases) {
+      if (r is! Map) continue;
+      final rid = (r['id'] ?? '').toString().trim();
+      if (rid.isEmpty) continue;
+      rels.add(Map<String, dynamic>.from(r));
+    }
+    if (rels.isEmpty) {
+      _firstEditionTracksCache[id] = _CacheEntry(<String>[], DateTime.now());
+      return <String>[];
+    }
+
+    rels.sort((a, b) {
+      final sr = statusRank(a['status']).compareTo(statusRank(b['status']));
+      if (sr != 0) return sr;
+      final ya = yearOf(a['date']);
+      final yb = yearOf(b['date']);
+      final yc = ya.compareTo(yb);
+      if (yc != 0) return yc;
+      // desempate: título
+      return ((a['title'] ?? '').toString()).toLowerCase().compareTo(((b['title'] ?? '').toString()).toLowerCase());
+    });
+
+    int tried = 0;
+    for (final r in rels) {
+      final rid = (r['id'] ?? '').toString().trim();
+      if (rid.isEmpty) continue;
+      final urlRel = Uri.parse('$_mbBase/release/$rid?inc=recordings&fmt=json');
+      final resRel = await _get(urlRel);
+      tried++;
+      if (resRel.statusCode != 200) {
+        if (tried >= maxReleaseLookups) break;
+        continue;
+      }
+
+      final relData = jsonDecode(resRel.body);
+      final media = (relData is Map ? (relData['media'] as List?) : null) ?? const <dynamic>[];
+      if (media.isEmpty) {
+        if (tried >= maxReleaseLookups) break;
+        continue;
+      }
+
+      final titles = <String>[];
+      for (final m in media) {
+        final tracks = (m is Map ? (m['tracks'] as List?) : null) ?? const <dynamic>[];
+        for (final t in tracks) {
+          if (t is! Map) continue;
+          final title = (t['title'] ?? '').toString().trim();
+          if (title.isNotEmpty) titles.add(title);
+        }
+      }
+
+      if (titles.isNotEmpty) {
+        _firstEditionTracksCache[id] = _CacheEntry(titles, DateTime.now());
+        return titles;
+      }
+
+      if (tried >= maxReleaseLookups) break;
+    }
+
+    _firstEditionTracksCache[id] = _CacheEntry(<String>[], DateTime.now());
+    return <String>[];
+  }
+
+  static bool _titleMatchesSong({
+    required String trackTitle,
+    required String songTitle,
+  }) {
+    final t = normalizeKey(trackTitle);
+    final s = normalizeKey(songTitle);
+    if (t.isEmpty || s.isEmpty) return false;
+    if (t == s) return true;
+
+    // Si el título es largo, permitimos contains (para variantes tipo "(Remastered)").
+    if (s.length >= 6) return t.contains(s);
+
+    // Para títulos cortos ("One", "..."), evitamos falsos positivos por substring.
+    if (!s.contains(' ')) {
+      return t.split(' ').contains(s);
+    }
+    return t.contains(s);
+  }
+
+  static Future<bool> _releaseGroupBelongsToArtist({
+    required String releaseGroupId,
+    required String artistId,
+  }) async {
+    final rgid = releaseGroupId.trim();
+    final arid = artistId.trim();
+    if (rgid.isEmpty || arid.isEmpty) return false;
+
+    final key = '$arid||$rgid';
+    final cached = _rgHasArtistCache[key];
+    if (cached != null && DateTime.now().difference(cached.ts) < _tracksTtl) {
+      return cached.value;
+    }
+
+    try {
+      final u = Uri.parse('$_mbBase/release-group/$rgid?fmt=json');
+      final r = await _get(u);
+      if (r.statusCode != 200) {
+        _rgHasArtistCache[key] = _CacheEntry(false, DateTime.now());
+        return false;
+      }
+      final j = jsonDecode(r.body);
+      final ac = (j is Map ? (j['artist-credit'] as List?) : null) ?? const <dynamic>[];
+      bool ok = false;
+      for (final it in ac) {
+        if (it is! Map) continue;
+        final a = it['artist'];
+        final id = (a is Map ? (a['id'] ?? '') : '').toString().trim();
+        if (id == arid) {
+          ok = true;
+          break;
+        }
+      }
+      _rgHasArtistCache[key] = _CacheEntry(ok, DateTime.now());
+      return ok;
+    } catch (_) {
+      _rgHasArtistCache[key] = _CacheEntry(false, DateTime.now());
+      return false;
+    }
+  }
+
+  /// Devuelve álbumes (release-groups) donde aparece un recording,
+  /// validando que la canción esté en el tracklist de la **primera edición**.
+  ///
+  /// Se usa para el autocompletado de canciones: el usuario escribe "forget" y
+  /// el dropdown muestra el título completo + los álbumes donde realmente aparece.
+  static Future<List<AlbumItem>> albumsForRecordingFirstEditionVerified({
+    required String artistId,
+    required String recordingId,
+    required String songTitle,
+    int maxAlbums = 8,
+  }) async {
+    final rid = recordingId.trim();
+    final arid = artistId.trim();
+    if (rid.isEmpty || arid.isEmpty) return <AlbumItem>[];
+
+    final lookupUrl = Uri.parse('$_mbBase/recording/$rid?inc=releases+release-groups&fmt=json');
+    final rr = await _get(lookupUrl);
+    if (rr.statusCode != 200) return <AlbumItem>[];
+
+    dynamic d;
+    try {
+      d = jsonDecode(rr.body);
+    } catch (_) {
+      return <AlbumItem>[];
+    }
+
+    final releases = (d is Map ? (d['releases'] as List?) : null) ?? const <dynamic>[];
+    final Map<String, AlbumItem> candidates = {};
+
+    String? yearFrom(dynamic v) {
+      final s = (v ?? '').toString().trim();
+      if (s.length >= 4) return s.substring(0, 4);
+      return null;
+    }
+
+    for (final rel in releases) {
+      if (rel is! Map) continue;
+      final rg = rel['release-group'];
+      if (rg is! Map) continue;
+      final pt = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
+      if (pt.isNotEmpty && pt != 'album') continue;
+      final id = (rg['id'] ?? '').toString().trim();
+      if (id.isEmpty) continue;
+
+      final title = (rg['title'] ?? '').toString().trim();
+      final y = yearFrom(rg['first-release-date']);
+      final cur = candidates[id];
+      if (cur == null || ((cur.year ?? '').isEmpty && (y ?? '').isNotEmpty)) {
+        candidates[id] = AlbumItem(
+          releaseGroupId: id,
+          title: title.isEmpty ? '(sin título)' : title,
+          year: y,
+          cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+          cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+        );
+      }
+    }
+
+    if (candidates.isEmpty) return <AlbumItem>[];
+
+    final ids = candidates.keys.toList();
+
+    // Orden por año asc.
+    ids.sort((a, b) {
+      final ay = int.tryParse(candidates[a]?.year ?? '') ?? 9999;
+      final by = int.tryParse(candidates[b]?.year ?? '') ?? 9999;
+      final c = ay.compareTo(by);
+      if (c != 0) return c;
+      return (candidates[a]?.title ?? '').toLowerCase().compareTo((candidates[b]?.title ?? '').toLowerCase());
+    });
+
+    final out = <AlbumItem>[];
+    for (final rgid in ids) {
+      if (out.length >= maxAlbums) break;
+
+      // 1) Asegura que el release-group pertenece al artista
+      final belongs = await _releaseGroupBelongsToArtist(releaseGroupId: rgid, artistId: arid);
+      if (!belongs) continue;
+
+      // 2) Tracklist de primera edición
+      final titles = await getTrackTitlesFromReleaseGroupFirstEdition(rgid);
+      if (titles.isEmpty) continue;
+      final ok = titles.any((t) => _titleMatchesSong(trackTitle: t, songTitle: songTitle));
+      if (!ok) continue;
+
+      out.add(candidates[rgid]!);
+    }
+
+    return out;
   }
 
   static String? _fmtMs(dynamic ms) {
