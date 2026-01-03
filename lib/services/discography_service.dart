@@ -1964,7 +1964,7 @@ class DiscographyService {
       if (!belongs) continue;
 
       // 2) Tracklist de primera edición
-      final titles = await getTrackTitlesFromReleaseGroupFirstEdition(rgid);
+      final titles = await DiscographyService.getTrackTitlesFromReleaseGroupFirstEdition(rgid);
       if (titles.isEmpty) continue;
       final ok = titles.any((t) => _titleMatchesSong(trackTitle: t, songTitle: songTitle));
       if (!ok) continue;
