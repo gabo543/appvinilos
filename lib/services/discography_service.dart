@@ -687,36 +687,16 @@ class DiscographyService {
     }
 
     if (candidates.isEmpty) {
-      // ⚠️ Caso común: el recording seleccionado por el search/autocomplete puede
-      // ser una versión en vivo ("live recording of"). Ese recording a veces NO
-      // está asociado al álbum de estudio original, por lo que aquí quedaría vacío
-      // y la UI terminaría usando el "Plan Z".
-      //
-      // Para evitarlo, hacemos un fallback por texto que evalúa varios recordings
-      // del mismo artista y devuelve el álbum de estudio más temprano.
-      try {
-        final als = await searchSongAlbums(
-          artistId: arid,
-          songQuery: songTitle,
-          maxAlbums: maxAlbums,
-          recordingSearchLimit: 18,
-          maxRecordings: 8,
-          preferredRecordingId: rid,
-        );
-        if (als.isEmpty) return <AlbumItem>[];
-        // Ya vienen ordenados por año ascendente; devolvemos el(los) más temprano(s).
-        final firstYear = int.tryParse(als.first.year ?? '') ?? 9999;
-        final picked = <AlbumItem>[];
-        for (final a in als) {
-          final y = int.tryParse(a.year ?? '') ?? 9999;
-          if (picked.isNotEmpty && y != firstYear) break;
-          picked.add(a);
-          if (picked.length >= maxAlbums) break;
-        }
-        return picked;
-      } catch (_) {
-        return <AlbumItem>[];
+      // Si por alguna razón no encontramos recordingIds candidatos (data incompleta),
+      // tomamos los primeros recordings devueltos por la búsqueda, incluso si falta title.
+      for (final r in recs) {
+        if (r is! Map) continue;
+        final rid = (r['id'] ?? '').toString().trim();
+        if (rid.isEmpty) continue;
+        addRec(rid);
+        if (candidates.length >= maxRecordings) break;
       }
+      if (candidates.isEmpty) return <AlbumItem>[];
     }
 
     // Aggregate por release-group
