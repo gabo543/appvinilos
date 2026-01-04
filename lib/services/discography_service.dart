@@ -686,7 +686,38 @@ class DiscographyService {
       if (candidates.length >= maxRecordings) break;
     }
 
-    if (candidates.isEmpty) return <AlbumItem>[];
+    if (candidates.isEmpty) {
+      // ⚠️ Caso común: el recording seleccionado por el search/autocomplete puede
+      // ser una versión en vivo ("live recording of"). Ese recording a veces NO
+      // está asociado al álbum de estudio original, por lo que aquí quedaría vacío
+      // y la UI terminaría usando el "Plan Z".
+      //
+      // Para evitarlo, hacemos un fallback por texto que evalúa varios recordings
+      // del mismo artista y devuelve el álbum de estudio más temprano.
+      try {
+        final als = await searchSongAlbums(
+          artistId: arid,
+          songQuery: songTitle,
+          maxAlbums: maxAlbums,
+          recordingSearchLimit: 18,
+          maxRecordings: 8,
+          preferredRecordingId: rid,
+        );
+        if (als.isEmpty) return <AlbumItem>[];
+        // Ya vienen ordenados por año ascendente; devolvemos el(los) más temprano(s).
+        final firstYear = int.tryParse(als.first.year ?? '') ?? 9999;
+        final picked = <AlbumItem>[];
+        for (final a in als) {
+          final y = int.tryParse(a.year ?? '') ?? 9999;
+          if (picked.isNotEmpty && y != firstYear) break;
+          picked.add(a);
+          if (picked.length >= maxAlbums) break;
+        }
+        return picked;
+      } catch (_) {
+        return <AlbumItem>[];
+      }
+    }
 
     // Aggregate por release-group
     final Map<String, Map<String, String?>> agg = {}; // id -> {title, year}
@@ -719,6 +750,11 @@ class DiscographyService {
           if (id.isEmpty) continue;
           final pt = (rg['primary-type'] ?? '').toString().trim();
           if (pt.isNotEmpty && pt.toLowerCase() != 'album') continue;
+
+          // Evita caer en álbumes Live/Compilation cuando el usuario busca
+          // la canción "original" (ej. "Signos" debería apuntar al álbum 1986,
+          // no a un concierto 2008).
+          if (_isNonStudioReleaseGroup(rg)) continue;
 
           final title = (rg['title'] ?? '').toString().trim();
           // MusicBrainz suele incluir first-release-date en release-group.
@@ -821,7 +857,10 @@ class DiscographyService {
         if (rg is Map) {
           final id = (rg['id'] ?? '').toString().trim();
           final pt = (rg['primary-type'] ?? '').toString().trim();
-          if (id.isNotEmpty && (pt.isEmpty || pt.toLowerCase() == 'album')) out.add(id);
+          if (id.isNotEmpty && (pt.isEmpty || pt.toLowerCase() == 'album')) {
+            if (_isNonStudioReleaseGroup(rg)) continue;
+            out.add(id);
+          }
         } else if (rg is String) {
           final id = rg.trim();
           if (id.isNotEmpty) out.add(id);
@@ -1841,6 +1880,25 @@ class DiscographyService {
     return false;
   }
 
+  static bool _isLiveReleaseGroup(dynamic rg) {
+    if (rg is! Map) return false;
+    final sec = (rg['secondary-types'] as List?) ?? const <dynamic>[];
+    for (final t in sec) {
+      final v = (t ?? '').toString().trim().toLowerCase();
+      if (v == 'live') return true;
+    }
+    return false;
+  }
+
+  /// Release-groups que NO queremos considerar como "disco de lanzamiento".
+  ///
+  /// Para el filtro de canciones, el usuario normalmente quiere el álbum de estudio.
+  /// Un recording puede existir como live/remaster/etc. Para evitar caer en "Live" (ej.
+  /// *Gira Me Verás Volver*), descartamos release-groups con secondary-types Live.
+  static bool _isNonStudioReleaseGroup(dynamic rg) {
+    return _isCompilationReleaseGroup(rg) || _isLiveReleaseGroup(rg);
+  }
+
   /// Para un recording, devuelve release-groups tipo "Album" ordenados por
   /// fecha de primera aparición (más antiguo primero). Filtra releases
   /// no-oficiales cuando `status` está disponible.
@@ -1871,7 +1929,7 @@ class DiscographyService {
 
         final pt = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
         if (pt.isNotEmpty && pt != 'album') continue;
-        if (_isCompilationReleaseGroup(rg)) continue;
+        if (_isNonStudioReleaseGroup(rg)) continue;
 
         final title = (rg['title'] ?? '').toString().trim();
         final dt = _parseMbDate(rel['date']) ?? _parseMbDate(rg['first-release-date']);
@@ -2014,9 +2072,7 @@ class DiscographyService {
 
       // Evita compilations (grandes éxitos, VA, etc.). El usuario quiere el álbum
       // "donde fue lanzada" la canción, no apariciones tardías.
-      final sec = (rg['secondary-types'] as List?) ?? const <dynamic>[];
-      final secLower = sec.map((e) => e.toString().toLowerCase()).toList();
-      if (secLower.contains('compilation')) continue;
+      if (_isNonStudioReleaseGroup(rg)) continue;
 
       final id = (rg['id'] ?? '').toString().trim();
       if (id.isEmpty) continue;
@@ -2052,7 +2108,37 @@ class DiscographyService {
       if ((cur.year ?? '').isEmpty && (y ?? '').isNotEmpty) cur.year = y;
     }
 
-    if (candidates.isEmpty) return <AlbumItem>[];
+    if (candidates.isEmpty) {
+      // ⚠️ Caso común: el recording seleccionado por el autocomplete puede ser una
+      // versión en vivo. Ese recording a veces NO está asociado al álbum de estudio
+      // original (por eso aquí quedaría vacío). Para evitar caer al "Plan Z" de la UI,
+      // hacemos una resolución robusta por texto (múltiples recordings) y devolvemos
+      // el/los álbum(es) de estudio más antiguos.
+      try {
+        final robust = await searchSongAlbums(
+          artistId: arid,
+          songQuery: songTitle,
+          maxAlbums: maxAlbums,
+          recordingSearchLimit: 20,
+          maxRecordings: 8,
+          preferredRecordingId: rid,
+        );
+        if (robust.isEmpty) return <AlbumItem>[];
+
+        // searchSongAlbums devuelve ordenados por año; nos quedamos con el más antiguo.
+        final firstYear = int.tryParse(robust.first.year ?? '') ?? 9999;
+        final out = <AlbumItem>[];
+        for (final it in robust) {
+          final y = int.tryParse(it.year ?? '') ?? 9999;
+          if (firstYear != 9999 && y != firstYear) break;
+          out.add(it);
+          if (out.length >= maxAlbums) break;
+        }
+        return out.isEmpty ? <AlbumItem>[] : out;
+      } catch (_) {
+        return <AlbumItem>[];
+      }
+    }
 
     // Preferimos candidates con al menos un release Official, si existen.
     final all = candidates.values.toList();
