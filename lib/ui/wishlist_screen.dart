@@ -983,6 +983,11 @@ Widget _placeholder() {
                             final opts = await _askConditionAndFormat(artistName: a);
                             if (!mounted || opts == null) return;
 
+                            // Prefer cover500 when available.
+                            final cover250 = (w['cover250'] ?? '').toString().trim();
+                            final cover500 = (w['cover500'] ?? '').toString().trim();
+                            final cover = cover500.isNotEmpty ? cover500 : cover250;
+
                             try {
                               await VinylDb.instance.insertVinyl(
                                 artista: a,
@@ -990,11 +995,9 @@ Widget _placeholder() {
                                 barcode: (w['barcode'] ?? '').toString().trim().isEmpty
                                     ? null
                                     : (w['barcode'] ?? '').toString().trim(),
-                                condition: opts.condition,
-                                format: opts.format,
-                                cover250: (w['cover250'] ?? '').toString(),
-                                cover500: (w['cover500'] ?? '').toString(),
-                                coverPath: (w['cover250'] ?? '').toString(),
+                                condition: opts['condition'],
+                                format: opts['format'],
+                                coverPath: cover.isEmpty ? null : cover,
                               );
                               final id = w['id'];
                               if (id is int) {
