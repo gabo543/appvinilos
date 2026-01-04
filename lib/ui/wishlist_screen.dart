@@ -941,69 +941,83 @@ Widget _placeholder() {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: context.tr('Alertas de precio'),
-                        icon: Icon(
-                          hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
-                          color: cs.onSurfaceVariant,
-                          size: 22,
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 88,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 2,
+                      runSpacing: 2,
+                      children: [
+                        IconButton(
+                          tooltip: context.tr('Alertas de precio'),
+                          icon: Icon(
+                            hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
+                            color: cs.onSurfaceVariant,
+                            size: 22,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                          onPressed: () => _editWishAlert(w),
                         ),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => _editWishAlert(w),
-                      ),
-                      IconButton(
-                        tooltip: context.tr('Buscar precios'),
-                        icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 22),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => _onWishEuroPressed(w),
-                      ),
-                      IconButton(
-                        tooltip: context.tr('Agregar a vinilos'),
-                        icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () async {
-                          final a = (w['artista'] ?? '').toString().trim();
-                          final al = (w['album'] ?? '').toString().trim();
-                          if (a.isEmpty || al.isEmpty) return;
+                        IconButton(
+                          tooltip: context.tr('Buscar precios'),
+                          icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 22),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                          onPressed: () => _onWishEuroPressed(w),
+                        ),
+                        IconButton(
+                          tooltip: context.tr('Agregar a vinilos'),
+                          icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                          onPressed: () async {
+                            final a = (w['artista'] ?? '').toString().trim();
+                            final al = (w['album'] ?? '').toString().trim();
+                            if (a.isEmpty || al.isEmpty) return;
 
-                          final opts = await _askConditionAndFormat(artistName: a);
-                          if (!mounted || opts == null) return;
+                            final opts = await _askConditionAndFormat(artistName: a);
+                            if (!mounted || opts == null) return;
 
-                          try {
-                            await VinylDb.instance.insertVinyl(
-                              artista: a,
-                              album: al,
-                              barcode: (w['barcode'] ?? '').toString().trim().isEmpty
-                                  ? null
-                                  : (w['barcode'] ?? '').toString().trim(),
-                              condition: opts['condition'],
-                              format: opts['format'],
-                              year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
-                              coverPath: (w['cover250'] ?? '').toString(),
-                            );
-                            final id = w['id'];
-                            if (id is int) {
-                              await VinylDb.instance.removeWishlistById(id);
+                            try {
+                              await VinylDb.instance.insertVinyl(
+                                artista: a,
+                                album: al,
+                                barcode: (w['barcode'] ?? '').toString().trim().isEmpty
+                                    ? null
+                                    : (w['barcode'] ?? '').toString().trim(),
+                                condition: opts.condition,
+                                format: opts.format,
+                                cover250: (w['cover250'] ?? '').toString(),
+                                cover500: (w['cover500'] ?? '').toString(),
+                                coverPath: (w['cover250'] ?? '').toString(),
+                              );
+                              final id = w['id'];
+                              if (id is int) {
+                                await VinylDb.instance.removeWishlistById(id);
+                              }
+                              await BackupService.autoSaveIfEnabled();
+                              _snack('Agregado a tu lista de vinilos');
+                              _reload();
+                            } catch (_) {
+                              _snack('No se pudo agregar');
                             }
-                            await BackupService.autoSaveIfEnabled();
-                            _snack('Agregado a tu lista de vinilos');
-                            _reload();
-                          } catch (_) {
-                            _snack('No se pudo agregar');
-                          }
-                        },
-                      ),
-                      IconButton(
-                        tooltip: context.tr('Eliminar'),
-                        icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => _removeItem(w),
-                      ),
-                    ],
+                          },
+                        ),
+                        IconButton(
+                          tooltip: context.tr('Eliminar'),
+                          icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                          onPressed: () => _removeItem(w),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1026,8 +1040,9 @@ Widget _placeholder() {
                 ],
               ),
               const SizedBox(height: 2),
-              // ✅ Debajo de la carátula: País (misma línea con Estado a la derecha)
+              // ✅ Debajo de la carátula: País + Estado
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
                     width: 92,
@@ -1043,9 +1058,13 @@ Widget _placeholder() {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: status.isNotEmpty ? _statusChip(context, status) : const SizedBox.shrink(),
+                    child: Wrap(
+                      spacing: 0,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (status.isNotEmpty) _statusChip(context, status),
+                      ],
                     ),
                   ),
                 ],

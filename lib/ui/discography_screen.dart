@@ -145,10 +145,10 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   // Cuando el filtro por canción necesita buscar en páginas no cargadas aún.
   bool _songLoadingMorePages = false;
 
-  /// Plan C: cuando la búsqueda "pro" (A+B) no devuelve álbumes, intentamos
+  /// Plan Z: cuando la búsqueda "pro" (A/B) no devuelve álbumes, intentamos
   /// encontrar coincidencias escaneando tracklists de los álbumes ya cargados
   /// en pantalla. Devuelve los álbumes cargados que corresponden a los
-  /// release-groups que matchean.
+  /// release-groups que matchean. (Último salvavidas)
   List<AlbumItem> _loadedAlbumsForReleaseGroups(Set<String> rgids) {
     if (rgids.isEmpty) return <AlbumItem>[];
     final out = <AlbumItem>[];
@@ -740,7 +740,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
           _loadingSongSuggestions = false;
         });
 
-        // Prefetch de álbumes por sugerencia (verificados por 1ra edición).
+        // Prefetch de álbumes por sugerencia (MusicBrainz: recording → release-group).
         for (final h in hits.take(6)) {
           if (!mounted || mySeq != _songSuggestSeq) return;
           if (_songAlbumsByRecording.containsKey(h.id)) continue;
@@ -791,7 +791,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
     // Cancela sugerencias pendientes y aplica filtro "pro":
     // 1) buscar sugerencia de canción (título completo)
-    // 2) traer álbumes verificados (primera edición)
+    // 2) traer álbum(es) donde aparece el recording (álbum "de lanzamiento")
     _songDebounce?.cancel();
     _songSuggestDebounce?.cancel();
     final mySeq = ++_songReqSeq;
@@ -848,7 +848,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
       if (!mounted || mySeq != _songReqSeq) return;
       // IDs del (los) álbum(es) "de lanzamiento" que devolvió el servicio.
-      final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
+      Set<String> ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
+
+      // Plan Z: si MusicBrainz devolvió vacío (datos incompletos / rate-limit),
+      // escaneamos solo lo ya cargado en pantalla como último salvavidas.
+      if (ids.isEmpty) {
+        final scanned = await _scanLoadedAlbumsForSong(_selectedSongTitleNorm, mySeq);
+        if (!mounted || mySeq != _songReqSeq) return;
+        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
+        if (scannedItems.isNotEmpty) items = scannedItems;
+        ids = scanned;
+      }
 
       setState(() {
         searchingSongs = false;
@@ -1066,7 +1076,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
       if (!mounted || mySeq != _songReqSeq) return;
 
-      // Plan C: si A+B no devolvieron nada, escanear tracklists de lo ya cargado.
+      // Plan Z: si A/B no devolvieron nada, escanear tracklists de lo ya cargado.
       Set<String> ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
       if (ids.isEmpty) {
         final scanned = await _scanLoadedAlbumsForSong(norm, mySeq);

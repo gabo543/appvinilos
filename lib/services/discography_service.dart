@@ -81,6 +81,32 @@ class AlbumItem {
   });
 }
 
+class _RgCandidate {
+  final String id;
+  String title;
+  String? year;
+  DateTime? earliest;
+  bool hasOfficial;
+
+  _RgCandidate({
+    required this.id,
+    required this.title,
+    this.year,
+    this.earliest,
+    this.hasOfficial = false,
+  });
+
+  AlbumItem toAlbumItem() {
+    return AlbumItem(
+      releaseGroupId: id,
+      title: title.isEmpty ? '(sin título)' : title,
+      year: year,
+      cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+      cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+    );
+  }
+}
+
 /// Página de discografía (MusicBrainz release-groups).
 ///
 /// Se usa para cargar rápido: primero una página, y luego vamos trayendo
@@ -1929,11 +1955,20 @@ class DiscographyService {
     }
   }
 
-  /// Devuelve álbumes (release-groups) donde aparece un recording,
-  /// validando que la canción esté en el tracklist de la **primera edición**.
+  /// Devuelve álbumes (release-groups) donde aparece un recording.
   ///
-  /// Se usa para el autocompletado de canciones: el usuario escribe "forget" y
-  /// el dropdown muestra el título completo + los álbumes donde realmente aparece.
+  /// ✅ En móvil, el filtro de canciones debe ser rápido y confiable.
+  /// Para evitar falsos "no hay nada" (por tracklists incompletos o rate-limit),
+  /// aquí **no** bloqueamos el resultado con verificaciones costosas.
+  ///
+  /// Estrategia (Plan A/B):
+  /// 1) Usa la relación directa recording → releases → release-groups.
+  /// 2) Filtra a primary-type=Album, evita Compilation.
+  /// 3) Prefiere releases Official si existen.
+  /// 4) Elige el(los) álbum(es) más tempranos ("donde fue lanzada").
+  ///
+  /// Si este método devuelve vacío, la UI puede aplicar su "Plan Z" (escaneo local)
+  /// como último salvavidas.
   static Future<List<AlbumItem>> albumsForRecordingFirstEditionVerified({
     required String artistId,
     required String recordingId,
@@ -1944,6 +1979,8 @@ class DiscographyService {
     final arid = artistId.trim();
     if (rid.isEmpty || arid.isEmpty) return <AlbumItem>[];
 
+    // Pedimos releases + release-groups. Esto es suficiente para identificar
+    // el álbum (release-group) donde aparece el recording.
     final lookupUrl = Uri.parse('$_mbBase/recording/$rid?inc=releases+release-groups&fmt=json');
     final rr = await _get(lookupUrl);
     if (rr.statusCode != 200) return <AlbumItem>[];
@@ -1955,22 +1992,23 @@ class DiscographyService {
       return <AlbumItem>[];
     }
 
-    final releases = (d is Map ? (d['releases'] as List?) : null) ?? const <dynamic>[];
-    final Map<String, AlbumItem> candidates = {};
-    final Map<String, DateTime?> earliest = {};
 
-    String? yearFrom(dynamic v) {
-      final s = (v ?? '').toString().trim();
+    final releases = (d is Map ? (d['releases'] as List?) : null) ?? const <dynamic>[];
+    final Map<String, _RgCandidate> candidates = {};
+
+    String? yearFromDateOrString(DateTime? dt, dynamic raw) {
+      if (dt != null) return dt.year.toString().padLeft(4, '0');
+      final s = (raw ?? '').toString().trim();
       if (s.length >= 4) return s.substring(0, 4);
       return null;
     }
 
     for (final rel in releases) {
       if (rel is! Map) continue;
-      final status = (rel['status'] ?? '').toString().trim().toLowerCase();
-      if (status.isNotEmpty && status != 'official') continue;
+
       final rg = rel['release-group'];
       if (rg is! Map) continue;
+
       final pt = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
       if (pt.isNotEmpty && pt != 'album') continue;
 
@@ -1983,85 +2021,81 @@ class DiscographyService {
       final id = (rg['id'] ?? '').toString().trim();
       if (id.isEmpty) continue;
 
+      final status = (rel['status'] ?? '').toString().trim().toLowerCase();
+      final isOfficial = status == 'official';
+
       final title = (rg['title'] ?? '').toString().trim();
       final dt = _parseMbDate(rel['date']) ?? _parseMbDate(rg['first-release-date']);
-      final y = yearFrom(dt?.toIso8601String() ?? rg['first-release-date']);
+      final y = yearFromDateOrString(dt, rg['first-release-date']);
 
-      final curDt = earliest[id];
-      if (curDt == null || (dt != null && dt.isBefore(curDt))) {
-        earliest[id] = dt;
-      } else {
-        earliest.putIfAbsent(id, () => dt);
-      }
       final cur = candidates[id];
-      if (cur == null || ((cur.year ?? '').isEmpty && (y ?? '').isNotEmpty)) {
-        candidates[id] = AlbumItem(
-          releaseGroupId: id,
-          title: title.isEmpty ? '(sin título)' : title,
+      if (cur == null) {
+        candidates[id] = _RgCandidate(
+          id: id,
+          title: title,
           year: y,
-          cover250: 'https://coverartarchive.org/release-group/$id/front-250',
-          cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+          earliest: dt,
+          hasOfficial: isOfficial,
         );
+        continue;
       }
+
+      // Mantén la fecha más temprana por release-group.
+      if (cur.earliest == null || (dt != null && dt.isBefore(cur.earliest!))) {
+        cur.earliest = dt;
+      }
+      // Si llega una versión con status Official, preferimos esa condición.
+      if (isOfficial) cur.hasOfficial = true;
+
+      // Completa año/título si están vacíos.
+      if ((cur.title).trim().isEmpty && title.trim().isNotEmpty) cur.title = title;
+      if ((cur.year ?? '').isEmpty && (y ?? '').isNotEmpty) cur.year = y;
     }
 
     if (candidates.isEmpty) return <AlbumItem>[];
 
-    // ✅ Queremos el(los) álbum(es) más temprano(s) donde aparece el recording.
-    // En vez de devolver muchos álbumes y después escanear toda la discografía,
-    // priorizamos el "álbum de lanzamiento" (fecha más antigua).
-    final ids = candidates.keys.toList();
-    DateTime? minDt;
-    for (final id in ids) {
-      final dt = earliest[id];
-      if (dt == null) continue;
-      minDt ??= dt;
-      if (dt.isBefore(minDt!)) minDt = dt;
-    }
+    // Preferimos candidates con al menos un release Official, si existen.
+    final all = candidates.values.toList();
+    final anyOfficial = all.any((c) => c.hasOfficial);
+    final filtered = anyOfficial ? all.where((c) => c.hasOfficial).toList() : all;
 
-    List<String> ordered;
-    if (minDt != null) {
-      ordered = ids.where((id) => earliest[id] != null && earliest[id]!.isAtSameMomentAs(minDt!)).toList();
-      // si hay varios empates, orden alfabético por título.
-      ordered.sort((a, b) => (candidates[a]?.title ?? '').toLowerCase().compareTo((candidates[b]?.title ?? '').toLowerCase()));
-    } else {
-      // fallback: orden por año asc.
-      ordered = ids;
-      ordered.sort((a, b) {
-        final ay = int.tryParse(candidates[a]?.year ?? '') ?? 9999;
-        final by = int.tryParse(candidates[b]?.year ?? '') ?? 9999;
-        final c = ay.compareTo(by);
-        if (c != 0) return c;
-        return (candidates[a]?.title ?? '').toLowerCase().compareTo((candidates[b]?.title ?? '').toLowerCase());
-      });
-    }
+    // Orden: más antiguo primero. Null al final.
+    filtered.sort((a, b) {
+      final adt = a.earliest ?? DateTime(9999, 12, 31);
+      final bdt = b.earliest ?? DateTime(9999, 12, 31);
+      final c = adt.compareTo(bdt);
+      if (c != 0) return c;
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
 
-    final out = <AlbumItem>[];
-    for (final rgid in ordered) {
-      if (out.length >= maxAlbums) break;
+    // "Disco donde fue lanzada": nos quedamos con el/los más temprano(s).
+    final firstDt = filtered.first.earliest;
+    final picked = <_RgCandidate>[];
 
-      // 1) Asegura que el release-group pertenece al artista
-      final belongs = await _releaseGroupBelongsToArtist(releaseGroupId: rgid, artistId: arid);
-      if (!belongs) continue;
-
-      // 2) Tracklist: preferimos 1ª edición (evita falsos positivos por deluxe),
-      // pero MusicBrainz a veces trae releases antiguos sin recordings/tracklist.
-      // En esos casos (o si no matchea por variantes), usamos fallback robusto.
-      final titlesFirst = await getTrackTitlesFromReleaseGroupFirstEdition(rgid);
-      var ok = titlesFirst.any((t) => _titleMatchesSong(trackTitle: t, songTitle: songTitle));
-
-      // Fallback: si la 1ª edición viene vacía o no encuentra match, intentamos
-      // con más de un release dentro del mismo release-group.
-      if (!ok) {
-        final titlesRobust = await getTrackTitlesFromReleaseGroupRobust(rgid);
-        ok = titlesRobust.any((t) => _titleMatchesSong(trackTitle: t, songTitle: songTitle));
+    if (firstDt != null) {
+      for (final c in filtered) {
+        if (c.earliest == null) continue;
+        if (!c.earliest!.isAtSameMomentAs(firstDt)) break;
+        picked.add(c);
+        if (picked.length >= maxAlbums) break;
       }
-      if (!ok) continue;
-
-      out.add(candidates[rgid]!);
+    } else {
+      // Si no hay fechas, devolvemos los primeros maxAlbums ordenados por título.
+      picked.addAll(filtered.take(maxAlbums));
     }
 
-    return out;
+    // Filtro "suave" por artista: si algún candidato pertenece al artista,
+    // preferimos esos. Si ninguno pasa, devolvemos igual los elegidos.
+    final preferred = <_RgCandidate>[];
+    for (final c in picked) {
+      try {
+        final ok = await _releaseGroupBelongsToArtist(releaseGroupId: c.id, artistId: arid);
+        if (ok) preferred.add(c);
+      } catch (_) {}
+    }
+    final finalList = preferred.isNotEmpty ? preferred : picked;
+
+    return finalList.map((c) => c.toAlbumItem()).toList();
   }
 
   static String? _fmtMs(dynamic ms) {
