@@ -1016,12 +1016,59 @@ class DiscographyService {
 
     if (candidates.isEmpty) return <String>{};
 
-    final out = <String>{};
+    // ✅ En vez de unir *todos* los álbumes donde aparece la canción,
+    // devolvemos el "álbum de lanzamiento": el release-group (Album)
+    // con fecha más antigua encontrada entre los recordings candidatos.
+    final Map<String, DateTime?> rgEarliest = {};
+
     for (final rid in candidates.take(maxLookups)) {
-      final ids = await getAlbumReleaseGroupsForRecordingId(recordingId: rid);
-      out.addAll(ids);
+      final groups = await _albumReleaseGroupsByFirstDateForRecording(rid);
+      if (groups.isEmpty) continue;
+
+      // Tomamos el primero (más antiguo) por recording.
+      final first = groups.first;
+      final rgid = (first['id'] ?? '').toString().trim();
+      if (rgid.isEmpty) continue;
+      final dt = first['dt'] as DateTime?;
+
+      final cur = rgEarliest[rgid];
+      if (cur == null || (dt != null && dt.isBefore(cur))) {
+        rgEarliest[rgid] = dt;
+      } else {
+        rgEarliest.putIfAbsent(rgid, () => dt);
+      }
     }
-    return out;
+
+    if (rgEarliest.isEmpty) return <String>{};
+
+    // Elige el mínimo.
+    DateTime? minDt;
+    for (final dt in rgEarliest.values) {
+      if (dt == null) continue;
+      minDt ??= dt;
+      if (dt.isBefore(minDt!)) minDt = dt;
+    }
+
+    Set<String> picked;
+    if (minDt != null) {
+      picked = rgEarliest.entries
+          .where((e) => e.value != null && e.value!.isAtSameMomentAs(minDt!))
+          .map((e) => e.key)
+          .toSet();
+    } else {
+      // Fallback: sin fechas, elegimos un id determinísticamente.
+      final keys = rgEarliest.keys.toList()..sort();
+      picked = {keys.first};
+    }
+
+    // Filtra compilations/VA: nos quedamos con el álbum cuyo release-group
+    // pertenece al artista (cuando se puede verificar).
+    final filtered = <String>{};
+    for (final rgid in picked) {
+      final ok = await _releaseGroupBelongsToArtist(releaseGroupId: rgid, artistId: arid);
+      if (ok) filtered.add(rgid);
+    }
+    return filtered.isEmpty ? picked : filtered;
   }
 
   // ===============================
@@ -1730,6 +1777,117 @@ class DiscographyService {
     return t.contains(s);
   }
 
+  static DateTime? _parseMbDate(dynamic raw) {
+    final s = (raw ?? '').toString().trim();
+    if (s.isEmpty) return null;
+    final parts = s.split('-');
+    final y = int.tryParse(parts[0]);
+    if (y == null || y <= 0) return null;
+    var m = 1;
+    var d = 1;
+    if (parts.length >= 2) {
+      final mm = int.tryParse(parts[1]);
+      if (mm != null && mm >= 1 && mm <= 12) m = mm;
+    }
+    if (parts.length >= 3) {
+      final dd = int.tryParse(parts[2]);
+      if (dd != null && dd >= 1 && dd <= 31) d = dd;
+    }
+    // DateTime throws on invalid dates like 2020-02-31.
+    try {
+      return DateTime(y, m, d);
+    } catch (_) {
+      try {
+        return DateTime(y, m, 1);
+      } catch (_) {
+        return DateTime(y, 1, 1);
+      }
+    }
+  }
+
+  static bool _isCompilationReleaseGroup(dynamic rg) {
+    if (rg is! Map) return false;
+    final sec = (rg['secondary-types'] as List?) ?? const <dynamic>[];
+    for (final t in sec) {
+      final v = (t ?? '').toString().trim().toLowerCase();
+      if (v == 'compilation') return true;
+    }
+    return false;
+  }
+
+  /// Para un recording, devuelve release-groups tipo "Album" ordenados por
+  /// fecha de primera aparición (más antiguo primero). Filtra releases
+  /// no-oficiales cuando `status` está disponible.
+  static Future<List<Map<String, dynamic>>> _albumReleaseGroupsByFirstDateForRecording(
+    String recordingId,
+  ) async {
+    final rid = recordingId.trim();
+    if (rid.isEmpty) return const <Map<String, dynamic>>[];
+
+    try {
+      final u = Uri.parse('$_mbBase/recording/$rid?inc=releases+release-groups&fmt=json');
+      final rr = await _get(u);
+      if (rr.statusCode != 200) return const <Map<String, dynamic>>[];
+      final d = jsonDecode(rr.body);
+      final releases = (d is Map ? (d['releases'] as List?) : null) ?? const <dynamic>[];
+
+      // rgId -> {title, dt}
+      final Map<String, Map<String, dynamic>> best = {};
+      for (final rel in releases) {
+        if (rel is! Map) continue;
+        final status = (rel['status'] ?? '').toString().trim();
+        if (status.isNotEmpty && status.toLowerCase() != 'official') continue;
+
+        final rg = rel['release-group'];
+        if (rg is! Map) continue;
+        final id = (rg['id'] ?? '').toString().trim();
+        if (id.isEmpty) continue;
+
+        final pt = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
+        if (pt.isNotEmpty && pt != 'album') continue;
+        if (_isCompilationReleaseGroup(rg)) continue;
+
+        final title = (rg['title'] ?? '').toString().trim();
+        final dt = _parseMbDate(rel['date']) ?? _parseMbDate(rg['first-release-date']);
+
+        final cur = best[id];
+        if (cur == null) {
+          best[id] = {
+            'id': id,
+            'title': title,
+            'dt': dt,
+            'year': (rg['first-release-date'] ?? '').toString().trim(),
+          };
+        } else {
+          final curDt = cur['dt'] as DateTime?;
+          // Guardamos la fecha más antigua disponible.
+          if (curDt == null || (dt != null && dt.isBefore(curDt))) {
+            cur['dt'] = dt;
+          }
+          // Conservamos título si antes estaba vacío.
+          if (((cur['title'] ?? '').toString().trim()).isEmpty && title.isNotEmpty) {
+            cur['title'] = title;
+          }
+        }
+      }
+
+      final out = best.values.toList();
+      out.sort((a, b) {
+        final ad = a['dt'] as DateTime?;
+        final bd = b['dt'] as DateTime?;
+        if (ad == null && bd == null) return 0;
+        if (ad == null) return 1;
+        if (bd == null) return -1;
+        final c = ad.compareTo(bd);
+        if (c != 0) return c;
+        return (a['title'] ?? '').toString().toLowerCase().compareTo((b['title'] ?? '').toString().toLowerCase());
+      });
+      return out;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
   static Future<bool> _releaseGroupBelongsToArtist({
     required String releaseGroupId,
     required String artistId,
@@ -1799,6 +1957,7 @@ class DiscographyService {
 
     final releases = (d is Map ? (d['releases'] as List?) : null) ?? const <dynamic>[];
     final Map<String, AlbumItem> candidates = {};
+    final Map<String, DateTime?> earliest = {};
 
     String? yearFrom(dynamic v) {
       final s = (v ?? '').toString().trim();
@@ -1808,15 +1967,32 @@ class DiscographyService {
 
     for (final rel in releases) {
       if (rel is! Map) continue;
+      final status = (rel['status'] ?? '').toString().trim().toLowerCase();
+      if (status.isNotEmpty && status != 'official') continue;
       final rg = rel['release-group'];
       if (rg is! Map) continue;
       final pt = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
       if (pt.isNotEmpty && pt != 'album') continue;
+
+      // Evita compilations (grandes éxitos, VA, etc.). El usuario quiere el álbum
+      // "donde fue lanzada" la canción, no apariciones tardías.
+      final sec = (rg['secondary-types'] as List?) ?? const <dynamic>[];
+      final secLower = sec.map((e) => e.toString().toLowerCase()).toList();
+      if (secLower.contains('compilation')) continue;
+
       final id = (rg['id'] ?? '').toString().trim();
       if (id.isEmpty) continue;
 
       final title = (rg['title'] ?? '').toString().trim();
-      final y = yearFrom(rg['first-release-date']);
+      final dt = _parseMbDate(rel['date']) ?? _parseMbDate(rg['first-release-date']);
+      final y = yearFrom(dt?.toIso8601String() ?? rg['first-release-date']);
+
+      final curDt = earliest[id];
+      if (curDt == null || (dt != null && dt.isBefore(curDt))) {
+        earliest[id] = dt;
+      } else {
+        earliest.putIfAbsent(id, () => dt);
+      }
       final cur = candidates[id];
       if (cur == null || ((cur.year ?? '').isEmpty && (y ?? '').isNotEmpty)) {
         candidates[id] = AlbumItem(
@@ -1831,19 +2007,37 @@ class DiscographyService {
 
     if (candidates.isEmpty) return <AlbumItem>[];
 
+    // ✅ Queremos el(los) álbum(es) más temprano(s) donde aparece el recording.
+    // En vez de devolver muchos álbumes y después escanear toda la discografía,
+    // priorizamos el "álbum de lanzamiento" (fecha más antigua).
     final ids = candidates.keys.toList();
+    DateTime? minDt;
+    for (final id in ids) {
+      final dt = earliest[id];
+      if (dt == null) continue;
+      minDt ??= dt;
+      if (dt.isBefore(minDt!)) minDt = dt;
+    }
 
-    // Orden por año asc.
-    ids.sort((a, b) {
-      final ay = int.tryParse(candidates[a]?.year ?? '') ?? 9999;
-      final by = int.tryParse(candidates[b]?.year ?? '') ?? 9999;
-      final c = ay.compareTo(by);
-      if (c != 0) return c;
-      return (candidates[a]?.title ?? '').toLowerCase().compareTo((candidates[b]?.title ?? '').toLowerCase());
-    });
+    List<String> ordered;
+    if (minDt != null) {
+      ordered = ids.where((id) => earliest[id] != null && earliest[id]!.isAtSameMomentAs(minDt!)).toList();
+      // si hay varios empates, orden alfabético por título.
+      ordered.sort((a, b) => (candidates[a]?.title ?? '').toLowerCase().compareTo((candidates[b]?.title ?? '').toLowerCase()));
+    } else {
+      // fallback: orden por año asc.
+      ordered = ids;
+      ordered.sort((a, b) {
+        final ay = int.tryParse(candidates[a]?.year ?? '') ?? 9999;
+        final by = int.tryParse(candidates[b]?.year ?? '') ?? 9999;
+        final c = ay.compareTo(by);
+        if (c != 0) return c;
+        return (candidates[a]?.title ?? '').toLowerCase().compareTo((candidates[b]?.title ?? '').toLowerCase());
+      });
+    }
 
     final out = <AlbumItem>[];
-    for (final rgid in ids) {
+    for (final rgid in ordered) {
       if (out.length >= maxAlbums) break;
 
       // 1) Asegura que el release-group pertenece al artista

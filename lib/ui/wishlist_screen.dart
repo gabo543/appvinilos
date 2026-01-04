@@ -201,6 +201,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
   final Set<String> _prefetchedBarcodes = {};
   Future<void> _prefetchQueue = Future.value();
 
+  // 🌍 Cache simple de país del artista (para mostrarlo en cards de Wishlist)
+  final Map<String, String> _artistCountryById = {};
+  final Set<String> _artistCountryLoading = {};
+
   @override
   void initState() {
     super.initState();
@@ -834,6 +838,29 @@ Widget _placeholder() {
     );
   }
 
+  void _ensureArtistCountry(String artistId, String artistName) {
+    final id = artistId.trim();
+    if (id.isEmpty) return;
+    if (_artistCountryById.containsKey(id) || _artistCountryLoading.contains(id)) return;
+
+    _artistCountryLoading.add(id);
+    DiscographyService.getArtistInfoById(id, artistName: artistName)
+        .then((info) {
+          if (!mounted) return;
+          setState(() {
+            _artistCountryById[id] = (info.country ?? '').trim();
+            _artistCountryLoading.remove(id);
+          });
+        })
+        .catchError((_) {
+          if (!mounted) return;
+          setState(() {
+            _artistCountryById[id] = '';
+            _artistCountryLoading.remove(id);
+          });
+        });
+  }
+
   Widget _wishListCard(Map<String, dynamic> w) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -842,10 +869,17 @@ Widget _placeholder() {
     final album = (w['album'] ?? '').toString().trim();
     final year = (w['year'] ?? '').toString().trim();
     final status = (w['status'] ?? '').toString().trim();
+    final artistId = (w['artistId'] ?? '').toString().trim();
     final barcode = (w['barcode'] ?? '').toString().trim();
     final offerKey = _offerKeyForItem(artist: artista, album: album, barcode: barcode);
     final wid = w['id'];
     final hasAlert = (wid is int) && _wishAlerts.containsKey(wid);
+
+    // País del artista (lazy) — mostramos '—' si no está disponible.
+    if (artistId.isNotEmpty) _ensureArtistCountry(artistId, artista);
+    final country = (artistId.isNotEmpty ? (_artistCountryById[artistId] ?? '') : '').trim();
+    final yearLabel = AppStrings.labeled(context, 'Año', year.isEmpty ? '—' : year);
+    final countryLabel = AppStrings.labeled(context, 'País', country.isEmpty ? '—' : country);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -861,119 +895,158 @@ Widget _placeholder() {
         onTap: () => _openDetail(w),
         child: Padding(
           padding: const EdgeInsets.all(10),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 92,
-                height: 92,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    color: cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.30 : 0.60),
-                    child: _leadingCover(w, size: 92),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 92,
+                    height: 92,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        color: cs.surfaceContainerHighest.withValues(alpha: isDark ? 0.30 : 0.60),
+                        child: _leadingCover(w, size: 92),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2, right: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2, right: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _metaPill(context, year),
-                          if (status.isNotEmpty) _statusChip(context, status),
+                          // ✅ Primero álbum, luego artista (como pediste)
+                          Text(
+                            album.isEmpty ? '—' : album,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            artista.isEmpty ? '—' : artista,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          if (offerKey != null && (_pricesEnabledByKey[offerKey] == true)) ...[
+                            const SizedBox(height: 8),
+                            _pricePills(w, offerKey!),
+                          ],
                         ],
                       ),
-                      SizedBox(height: 10),
-                      Text(
-                        artista.isEmpty ? '—' : artista,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: context.tr('Alertas de precio'),
+                        icon: Icon(
+                          hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
+                          color: cs.onSurfaceVariant,
+                          size: 22,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _editWishAlert(w),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        album.isEmpty ? '—' : album,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                      IconButton(
+                        tooltip: context.tr('Buscar precios'),
+                        icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 22),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _onWishEuroPressed(w),
                       ),
-                      if (offerKey != null && (_pricesEnabledByKey[offerKey] == true)) ...[
-                        const SizedBox(height: 8),
-                        _pricePills(w, offerKey!),
-                      ],
+                      IconButton(
+                        tooltip: context.tr('Agregar a vinilos'),
+                        icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () async {
+                          final a = (w['artista'] ?? '').toString().trim();
+                          final al = (w['album'] ?? '').toString().trim();
+                          if (a.isEmpty || al.isEmpty) return;
+
+                          final opts = await _askConditionAndFormat(artistName: a);
+                          if (!mounted || opts == null) return;
+
+                          try {
+                            await VinylDb.instance.insertVinyl(
+                              artista: a,
+                              album: al,
+                              barcode: (w['barcode'] ?? '').toString().trim().isEmpty
+                                  ? null
+                                  : (w['barcode'] ?? '').toString().trim(),
+                              condition: opts['condition'],
+                              format: opts['format'],
+                              year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
+                              coverPath: (w['cover250'] ?? '').toString(),
+                            );
+                            final id = w['id'];
+                            if (id is int) {
+                              await VinylDb.instance.removeWishlistById(id);
+                            }
+                            await BackupService.autoSaveIfEnabled();
+                            _snack('Agregado a tu lista de vinilos');
+                            _reload();
+                          } catch (_) {
+                            _snack('No se pudo agregar');
+                          }
+                        },
+                      ),
+                      IconButton(
+                        tooltip: context.tr('Eliminar'),
+                        icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _removeItem(w),
+                      ),
                     ],
                   ),
-                ),
+                ],
               ),
-              SizedBox(width: 6),
-              Column(
-                mainAxisSize: MainAxisSize.min,
+              const SizedBox(height: 8),
+              // ✅ Debajo de la carátula: Año
+              Row(
                 children: [
-                  IconButton(
-                    tooltip: context.tr('Alertas de precio'),
-                    icon: Icon(
-                      hasAlert ? Icons.notifications_active_outlined : Icons.notifications_none_outlined,
-                      color: cs.onSurfaceVariant,
-                      size: 22,
+                  SizedBox(
+                    width: 92,
+                    child: Text(
+                      yearLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => _editWishAlert(w),
                   ),
-                  IconButton(
-                    tooltip: context.tr('Buscar precios'),
-                    icon: Icon(Icons.euro, color: cs.onSurfaceVariant, size: 22),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => _onWishEuroPressed(w),
+                ],
+              ),
+              const SizedBox(height: 2),
+              // ✅ Debajo de la carátula: País (misma línea con Estado a la derecha)
+              Row(
+                children: [
+                  SizedBox(
+                    width: 92,
+                    child: Text(
+                      countryLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: context.tr('Agregar a vinilos'),
-                    icon: Icon(Icons.playlist_add, color: cs.onSurfaceVariant, size: 22),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () async {
-                      final a = (w['artista'] ?? '').toString().trim();
-                      final al = (w['album'] ?? '').toString().trim();
-                      if (a.isEmpty || al.isEmpty) return;
-
-                      final opts = await _askConditionAndFormat(artistName: a);
-                      if (!mounted || opts == null) return;
-
-                      try {
-                        await VinylDb.instance.insertVinyl(
-                          artista: a,
-                          album: al,
-                          barcode: (w['barcode'] ?? '').toString().trim().isEmpty
-                              ? null
-                              : (w['barcode'] ?? '').toString().trim(),
-                          condition: opts['condition'],
-                          format: opts['format'],
-                          year: (w['year'] ?? '').toString().trim().isEmpty ? null : w['year'].toString().trim(),
-                          coverPath: (w['cover250'] ?? '').toString(),
-                        );
-                        final id = w['id'];
-                        if (id is int) {
-                          await VinylDb.instance.removeWishlistById(id);
-                        }
-                        await BackupService.autoSaveIfEnabled();
-                        _snack('Agregado a tu lista de vinilos');
-                        _reload();
-                      } catch (_) {
-                        _snack('No se pudo agregar');
-                      }
-                    },
-                  ),
-                  IconButton(
-                    tooltip: context.tr('Eliminar'),
-                    icon: Icon(Icons.delete_outline, color: cs.onSurfaceVariant, size: 22),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => _removeItem(w),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: status.isNotEmpty ? _statusChip(context, status) : const SizedBox.shrink(),
+                    ),
                   ),
                 ],
               ),

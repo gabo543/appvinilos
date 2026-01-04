@@ -814,18 +814,14 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       );
       if (!mounted || mySeq != _songReqSeq) return;
       if (hits.isEmpty) {
-        // Plan C: si no hay sugerencias desde MusicBrainz, igual intentamos
-        // escanear los álbumes ya cargados en pantalla.
-        final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
-        if (!mounted || mySeq != _songReqSeq) return;
-        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
-
+        // Si no hay sugerencias desde MusicBrainz, no escaneamos toda la discografía.
+        // El usuario quiere el álbum "de lanzamiento" según MusicBrainz.
         setState(() {
           searchingSongs = false;
           _selectedSongRecordingId = 'text';
           _selectedSongTitleNorm = qNorm;
-          _songAlbumResults = scannedItems;
-          _songMatchReleaseGroups = scanned;
+          _songAlbumResults = <AlbumItem>[];
+          _songMatchReleaseGroups = <String>{};
         });
         return;
       }
@@ -851,15 +847,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
 
       if (!mounted || mySeq != _songReqSeq) return;
-      // Plan C: si A+B no devolvieron nada, escanear tracklists de lo ya cargado.
-      Set<String> ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
-      if (ids.isEmpty) {
-        final scanned = await _scanLoadedAlbumsForSong(_normQ(best.title), mySeq);
-        if (!mounted || mySeq != _songReqSeq) return;
-        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
-        if (scannedItems.isNotEmpty) items = scannedItems;
-        ids = scanned;
-      }
+      // IDs del (los) álbum(es) "de lanzamiento" que devolvió el servicio.
+      final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
 
       setState(() {
         searchingSongs = false;
@@ -900,7 +889,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     bool markAsSelected = false,
     int searchLimit = 50,
     int maxLookups = 12,
-    bool allowTracklistScanFallback = true,
+    bool allowTracklistScanFallback = false,
   }) async {
     final a = pickedArtist;
     if (a == null) return;
@@ -984,14 +973,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       // el(los) álbum(es) estén en páginas aún no cargadas.
       var ids = idsRaw;
 
-      // 🛟 Fallback opcional: si MusicBrainz no devolvió nada, escaneamos tracklists
-      // de lo ya cargado. Es más lento, así que lo desactivamos para modo "en vivo".
-      if (allowTracklistScanFallback && ids.isEmpty && qNorm.length >= 2) {
-        final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
-        if (!mounted) return;
-        if (mySeq != _songReqSeq) return;
-        ids = scanned;
-      }
+      // Importante: NO escaneamos todos los álbumes cargados como fallback
+      // (es lento y puede mostrar apariciones no deseadas). El servicio ya
+      // intenta devolver el álbum de lanzamiento desde MusicBrainz.
 
       if (!mounted) return;
       if (mySeq != _songReqSeq) return;
