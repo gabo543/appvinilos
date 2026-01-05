@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../db/vinyl_db.dart';
 import '../utils/normalize.dart';
 
 class ArtistHit {
@@ -224,6 +225,15 @@ class DiscographyService {
   static const _mbBase = 'https://musicbrainz.org/ws/2';
   static DateTime _lastCall = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // Debug interno del filtro de canciones (no UI). Útil para entender por qué
+  // un tema cae en compilaciones/en vivo. Mantener en false en producción.
+  static const bool _debugSongFilter = false;
+  static void _dbgSongFilter(String msg) {
+    if (!_debugSongFilter) return;
+    // ignore: avoid_print
+    print('[SongFilter] $msg');
+  }
+
   // Cache in-memory para que "Similares" sea más estable y rápido.
   static const Duration _similarTtl = Duration(hours: 12);
   static final Map<String, _CacheEntry<List<SimilarArtistHit>>> _similarCache = {};
@@ -237,6 +247,11 @@ class DiscographyService {
   // Cache simple para validar si un release-group pertenece al artista.
   // (evita mostrar "various artists" cuando estás en Discografía del artista)
   static final Map<String, _CacheEntry<bool>> _rgHasArtistCache = {};
+  // Cache de detalles de release-group (title/tipo/fecha/secundarios).
+  // Evita repetir lookups al filtrar canciones y mejora consistencia cuando MB devuelve
+  // release-group como solo id (string).
+  static const Duration _rgDetailsTtl = Duration(days: 30);
+  static final Map<String, _CacheEntry<Map<String, dynamic>>> _rgDetailsCache = {};
   static const _luceneSpecial = '+-!(){}[]^"~*?:\\/&|';
 
   static String _escLucene(String s) {
@@ -247,6 +262,49 @@ class DiscographyService {
       sb.write(ch);
     }
     return sb.toString();
+  }
+
+
+  static Map<String, dynamic>? _rgDetailsCachedMem(String id) {
+    final key = id.trim();
+    if (key.isEmpty) return null;
+    final c = _rgDetailsCache[key];
+    if (c == null) return null;
+    if (DateTime.now().difference(c.ts) <= _rgDetailsTtl) return c.value;
+    _rgDetailsCache.remove(key);
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _rgDetailsCached(String id) async {
+    final key = id.trim();
+    if (key.isEmpty) return null;
+
+    // 1) memoria
+    final m = _rgDetailsCachedMem(key);
+    if (m != null) return m;
+
+    // 2) SQLite (persistente)
+    try {
+      final j = await VinylDb.instance.mbCacheGetJson('mb:rg:$key');
+      if (j != null) {
+        _rgDetailsCache[key] = _CacheEntry(j, DateTime.now());
+        return j;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  static Future<void> _rgDetailsStore(String id, Map<String, dynamic> j) async {
+    final key = id.trim();
+    if (key.isEmpty) return;
+    _rgDetailsCache[key] = _CacheEntry(j, DateTime.now());
+    try {
+      await VinylDb.instance.mbCachePutJson('mb:rg:$key', j);
+    } catch (_) {
+      // ignore
+    }
   }
 
   static String _sanitizeSongQuery(String s) {
@@ -612,8 +670,8 @@ static Future<List<AlbumItem>> searchSongAlbums({
   required String artistId,
   required String songQuery,
   int maxAlbums = 25,
-  int recordingSearchLimit = 25,
-  int maxRecordings = 12,
+  int recordingSearchLimit = 40,
+  int maxRecordings = 20,
   String? preferredRecordingId,
 }) async {
   final arid = artistId.trim();
@@ -684,6 +742,21 @@ static Future<List<AlbumItem>> searchSongAlbums({
     return strong.every((t) => titleNorm.contains(t));
   }
 
+  int titlePenalty(String title) {
+    final t = title.toLowerCase();
+    int p = 0;
+    // Penalizaciones fuertes para versiones que suelen "ganar" en el search
+    // pero NO son el recording de estudio.
+    if (RegExp(r'\b(live|en\s+vivo)\b').hasMatch(t)) p += 90;
+    if (RegExp(r'\b(compilation|greatest\s+hits|hits)\b').hasMatch(t)) p += 50;
+    if (RegExp(r'\b(remaster|remastered)\b').hasMatch(t)) p += 35;
+    if (RegExp(r'\b(demo)\b').hasMatch(t)) p += 70;
+    if (RegExp(r'\b(edit|radio\s+edit)\b').hasMatch(t)) p += 25;
+    if (RegExp(r'\b(remix|mix)\b').hasMatch(t)) p += 30;
+    if (RegExp(r'\b(version|acoustic|instrumental)\b').hasMatch(t)) p += 20;
+    return p;
+  }
+
   final candidates = <String>[];
   final seenRec = <String>{};
   final Map<String, int> recScore = {};
@@ -715,7 +788,8 @@ static Future<List<AlbumItem>> searchSongAlbums({
     }
 
     final sc = (r['score'] is num) ? (r['score'] as num).toInt() : 0;
-    addRec(rid, score: sc);
+    final effective = title.isEmpty ? sc : (sc - titlePenalty(title));
+    addRec(rid, score: effective);
     if (candidates.length >= maxRecordings) break;
   }
 
@@ -776,8 +850,17 @@ static Future<List<AlbumItem>> searchSongAlbums({
     return b;
   }
 
-  for (final rid in candidates) {
-    final lookupUrl = Uri.parse('$_mbBase/recording/$rid?inc=releases+release-groups&fmt=json');
+  // Procesamos recordings en cola: si un recording es "live recording of" otro,
+  // agregamos el recording base para poder llegar al álbum de estudio.
+  var i = 0;
+  var processed = 0;
+  final maxProcessRecordings = math.min(25, maxRecordings + 8);
+
+  while (i < candidates.length && processed < maxProcessRecordings) {
+    final rid = candidates[i++];
+    processed++;
+
+    final lookupUrl = Uri.parse('$_mbBase/recording/$rid?inc=releases+release-groups+recording-rels&fmt=json');
     final rr = await _get(lookupUrl);
     if (rr.statusCode != 200) continue;
 
@@ -786,6 +869,30 @@ static Future<List<AlbumItem>> searchSongAlbums({
       d = jsonDecode(rr.body);
     } catch (_) {
       continue;
+    }
+
+    // Si este recording es una versión live/edit/etc. de otro, sumamos el recording base.
+    final rels = (d is Map ? (d['relations'] as List?) : null) ?? const <dynamic>[];
+    for (final rel in rels) {
+      if (rel is! Map) continue;
+      final tt = (rel['target-type'] ?? '').toString().trim().toLowerCase();
+      if (tt.isNotEmpty && tt != 'recording') continue;
+      final type = (rel['type'] ?? '').toString().trim().toLowerCase();
+      const wanted = <String>{
+        'live recording of',
+        'remaster of',
+        'edit of',
+        'instrumental of',
+        'karaoke version of',
+      };
+      if (!wanted.contains(type)) continue;
+      final trg = rel['recording'];
+      if (trg is! Map) continue;
+      final baseId = (trg['id'] ?? '').toString().trim();
+      if (baseId.isEmpty) continue;
+      // Le damos un pequeño boost para que el base gane sobre el live.
+      final baseScore = (recScore[rid] ?? 0) + 15;
+      addRec(baseId, score: baseScore);
     }
 
     final recBias = biasFromRec(rid);
@@ -803,14 +910,27 @@ static Future<List<AlbumItem>> searchSongAlbums({
         final pt = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
         if (pt.isNotEmpty && pt != 'album') continue;
 
-        final nonStudio = _isNonStudioReleaseGroup(rg);
+        final isLive = _isLiveReleaseGroup(rg);
+        final isComp = _isCompilationReleaseGroup(rg);
+        final nonStudio = isLive || isComp;
         final title = (rg['title'] ?? '').toString().trim();
-        final dt = _parseMbDate(rel['date']) ?? _parseMbDate(rg['first-release-date']);
+        // Para el "año del álbum" preferimos first-release-date del release-group
+        // (evita que una reedición con fecha más reciente gane).
+        final dt = _parseMbDate(rg['first-release-date']) ?? _parseMbDate(rel['date']);
         final y = dt != null ? dt.year.toString().padLeft(4, '0') : ((rg['first-release-date'] ?? rel['date'] ?? '').toString().trim());
         final year = y.length >= 4 ? y.substring(0, 4) : null;
 
-        var score = 100 + recBias + (isOfficial ? 40 : 0);
-        if (nonStudio) score -= 200;
+        var score = 120 + recBias + (isOfficial ? 45 : 0);
+        if (isLive) {
+          score -= 500;
+        } else if (isComp) {
+          score -= 320;
+        }
+
+        // Si podemos determinar que el release-group NO es del artista,
+        // bajamos el score (evita Various Artists cuando MB lo entrega).
+        final acOk = _artistCreditIncludes(rg['artist-credit'], arid);
+        if (acOk == false) score -= 120;
         upsert(
           id,
           title: title,
@@ -859,40 +979,95 @@ static Future<List<AlbumItem>> searchSongAlbums({
       .toList();
 
   final drops = <String>{};
-  for (final id in toLookup.take(12)) {
-    try {
-      final u = Uri.parse('$_mbBase/release-group/$id?fmt=json');
-      final r = await _get(u);
-      if (r.statusCode != 200) continue;
-      final j = jsonDecode(r.body);
-      if (j is! Map) continue;
 
-      final pt = (j['primary-type'] ?? '').toString().trim().toLowerCase();
-      if (pt.isNotEmpty && pt != 'album') {
-        drops.add(id);
+  // Priorizamos lookups por fecha (más antiguos primero) y score.
+  // Esto evita que el filtro se quede solo con compilaciones/en vivo cuando
+  // el release-group correcto llegó como id (string) y aún no tiene título/tipo.
+  toLookup.sort((a, b) {
+    final da = agg[a]?['earliest'] as DateTime?;
+    final db = agg[b]?['earliest'] as DateTime?;
+    if (da == null && db == null) {
+      final sa = (agg[a]?['score'] is int) ? (agg[a]!['score'] as int) : 0;
+      final sb = (agg[b]?['score'] is int) ? (agg[b]!['score'] as int) : 0;
+      return sb.compareTo(sa);
+    }
+    if (da == null) return 1;
+    if (db == null) return -1;
+    final c = da.compareTo(db);
+    if (c != 0) return c;
+    final sa = (agg[a]?['score'] is int) ? (agg[a]!['score'] as int) : 0;
+    final sb = (agg[b]?['score'] is int) ? (agg[b]!['score'] as int) : 0;
+    return sb.compareTo(sa);
+  });
+
+  const int maxRgLookups = 25;
+  var looked = 0;
+
+  for (final id in toLookup) {
+    if (looked >= maxRgLookups) break;
+
+    final v = agg[id];
+    if (v == null) continue;
+    final known = (v['knownType'] == true);
+    final title0 = (v['title'] ?? '').toString().trim();
+    final year0 = (v['year'] ?? '').toString().trim();
+    final ns0 = v['nonStudio'];
+    if (known && title0.isNotEmpty && year0.isNotEmpty && ns0 != null) continue;
+
+    Map<String, dynamic>? j = await _rgDetailsCached(id);
+    if (j == null) {
+      try {
+        final u = Uri.parse('$_mbBase/release-group/$id?fmt=json');
+        final r = await _get(u);
+        if (r.statusCode != 200) continue;
+        final decoded = jsonDecode(r.body);
+        if (decoded is! Map) continue;
+        j = decoded.cast<String, dynamic>();
+        await _rgDetailsStore(id, j);
+      } catch (_) {
         continue;
       }
-
-      final title = (j['title'] ?? '').toString().trim();
-      final dt = _parseMbDate(j['first-release-date']);
-      final year = dt != null ? dt.year.toString().padLeft(4, '0') : ((j['first-release-date'] ?? '').toString().trim());
-      final yy = year.length >= 4 ? year.substring(0, 4) : null;
-
-      final nonStudio = _isNonStudioReleaseGroup(j);
-      final curScore = (agg[id]?['score'] is int) ? (agg[id]!['score'] as int) : 0;
-      upsert(
-        id,
-        title: title,
-        dt: dt,
-        year: yy,
-        score: curScore,
-        nonStudio: nonStudio,
-        knownType: true,
-      );
-    } catch (_) {
-      // ignore
     }
+
+    looked++;
+
+    final pt = (j['primary-type'] ?? '').toString().trim().toLowerCase();
+    if (pt.isNotEmpty && pt != 'album') {
+      drops.add(id);
+      continue;
+    }
+
+    final title = (j['title'] ?? '').toString().trim();
+    final dt = _parseMbDate(j['first-release-date']);
+    final year = dt != null ? dt.year.toString().padLeft(4, '0') : ((j['first-release-date'] ?? '').toString().trim());
+    final yy = year.length >= 4 ? year.substring(0, 4) : null;
+
+    final isLive = _isLiveReleaseGroup(j);
+    final isComp = _isCompilationReleaseGroup(j);
+    final nonStudio = isLive || isComp;
+    var curScore = (agg[id]?['score'] is int) ? (agg[id]!['score'] as int) : 0;
+    if (isLive) {
+      curScore -= 500;
+    } else if (isComp) {
+      curScore -= 320;
+    }
+    final acOk = _artistCreditIncludes(j['artist-credit'], arid);
+    if (acOk == false) curScore -= 120;
+    upsert(
+      id,
+      title: title,
+      dt: dt,
+      year: yy,
+      score: curScore,
+      nonStudio: nonStudio,
+      knownType: true,
+    );
+
+    // Nota: NO cortamos anticipadamente aquí. En casos como "Suedehead" o "Zoom",
+    // el álbum correcto de estudio a veces llega como release-group id (string)
+    // y necesita lookup para aparecer (si cortamos temprano, ganan compilaciones/en vivo).
   }
+
   for (final id in drops) {
     agg.remove(id);
   }
@@ -900,8 +1075,10 @@ static Future<List<AlbumItem>> searchSongAlbums({
   if (agg.isEmpty) return <AlbumItem>[];
 
   final studio = agg.entries.where((e) => e.value['nonStudio'] == false).toList();
+  final unknown = agg.entries.where((e) => e.value['nonStudio'] == null).toList();
   final nonStudio = agg.entries.where((e) => e.value['nonStudio'] == true).toList();
-  final selected = studio.isNotEmpty ? studio : nonStudio;
+  final selected = studio.isNotEmpty ? studio : (unknown.isNotEmpty ? unknown : nonStudio);
+  _dbgSongFilter('query="$q" recs=${candidates.length} rg=${agg.length} studio=${studio.length} unknown=${unknown.length} nonStudio=${nonStudio.length}');
   if (selected.isEmpty) return <AlbumItem>[];
 
   final out = <AlbumItem>[];
@@ -928,6 +1105,23 @@ static Future<List<AlbumItem>> searchSongAlbums({
     if (c != 0) return c;
     return a.title.toLowerCase().compareTo(b.title.toLowerCase());
   });
+
+  // ✅ "...solo el disco en el cual fue lanzada la canción"
+  // Si encontramos años válidos, nos quedamos con el/los más antiguos.
+  final years = out
+      .map((a) => int.tryParse(a.year ?? ''))
+      .where((y) => y != null && y! > 0 && y! < 9999)
+      .cast<int>()
+      .toList();
+  if (years.isNotEmpty) {
+    years.sort();
+    final minY = years.first;
+    final filtered = out.where((a) => int.tryParse(a.year ?? '') == minY).toList();
+    if (filtered.isNotEmpty) {
+      if (filtered.length > maxAlbums) return filtered.take(maxAlbums).toList();
+      return filtered;
+    }
+  }
 
   if (out.length > maxAlbums) return out.take(maxAlbums).toList();
   return out;
@@ -1892,7 +2086,7 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
         if (_isNonStudioReleaseGroup(rg)) continue;
 
         final title = (rg['title'] ?? '').toString().trim();
-        final dt = _parseMbDate(rel['date']) ?? _parseMbDate(rg['first-release-date']);
+        final dt = _parseMbDate(rg['first-release-date']) ?? _parseMbDate(rel['date']);
 
         final cur = best[id];
         if (cur == null) {
@@ -1973,6 +2167,40 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
     }
   }
 
+  /// Intenta determinar si un artist-credit incluye al artista elegido.
+  /// Devuelve:
+  /// - true  : podemos confirmar que está
+  /// - false : podemos confirmar que NO está
+  /// - null  : no hay datos suficientes
+  static bool? _artistCreditIncludes(dynamic artistCredit, String artistId) {
+    final arid = artistId.trim();
+    if (arid.isEmpty) return null;
+    if (artistCredit == null) return null;
+
+    if (artistCredit is List) {
+      bool sawAny = false;
+      for (final it in artistCredit) {
+        if (it is! Map) continue;
+        sawAny = true;
+        final a = it['artist'];
+        final id = (a is Map ? (a['id'] ?? '') : '').toString().trim();
+        if (id.isEmpty) continue;
+        if (id == arid) return true;
+      }
+      return sawAny ? false : null;
+    }
+
+    if (artistCredit is Map) {
+      // Algunos endpoints devuelven 'artist-credit' como objeto.
+      final a = artistCredit['artist'];
+      final id = (a is Map ? (a['id'] ?? '') : '').toString().trim();
+      if (id.isEmpty) return null;
+      return id == arid;
+    }
+
+    return null;
+  }
+
   /// Devuelve álbumes (release-groups) donde aparece un recording.
   ///
   /// ✅ En móvil, el filtro de canciones debe ser rápido y confiable.
@@ -2041,7 +2269,7 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
       final isOfficial = status == 'official';
 
       final title = (rg['title'] ?? '').toString().trim();
-      final dt = _parseMbDate(rel['date']) ?? _parseMbDate(rg['first-release-date']);
+      final dt = _parseMbDate(rg['first-release-date']) ?? _parseMbDate(rel['date']);
       final y = yearFromDateOrString(dt, rg['first-release-date']);
 
       final cur = candidates[id];

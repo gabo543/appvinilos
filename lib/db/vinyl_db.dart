@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
@@ -10,6 +11,15 @@ class VinylDb {
   static final instance = VinylDb._();
 
   Database? _db;
+
+  // ----------------------------
+  // MusicBrainz persistent cache
+  // ----------------------------
+  // Cache TTL sugerido: 30 días. Se usa para detalles de release-groups
+  // y otros lookups caros. Mantenerlo en SQLite ayuda a que el filtro de
+  // canciones sea consistente incluso con rate-limit.
+  static const Duration _mbCacheDefaultTtl = Duration(days: 30);
+  static int _mbCacheOps = 0;
 
   Future<Database> get db async {
     _db ??= await _open();
@@ -51,6 +61,19 @@ class VinylDb {
         } catch (_) {}
         try {
           await d.execute('CREATE INDEX IF NOT EXISTS idx_trash_exact_nocase ON trash(artista COLLATE NOCASE, album COLLATE NOCASE);');
+        } catch (_) {}
+
+        // ✅ Cache persistente para respuestas de MusicBrainz (mejora consistencia
+        // del filtro de canciones y reduce llamadas repetidas / rate-limit).
+        try {
+          await d.execute('''
+            CREATE TABLE IF NOT EXISTS mb_cache(
+              key TEXT PRIMARY KEY,
+              json TEXT NOT NULL,
+              ts INTEGER NOT NULL
+            );
+          ''');
+          await d.execute('CREATE INDEX IF NOT EXISTS idx_mb_cache_ts ON mb_cache(ts);');
         } catch (_) {}
       },
       onCreate: (d, v) async {
@@ -182,6 +205,17 @@ class VinylDb {
         await d.execute('CREATE INDEX idx_liked_artistkey ON liked_tracks(artistKey);');
         await d.execute('CREATE INDEX idx_liked_created ON liked_tracks(createdAt);');
         await d.execute('CREATE UNIQUE INDEX idx_liked_unique ON liked_tracks(releaseGroupId, trackKey);');
+
+        // ✅ Cache persistente para respuestas de MusicBrainz (release-groups, etc.)
+        // Se usa para mejorar el filtro de canciones y reducir llamadas repetidas.
+        await d.execute('''
+          CREATE TABLE IF NOT EXISTS mb_cache(
+            key TEXT PRIMARY KEY,
+            json TEXT NOT NULL,
+            ts INTEGER NOT NULL
+          );
+        ''');
+        await d.execute('CREATE INDEX IF NOT EXISTS idx_mb_cache_ts ON mb_cache(ts);');
       },
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 3) {
@@ -1857,5 +1891,75 @@ Future<void> deleteTrashById(int trashId) async {
     };
     if (lastHitAt != null) m['lastHitAt'] = lastHitAt;
     await d.update('price_alerts', m, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<Map<String, dynamic>?> mbCacheGetJson(
+    String key, {
+    Duration ttl = _mbCacheDefaultTtl,
+  }) async {
+    final k = key.trim();
+    if (k.isEmpty) return null;
+    final d = await db;
+    try {
+      final rows = await d.query(
+        'mb_cache',
+        columns: ['json', 'ts'],
+        where: 'key = ?',
+        whereArgs: [k],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      final ts = (rows.first['ts'] as int?) ?? 0;
+      if (ts <= 0) return null;
+      final dt = DateTime.fromMillisecondsSinceEpoch(ts);
+      if (DateTime.now().difference(dt) > ttl) {
+        // Expirado -> borrar
+        try {
+          await d.delete('mb_cache', where: 'key = ?', whereArgs: [k]);
+        } catch (_) {}
+        return null;
+      }
+      final raw = (rows.first['json'] ?? '').toString();
+      if (raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  Future<void> mbCachePutJson(
+    String key,
+    Map<String, dynamic> value,
+  ) async {
+    final k = key.trim();
+    if (k.isEmpty) return;
+    final d = await db;
+    try {
+      final raw = jsonEncode(value);
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      await d.insert(
+        'mb_cache',
+        {'key': k, 'json': raw, 'ts': ts},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {
+      // ignore
+    }
+
+    // Limpieza ligera cada cierto número de escrituras.
+    _mbCacheOps++;
+    if (_mbCacheOps % 30 == 0) {
+      await _mbCachePrune();
+    }
+  }
+
+  Future<void> _mbCachePrune({Duration ttl = _mbCacheDefaultTtl}) async {
+    final d = await db;
+    try {
+      final cutoff = DateTime.now().subtract(ttl).millisecondsSinceEpoch;
+      await d.delete('mb_cache', where: 'ts < ?', whereArgs: [cutoff]);
+    } catch (_) {}
   }
 }
