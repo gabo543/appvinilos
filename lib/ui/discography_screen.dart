@@ -18,6 +18,11 @@ import 'similar_artists_screen.dart';
 import 'widgets/app_pager.dart';
 import '../l10n/app_strings.dart';
 
+// ==================================================
+// 🧾 Discografía: secciones estilo MusicBrainz
+// ==================================================
+enum _DiscographySection { albums, compilations, live, singlesEps, other }
+
 class DiscographyScreen extends StatefulWidget {
   DiscographyScreen({super.key, this.initialArtist});
 
@@ -28,6 +33,87 @@ class DiscographyScreen extends StatefulWidget {
 }
 
 class _DiscographyScreenState extends State<DiscographyScreen> {
+
+  // ==================================================
+  // 🧾 UI: discografía estilo MusicBrainz (secciones)
+  // ==================================================
+
+  _DiscographySection _sectionOf(AlbumItem al) {
+    final ptRaw = al.primaryType.trim().toLowerCase();
+    final pt = ptRaw.isEmpty ? 'album' : ptRaw;
+    final secs = al.secondaryTypes
+        .map((e) => e.toString().trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final isCompilation = secs.contains('compilation');
+    final isLive = secs.contains('live');
+
+    if (isCompilation) return _DiscographySection.compilations;
+    if (isLive) return _DiscographySection.live;
+    if (pt == 'album') return _DiscographySection.albums;
+    if (pt == 'single' || pt == 'ep') return _DiscographySection.singlesEps;
+    return _DiscographySection.other;
+  }
+
+  int _sectionOrder(_DiscographySection s) {
+    switch (s) {
+      case _DiscographySection.albums:
+        return 0;
+      case _DiscographySection.compilations:
+        return 1;
+      case _DiscographySection.live:
+        return 2;
+      case _DiscographySection.singlesEps:
+        return 3;
+      case _DiscographySection.other:
+        return 4;
+    }
+  }
+
+  String _sectionLabel(BuildContext context, _DiscographySection s) {
+    switch (s) {
+      case _DiscographySection.albums:
+        return context.trSmart('Albums');
+      case _DiscographySection.compilations:
+        return context.trSmart('Compilations');
+      case _DiscographySection.live:
+        return context.trSmart('Live');
+      case _DiscographySection.singlesEps:
+        return context.trSmart('Singles/EPs');
+      case _DiscographySection.other:
+        return context.trSmart('Other');
+    }
+  }
+
+  Map<_DiscographySection, int> _countSections(List<AlbumItem> list) {
+    final m = <_DiscographySection, int>{
+      _DiscographySection.albums: 0,
+      _DiscographySection.compilations: 0,
+      _DiscographySection.live: 0,
+      _DiscographySection.singlesEps: 0,
+      _DiscographySection.other: 0,
+    };
+    for (final a in list) {
+      final s = _sectionOf(a);
+      m[s] = (m[s] ?? 0) + 1;
+    }
+    return m;
+  }
+
+  List<AlbumItem> _sortDiscographyMbLike(List<AlbumItem> list) {
+    final out = List<AlbumItem>.from(list);
+    out.sort((a, b) {
+      final sa = _sectionOrder(_sectionOf(a));
+      final sb = _sectionOrder(_sectionOf(b));
+      if (sa != sb) return sa.compareTo(sb);
+      final ay = int.tryParse(a.year ?? '') ?? 9999;
+      final by = int.tryParse(b.year ?? '') ?? 9999;
+      if (ay != by) return ay.compareTo(by);
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+    return out;
+  }
 
   // 👁️ UI: mostrar/ocultar buscadores de Álbum y Canción (manual)
   bool _showAlbumAndSongFilters = true;
@@ -840,12 +926,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       // Si ya prefeteamos desde el dropdown, reutilizamos.
       List<AlbumItem> items = _songAlbumsByRecording[best.id] ?? <AlbumItem>[];
       if (items.isEmpty) {
-        items = await DiscographyService.albumsForRecordingFirstEditionVerified(
+        items = await DiscographyService.searchSongAlbumsInArtistAlbumsPreferCd(
           artistId: a.id,
-          recordingId: best.id,
-          songTitle: best.title,
-          maxAlbums: full ? 16 : 10,
+          songQuery: best.title,
+          maxScanAlbums: full ? 260 : 180,
+          maxMatches: full ? 25 : 16,
         );
+        _songAlbumsByRecording[best.id] = items;
       }
 
       if (!mounted || mySeq != _songReqSeq) return;
@@ -1076,12 +1163,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     try {
       List<AlbumItem> items = _songAlbumsByRecording[hit.id] ?? <AlbumItem>[];
       if (items.isEmpty) {
-        items = await DiscographyService.albumsForRecordingFirstEditionVerified(
+        items = await DiscographyService.searchSongAlbumsInArtistAlbumsPreferCd(
           artistId: a.id,
-          recordingId: hit.id,
-          songTitle: hit.title,
-          maxAlbums: 16,
+          songQuery: hit.title,
+          maxScanAlbums: 220,
+          maxMatches: 25,
         );
+        _songAlbumsByRecording[hit.id] = items;
       }
       if (!mounted || mySeq != _songReqSeq) return;
 
@@ -1867,8 +1955,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         ? songVisibleAlbums
         : songVisibleAlbums.where((al) => _normQ(al.title).contains(albumNorm)).toList();
 
+    // 🧾 Discografía estilo MusicBrainz: ordenar por secciones (Albums, Compilations, Live, ...)
+    // y luego por año.
+    final sortedVisibleAlbums = _sortDiscographyMbLike(visibleAlbums);
+    final sectionCounts = _countSections(sortedVisibleAlbums);
+
     // 📄 Paginación (20 por página)
-    final totalAlbums = visibleAlbums.length;
+    final totalAlbums = sortedVisibleAlbums.length;
     final totalPages = (totalAlbums <= 0) ? 1 : ((totalAlbums + _pageSize - 1) ~/ _pageSize);
     final page = _albumPage.clamp(1, totalPages);
     if (page != _albumPage) {
@@ -1880,7 +1973,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final end = (start + _pageSize < totalAlbums) ? (start + _pageSize) : totalAlbums;
     final pageAlbums = (totalAlbums <= 0 || start >= totalAlbums)
         ? const <AlbumItem>[]
-        : visibleAlbums.sublist(start, end);
+        : sortedVisibleAlbums.sublist(start, end);
 
     // ✅ Perf: hidratar (colección/wishlist/fav) en lote para la página visible,
     // evitando 2 queries por item y múltiples setState.
@@ -2397,14 +2490,60 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                     return Center(child: Text(context.tr('No encontré esa canción en álbumes.')));
                   }
 
+                  // Lista con secciones (estilo MusicBrainz): insertamos
+                  // headers cuando cambia el tipo (Albums, Compilations, ...)
+                  final rows = <dynamic>[];
+                  _DiscographySection? lastSection;
+                  for (final a in pageAlbums) {
+                    final s = _sectionOf(a);
+                    if (lastSection != s) {
+                      rows.add(s);
+                      lastSection = s;
+                    }
+                    rows.add(a);
+                  }
+
                   return Column(
                     children: [
                       Expanded(
                         child: ListView.builder(
                           controller: _albumsScrollCtrl,
-                          itemCount: pageAlbums.length,
+                          itemCount: rows.length,
                           itemBuilder: (_, i) {
-                            final al = pageAlbums[i];
+                            final row = rows[i];
+                            if (row is _DiscographySection) {
+                              final label = _sectionLabel(context, row);
+                              final c = sectionCounts[row] ?? 0;
+                              return Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.45),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.outlineVariant,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          label,
+                                          style: Theme.of(context).textTheme.titleSmall,
+                                        ),
+                                      ),
+                                      Text(
+                                        '$c',
+                                        style: Theme.of(context).textTheme.labelSmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
+
+                            final al = row as AlbumItem;
                             final key = _k(artistName, al.title);
 
                             // Hidratación en lote se dispara una vez por página visible.
@@ -2628,7 +2767,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                               ),
                               const Spacer(),
                               Text(
-                                '${albums.length} ${context.tr('álbumes')}',
+                                '${albums.length} ${context.trSmart('discos')}',
                                 style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],

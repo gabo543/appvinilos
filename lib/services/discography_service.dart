@@ -72,6 +72,10 @@ class AlbumItem {
   final String? year;
   final String cover250;
   final String cover500;
+  /// MusicBrainz primary type (Album, Single, EP, ...). Puede venir vacío.
+  final String primaryType;
+  /// MusicBrainz secondary types (Compilation, Live, ...). Puede venir vacío.
+  final List<String> secondaryTypes;
 
   AlbumItem({
     required this.releaseGroupId,
@@ -79,6 +83,8 @@ class AlbumItem {
     required this.cover250,
     required this.cover500,
     this.year,
+    this.primaryType = '',
+    this.secondaryTypes = const <String>[],
   });
 }
 
@@ -307,12 +313,33 @@ class DiscographyService {
     }
   }
 
+  static Future<Map<String, dynamic>?> _rgDetailsFetch(String id) async {
+    final key = id.trim();
+    if (key.isEmpty) return null;
+
+    try {
+      final u = Uri.parse('$_mbBase/release-group/$key?fmt=json');
+      final r = await _get(u);
+      if (r.statusCode != 200) return null;
+      final decoded = jsonDecode(r.body);
+      if (decoded is! Map) return null;
+      final j = decoded.cast<String, dynamic>();
+      await _rgDetailsStore(key, j);
+      return j;
+    } catch (_) {
+      return null;
+    }
+  }
+
 
   // Cache de tracks (título normalizado + length ms) por release-group.
   // Se usa para desambiguar versiones (live/remaster) y confirmar que el tema
   // realmente aparece en el álbum de estudio.
   static const Duration _rgTracksInfoTtl = Duration(days: 30);
   static final Map<String, _CacheEntry<Map<String, dynamic>>> _rgTracksInfoCache = {};
+
+  // Tracklist cache preferiendo un release con formato CD (cuando exista).
+  static final Map<String, _CacheEntry<Map<String, dynamic>>> _rgTracksInfoCacheCd = {};
 
   static Map<String, dynamic>? _rgTracksInfoCachedMem(String id) {
     final key = id.trim();
@@ -353,6 +380,143 @@ class DiscographyService {
     } catch (_) {
       // ignore
     }
+  }
+
+  // --- versión CD preferida ---
+  static Map<String, dynamic>? _rgTracksInfoCachedMemCd(String id) {
+    final key = id.trim();
+    if (key.isEmpty) return null;
+    final c = _rgTracksInfoCacheCd[key];
+    if (c == null) return null;
+    if (DateTime.now().difference(c.ts) <= _rgTracksInfoTtl) return c.value;
+    _rgTracksInfoCacheCd.remove(key);
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _rgTracksInfoCachedCd(String id) async {
+    final key = id.trim();
+    if (key.isEmpty) return null;
+
+    final m = _rgTracksInfoCachedMemCd(key);
+    if (m != null) return m;
+
+    try {
+      final j = await VinylDb.instance.mbCacheGetJson('mb:rg_tracks_cd:$key');
+      if (j != null) {
+        _rgTracksInfoCacheCd[key] = _CacheEntry(j, DateTime.now());
+        return j;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  static Future<void> _rgTracksInfoStoreCd(String id, Map<String, dynamic> j) async {
+    final key = id.trim();
+    if (key.isEmpty) return;
+    _rgTracksInfoCacheCd[key] = _CacheEntry(j, DateTime.now());
+    try {
+      await VinylDb.instance.mbCachePutJson('mb:rg_tracks_cd:$key', j);
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  static bool _releaseHasCdFormat(Map r) {
+    final media = (r['media'] as List?) ?? const <dynamic>[];
+    for (final m in media) {
+      if (m is! Map) continue;
+      final fmt = (m['format'] ?? '').toString().trim().toLowerCase();
+      if (fmt == 'cd') return true;
+    }
+    return false;
+  }
+
+  /// Elige una edición preferentemente en CD desde un listado de releases
+  /// (resultado de /release?release-group=...&inc=media).
+  ///
+  /// Preferimos: CD + Official + fecha más antigua.
+  /// Si no hay CD, caemos a Official + fecha más antigua (como _pickBestReleaseIdFromReleases).
+  static String _pickBestReleaseIdFromReleaseSearchPreferCd(List releases) {
+    String? bestCd;
+    DateTime? bestCdDt;
+    bool bestCdOfficial = false;
+
+    String? bestAny;
+    DateTime? bestAnyDt;
+    bool bestAnyOfficial = false;
+
+    String? firstAny;
+    String? firstOfficial;
+
+    for (final r in releases) {
+      if (r is! Map) continue;
+      final id = (r['id'] ?? '').toString().trim();
+      if (id.isEmpty) continue;
+      firstAny ??= id;
+
+      final status = (r['status'] ?? '').toString().trim().toLowerCase();
+      final isOfficial = status.isEmpty || status == 'official';
+      if (isOfficial) firstOfficial ??= id;
+
+      final dt = _parseMbDate(r['date']);
+
+      // Mejor cualquiera (fallback)
+      if (dt != null) {
+        if (bestAny == null) {
+          bestAny = id;
+          bestAnyDt = dt;
+          bestAnyOfficial = isOfficial;
+        } else {
+          if (isOfficial && !bestAnyOfficial) {
+            bestAny = id;
+            bestAnyDt = dt;
+            bestAnyOfficial = true;
+          } else if (!( !isOfficial && bestAnyOfficial)) {
+            if (bestAnyDt == null || dt.isBefore(bestAnyDt!)) {
+              bestAny = id;
+              bestAnyDt = dt;
+              bestAnyOfficial = isOfficial;
+            }
+          }
+        }
+      } else if (bestAny == null) {
+        // Si no hay fechas, igual dejamos algo.
+        bestAny = id;
+        bestAnyOfficial = isOfficial;
+      }
+
+      // Mejor CD
+      final hasCd = _releaseHasCdFormat(r);
+      if (!hasCd) continue;
+      if (dt == null) {
+        // sin fecha: usar como fallback si no tenemos CD aún.
+        bestCd ??= id;
+        bestCdOfficial = isOfficial;
+        continue;
+      }
+
+      if (bestCd == null) {
+        bestCd = id;
+        bestCdDt = dt;
+        bestCdOfficial = isOfficial;
+      } else {
+        if (isOfficial && !bestCdOfficial) {
+          bestCd = id;
+          bestCdDt = dt;
+          bestCdOfficial = true;
+        } else if (!( !isOfficial && bestCdOfficial)) {
+          if (bestCdDt == null || dt.isBefore(bestCdDt!)) {
+            bestCd = id;
+            bestCdDt = dt;
+            bestCdOfficial = isOfficial;
+          }
+        }
+      }
+    }
+
+    return bestCd ?? bestAny ?? firstOfficial ?? firstAny ?? '';
   }
 
   /// Elige una edición (release) "buena" desde la lista de releases del release-group.
@@ -466,6 +630,71 @@ class DiscographyService {
     };
   }
 
+  /// Igual que _rgTracksInfoFetch, pero intenta elegir una edición en formato CD.
+  ///
+  /// 1) Lista releases del release-group usando /release?release-group=...&inc=media
+  /// 2) Elige CD + Official + más antigua
+  /// 3) Si no hay CD, cae a Official + más antigua
+  /// 4) Descarga tracklist con /release/<id>?inc=recordings
+  static Future<Map<String, dynamic>?> _rgTracksInfoFetchPreferCd(String rgid) async {
+    final id = rgid.trim();
+    if (id.isEmpty) return null;
+
+    final urlList = Uri.parse(
+      '$_mbBase/release/?release-group=$id&inc=media&fmt=json&limit=100',
+    );
+    final resList = await _get(urlList);
+    if (resList.statusCode != 200) return null;
+
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(resList.body);
+    } catch (_) {
+      return null;
+    }
+    if (decoded is! Map) return null;
+    final releases = (decoded['releases'] as List?) ?? const <dynamic>[];
+    if (releases.isEmpty) return null;
+
+    final releaseId = _pickBestReleaseIdFromReleaseSearchPreferCd(releases);
+    if (releaseId.isEmpty) return null;
+
+    final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings&fmt=json');
+    final resRel = await _get(urlRel);
+    if (resRel.statusCode != 200) return null;
+
+    dynamic relDecoded;
+    try {
+      relDecoded = jsonDecode(resRel.body);
+    } catch (_) {
+      return null;
+    }
+    if (relDecoded is! Map) return null;
+
+    final media = (relDecoded['media'] as List?) ?? const <dynamic>[];
+    if (media.isEmpty) return null;
+
+    final tracks = <Map<String, dynamic>>[];
+    for (final m in media) {
+      if (m is! Map) continue;
+      final tlist = (m['tracks'] as List?) ?? const <dynamic>[];
+      for (final t in tlist) {
+        if (t is! Map) continue;
+        final title = (t['title'] ?? '').toString().trim();
+        if (title.isEmpty) continue;
+        final n = normalizeKey(title);
+        final l = (t['length'] is num) ? (t['length'] as num).toInt() : null;
+        tracks.add({'t': title, 'n': n, 'l': l});
+      }
+    }
+    if (tracks.isEmpty) return null;
+
+    return {
+      'releaseId': releaseId,
+      'tracks': tracks,
+    };
+  }
+
   static bool _trackTitleMatches(String trackNorm, String wantNorm, List<String> wantTokens) {
     final tn = trackNorm.trim();
     final wn = wantNorm.trim();
@@ -537,6 +766,18 @@ class DiscographyService {
         'User-Agent': 'GaBoLP/1.0 (contact: gabo.hachim@gmail.com)',
         'Accept': 'application/json',
       };
+
+  // ==================================================
+  // 🎵 TRACKLIST (preferir CD) + búsqueda por discografía
+  // ==================================================
+  // Enfoque robusto para "¿en qué álbum está esta canción?":
+  // 1) Traer la discografía (release-groups) del artista, filtrando a Albums.
+  // 2) Para cada álbum, elegir una edición en formato CD (si existe).
+  // 3) Revisar el tracklist de esa edición y marcar coincidencias.
+  //
+  // Esto evita depender de que MusicBrainz entregue el "recording" correcto
+  // (estudio vs live/remaster) en las búsquedas.
+
 
   static bool _isRetryableStatus(int code) {
     // MusicBrainz / Wikipedia / etc pueden devolver errores temporales.
@@ -854,6 +1095,100 @@ class DiscographyService {
   /// 2) Tomar pocos `recordingId` candidatos
   /// 3) Lookup de cada recording -> releases -> release-groups (filtra a Album)
   /// 4) Dedupe y ordena por año
+
+  /// ✅ Enfoque "como el sitio de MusicBrainz":
+  /// Artista -> Discography -> Albums, y dentro de esa lista busca la canción
+  /// en el tracklist de una edición preferentemente en CD.
+  ///
+  /// Ventaja: evita que "ganen" compilados/en vivo cuando el usuario busca
+  /// el álbum principal donde sale el tema.
+  ///
+  /// NOTA: puede ser más lento que el search de recordings, por eso está
+  /// cacheado a nivel de tracklist por release-group.
+  static Future<List<AlbumItem>> searchSongAlbumsInArtistAlbumsPreferCd({
+    required String artistId,
+    required String songQuery,
+    int maxScanAlbums = 220,
+    int maxMatches = 25,
+  }) async {
+    final arid = artistId.trim();
+    final rawQ = songQuery.trim();
+    final q = _sanitizeSongQuery(rawQ);
+    if (arid.isEmpty || q.isEmpty) return <AlbumItem>[];
+
+    final wantNorm = normalizeKey(q);
+    final wantTokens = wantNorm
+        .split(RegExp(' +'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    // Trae discografía (solo primary-type Album) y la ordena por año.
+    // Luego filtramos a "Albums" (excluyendo secondary-types Live/Compilation)
+    // usando lookup del release-group solo si es necesario.
+    final discog = await getDiscographyByArtistId(arid);
+    if (discog.isEmpty) return <AlbumItem>[];
+
+    final out = <AlbumItem>[];
+    final seen = <String>{};
+
+    // Limitar para no explotar en artistas enormes.
+    final toScan = discog.take(math.min(maxScanAlbums, discog.length)).toList();
+
+    for (final alb in toScan) {
+      final rgid = alb.releaseGroupId.trim();
+      if (rgid.isEmpty) continue;
+
+      // Confirmar que el release-group sea "Album" de estudio (no Live/Compilation).
+      // getDiscographyByArtistId no trae secondary-types, por lo que hacemos
+      // un lookup cacheado del release-group para filtrar correctamente.
+      final rg = await _rgDetailsCached(rgid) ?? await _rgDetailsFetch(rgid);
+      if (rg is Map) {
+        if (_isLiveReleaseGroup(rg) || _isCompilationReleaseGroup(rg)) {
+          continue;
+        }
+      }
+
+      // Tracklist preferiendo CD.
+      Map<String, dynamic>? ti = await _rgTracksInfoCachedCd(rgid);
+      if (ti == null) {
+        ti = await _rgTracksInfoFetchPreferCd(rgid);
+        if (ti != null) {
+          await _rgTracksInfoStoreCd(rgid, ti);
+        }
+      }
+      // Si no pudimos obtener por CD, caemos al método estándar (mejor edición).
+      ti ??= await _rgTracksInfoCached(rgid);
+      if (ti == null) {
+        final fetched = await _rgTracksInfoFetch(rgid);
+        if (fetched != null) {
+          await _rgTracksInfoStore(rgid, fetched);
+          ti = fetched;
+        }
+      }
+      if (ti == null) continue;
+
+      final tracks = (ti['tracks'] as List?) ?? const <dynamic>[];
+      bool ok = false;
+      for (final t in tracks) {
+        if (t is! Map) continue;
+        final tn = (t['n'] ?? '').toString();
+        if (_trackTitleMatches(tn, wantNorm, wantTokens)) {
+          ok = true;
+          break;
+        }
+      }
+      if (!ok) continue;
+
+      if (seen.contains(rgid)) continue;
+      seen.add(rgid);
+
+      out.add(alb);
+      if (out.length >= maxMatches) break;
+    }
+
+    return out;
+  }
 
 static Future<List<AlbumItem>> searchSongAlbums({
   required String artistId,
@@ -1607,21 +1942,31 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
   final raw = songQuery.trim();
   if (arid.isEmpty || raw.isEmpty) return <String>{};
 
-  // Reutilizamos la lógica robusta que determina el(los) álbum(es) de lanzamiento.
-  // OJO: `maxLookups` aquí viene desde UI como "cuán profundo" queremos buscar,
-  // pero NO debe capar demasiado el número de recordings candidatos. Si el
-  // recording correcto (el que aparece en el álbum de estudio) no está dentro
-  // de los primeros N resultados, terminamos devolviendo solo compilaciones/en vivo.
-  // `searchLimit` viene desde UI (más chico para búsquedas rápidas), pero para
-  // canciones cortas o con muchos resultados (Zoom, Suedehead, etc.) necesitamos
-  // una base más profunda para llegar al recording de estudio.
-  final effectiveRecordingSearchLimit = math.max(40, searchLimit);
+  // ✅ Plan A/B nuevo (más confiable):
+  // Artista -> Discography -> Albums, y verificar la canción dentro del tracklist
+  // (preferentemente en CD). Así evitamos que ganen compilados/en vivo.
+  final scanAlbums = math.min(260, math.max(140, maxLookups * 30));
+  final scanMatches = math.max(25, maxLookups * 6);
+  final items = await searchSongAlbumsInArtistAlbumsPreferCd(
+    artistId: arid,
+    songQuery: raw,
+    maxScanAlbums: scanAlbums,
+    maxMatches: scanMatches,
+  );
 
-  // `maxLookups` viene desde UI como "profundidad". No debe capar de forma
-  // agresiva la cantidad de recordings candidatos: si el recording correcto no
-  // entra en el top N, terminamos devolviendo 0 o solo compilaciones/en vivo.
+  final picked = <String>{};
+  for (final it in items) {
+    final id = it.releaseGroupId.trim();
+    if (id.isNotEmpty) picked.add(id);
+  }
+
+  if (picked.isNotEmpty) return picked;
+
+  // Fallback suave: si por algún motivo no pudimos obtener tracklists desde los albums,
+  // intentamos el método anterior por recordings.
+  final effectiveRecordingSearchLimit = math.max(40, searchLimit);
   final effectiveMaxRecordings = math.max(25, maxLookups * 4);
-  final items = await searchSongAlbums(
+  final oldItems = await searchSongAlbums(
     artistId: arid,
     songQuery: raw,
     maxAlbums: 16,
@@ -1629,37 +1974,11 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
     maxRecordings: effectiveMaxRecordings,
     preferredRecordingId: preferredRecordingId,
   );
-
-  if (items.isEmpty) return <String>{};
-
-  // "Disco donde fue lanzada": nos quedamos con el/los más antiguo(s).
-  final firstYear = int.tryParse(items.first.year ?? '') ?? 9999;
-  final picked = <String>{};
-
-  if (firstYear != 9999) {
-    for (final it in items) {
-      final y = int.tryParse(it.year ?? '') ?? 9999;
-      if (y != firstYear) break;
-      final id = it.releaseGroupId.trim();
-      if (id.isNotEmpty) picked.add(id);
-    }
-  } else {
-    final id = items.first.releaseGroupId.trim();
+  for (final it in oldItems) {
+    final id = it.releaseGroupId.trim();
     if (id.isNotEmpty) picked.add(id);
   }
-
-  if (picked.isEmpty) return <String>{};
-
-  // Filtro suave por artista (evita Various Artists).
-  final filtered = <String>{};
-  for (final rgid in picked) {
-    try {
-      final ok = await _releaseGroupBelongsToArtist(releaseGroupId: rgid, artistId: arid);
-      if (ok) filtered.add(rgid);
-    } catch (_) {}
-  }
-
-  return filtered.isEmpty ? picked : filtered;
+  return picked;
 }
 
 
@@ -2013,21 +2332,30 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
 
     final items = <AlbumItem>[];
     for (final g in groups) {
-      if ((g['primary-type'] ?? '').toString().toLowerCase() != 'album') {
-        continue;
-      }
-
+      if (g is! Map) continue;
       final id = (g['id'] ?? '').toString();
       if (id.trim().isEmpty) continue;
       final title = (g['title'] ?? '').toString();
       final date = (g['first-release-date'] ?? '').toString();
       final year = date.length >= 4 ? date.substring(0, 4) : null;
 
+      final pt = (g['primary-type'] ?? g['primaryType'] ?? '').toString();
+      final secsRaw = g['secondary-types'] ?? g['secondaryTypes'];
+      final secondary = <String>[];
+      if (secsRaw is List) {
+        for (final s in secsRaw) {
+          final ss = s?.toString().trim();
+          if (ss != null && ss.isNotEmpty) secondary.add(ss);
+        }
+      }
+
       items.add(
         AlbumItem(
           releaseGroupId: id,
           title: title,
           year: year,
+          primaryType: pt,
+          secondaryTypes: secondary,
           cover250: 'https://coverartarchive.org/release-group/$id/front-250',
           cover500: 'https://coverartarchive.org/release-group/$id/front-500',
         ),
