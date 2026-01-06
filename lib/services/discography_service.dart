@@ -891,7 +891,9 @@ static Future<List<AlbumItem>> searchSongAlbums({
   late final String recPart;
   if (tokens.length == 1) {
     final term = _escLucene(tokens.first);
-    recPart = 'recording:${term}*';
+    // Para canciones cortas (Zoom, Suede, etc.) un wildcard solo puede traer mucho ruido.
+    // Combinamos exact match + prefix wildcard para mantener recall sin perder precisión.
+    recPart = '(recording:"$term" OR recording:${term}*)';
   } else {
     final phrase = _escLucene(q);
     final terms = tokens.map(_escLucene).toList();
@@ -1194,21 +1196,34 @@ static Future<List<AlbumItem>> searchSongAlbums({
   toLookup.sort((a, b) {
     final da = agg[a]?['earliest'] as DateTime?;
     final db = agg[b]?['earliest'] as DateTime?;
-    if (da == null && db == null) {
-      final sa = (agg[a]?['score'] is int) ? (agg[a]!['score'] as int) : 0;
-      final sb = (agg[b]?['score'] is int) ? (agg[b]!['score'] as int) : 0;
-      return sb.compareTo(sa);
-    }
-    if (da == null) return 1;
-    if (db == null) return -1;
-    final c = da.compareTo(db);
-    if (c != 0) return c;
     final sa = (agg[a]?['score'] is int) ? (agg[a]!['score'] as int) : 0;
     final sb = (agg[b]?['score'] is int) ? (agg[b]!['score'] as int) : 0;
+
+    // Importante: no empujar los "sin fecha" al final de forma rígida.
+    // En casos como Suedehead/Zoom, el release-group correcto puede venir como
+    // string y sin `rel.date`, quedando con earliest==null. Si lo mandamos al
+    // final, nunca lo enriquecemos y terminan ganando compilaciones/en vivo.
+    if (da == null || db == null) {
+      final c = sb.compareTo(sa);
+      if (c != 0) return c;
+      if (da == null && db != null) return 1;
+      if (db == null && da != null) return -1;
+      return 0;
+    }
+
+    // Ambos con fecha: más antiguo primero, y dentro de eso mejor score.
+    final c = da.compareTo(db);
+    if (c != 0) return c;
     return sb.compareTo(sa);
   });
 
-  const int maxRgLookups = 25;
+  // En algunos casos (p.ej. "Suedehead", "Zoom"), el release-group correcto llega
+  // solo como id (string) y queda como "unknown" hasta que se hace lookup.
+  // Si el set de release-groups es grande, cortar muy temprano hace que ganen
+  // compilaciones/en vivo simplemente porque venían completos.
+  // Ajuste: permitir más lookups cuando hay muchos release-groups "string".
+  // Mantener un techo razonable para no castigar rendimiento.
+  final int maxRgLookups = math.max(80, maxAlbums * 4);
   var looked = 0;
 
   for (final id in toLookup) {
@@ -1287,23 +1302,30 @@ static Future<List<AlbumItem>> searchSongAlbums({
   final wantNorm2 = normalizeKey(q);
   final wantTokens2 = wantNorm2.split(' ').where((t) => t.trim().isNotEmpty).toList();
 
-  final verify = agg.entries
-      .where((e) => e.value['nonStudio'] != true)
-      .toList();
+  // Verificamos primero los candidatos de estudio. Si no hay, probamos con los "unknown".
+  // Ordenamos priorizando los más antiguos, porque el usuario busca el álbum "original".
+  final studioForVerify = agg.entries.where((e) => e.value['nonStudio'] == false).toList();
+  final unknownForVerify = agg.entries.where((e) => e.value['nonStudio'] == null).toList();
+  final verify = studioForVerify.isNotEmpty ? studioForVerify : unknownForVerify;
 
   verify.sort((a, b) {
-    final sa = (a.value['score'] is int) ? (a.value['score'] as int) : 0;
-    final sb = (b.value['score'] is int) ? (b.value['score'] as int) : 0;
-    if (sa != sb) return sb.compareTo(sa); // score desc
     final da = a.value['earliest'] as DateTime?;
     final db = b.value['earliest'] as DateTime?;
-    if (da == null && db == null) return 0;
+    if (da == null && db == null) {
+      final sa = (a.value['score'] is int) ? (a.value['score'] as int) : 0;
+      final sb = (b.value['score'] is int) ? (b.value['score'] as int) : 0;
+      return sb.compareTo(sa);
+    }
     if (da == null) return 1;
     if (db == null) return -1;
-    return da.compareTo(db); // más antiguo primero
+    final c = da.compareTo(db); // más antiguo primero
+    if (c != 0) return c;
+    final sa = (a.value['score'] is int) ? (a.value['score'] as int) : 0;
+    final sb = (b.value['score'] is int) ? (b.value['score'] as int) : 0;
+    return sb.compareTo(sa);
   });
 
-  const int verifyMax = 8;
+  const int verifyMax = 15;
   for (final e in verify.take(verifyMax)) {
     final id = e.key;
     final v = agg[id];
@@ -1382,17 +1404,64 @@ static Future<List<AlbumItem>> searchSongAlbums({
   if (selected.isEmpty) return <AlbumItem>[];
 
 
-  final out = <AlbumItem>[];
+  // Construimos salida con year calculable incluso si no vino explícito.
+  int yearFrom(String y, DateTime? dt) {
+    final yy = int.tryParse(y);
+    if (yy != null && yy > 0 && yy < 9999) return yy;
+    if (dt != null) return dt.year;
+    return 9999;
+  }
+
+  final tmp = <Map<String, dynamic>>[];
   for (final e in selected) {
     final id = e.key;
-    final title = (e.value['title'] ?? '').toString().trim();
+    final v = e.value;
+    final title = (v['title'] ?? '').toString().trim();
     if (title.isEmpty) continue;
-    final year = (e.value['year'] ?? '').toString().trim();
+    final y = (v['year'] ?? '').toString().trim();
+    final dt = v['earliest'] as DateTime?;
+    final ns = v['nonStudio'];
+    final score = (v['score'] is int) ? (v['score'] as int) : 0;
+    tmp.add({
+      'id': id,
+      'title': title,
+      'yearStr': y,
+      'year': yearFrom(y, dt),
+      'dt': dt,
+      'nonStudio': ns,
+      'score': score,
+    });
+  }
+
+  // ✅ Si hay algún candidato de estudio, NUNCA devolvemos compilaciones/en vivo.
+  final tmpStudio = tmp.where((m) => m['nonStudio'] == false).toList();
+  final tmpPickBase = tmpStudio.isNotEmpty ? tmpStudio : tmp;
+
+  // "Disco donde fue lanzada": elegimos el año más antiguo dentro del set elegido.
+  tmpPickBase.sort((a, b) {
+    final ya = (a['year'] as int?) ?? 9999;
+    final yb = (b['year'] as int?) ?? 9999;
+    final c = ya.compareTo(yb);
+    if (c != 0) return c;
+    final sa = (a['score'] as int?) ?? 0;
+    final sb = (b['score'] as int?) ?? 0;
+    return sb.compareTo(sa);
+  });
+
+  if (tmpPickBase.isEmpty) return <AlbumItem>[];
+  final minYear = (tmpPickBase.first['year'] as int?) ?? 9999;
+  final picked = tmpPickBase.where((m) => (m['year'] as int?) == minYear).toList();
+
+  final out = <AlbumItem>[];
+  for (final m in picked) {
+    final id = (m['id'] ?? '').toString();
+    final title = (m['title'] ?? '').toString();
+    final y = (m['year'] as int?) ?? 9999;
     out.add(
       AlbumItem(
         releaseGroupId: id,
         title: title,
-        year: year.isEmpty ? null : year,
+        year: y == 9999 ? null : y.toString().padLeft(4, '0'),
         cover250: 'https://coverartarchive.org/release-group/$id/front-250',
         cover500: 'https://coverartarchive.org/release-group/$id/front-500',
       ),
@@ -1406,23 +1475,6 @@ static Future<List<AlbumItem>> searchSongAlbums({
     if (c != 0) return c;
     return a.title.toLowerCase().compareTo(b.title.toLowerCase());
   });
-
-  // ✅ "...solo el disco en el cual fue lanzada la canción"
-  // Si encontramos años válidos, nos quedamos con el/los más antiguos.
-  final years = out
-      .map((a) => int.tryParse(a.year ?? ''))
-      .where((y) => y != null && y! > 0 && y! < 9999)
-      .cast<int>()
-      .toList();
-  if (years.isNotEmpty) {
-    years.sort();
-    final minY = years.first;
-    final filtered = out.where((a) => int.tryParse(a.year ?? '') == minY).toList();
-    if (filtered.isNotEmpty) {
-      if (filtered.length > maxAlbums) return filtered.take(maxAlbums).toList();
-      return filtered;
-    }
-  }
 
   if (out.length > maxAlbums) return out.take(maxAlbums).toList();
   return out;
@@ -1549,12 +1601,25 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
   if (arid.isEmpty || raw.isEmpty) return <String>{};
 
   // Reutilizamos la lógica robusta que determina el(los) álbum(es) de lanzamiento.
+  // OJO: `maxLookups` aquí viene desde UI como "cuán profundo" queremos buscar,
+  // pero NO debe capar demasiado el número de recordings candidatos. Si el
+  // recording correcto (el que aparece en el álbum de estudio) no está dentro
+  // de los primeros N resultados, terminamos devolviendo solo compilaciones/en vivo.
+  // `searchLimit` viene desde UI (más chico para búsquedas rápidas), pero para
+  // canciones cortas o con muchos resultados (Zoom, Suedehead, etc.) necesitamos
+  // una base más profunda para llegar al recording de estudio.
+  final effectiveRecordingSearchLimit = math.max(40, searchLimit);
+
+  // `maxLookups` viene desde UI como "profundidad". No debe capar de forma
+  // agresiva la cantidad de recordings candidatos: si el recording correcto no
+  // entra en el top N, terminamos devolviendo 0 o solo compilaciones/en vivo.
+  final effectiveMaxRecordings = math.max(25, maxLookups * 4);
   final items = await searchSongAlbums(
     artistId: arid,
     songQuery: raw,
     maxAlbums: 16,
-    recordingSearchLimit: searchLimit,
-    maxRecordings: maxLookups,
+    recordingSearchLimit: effectiveRecordingSearchLimit,
+    maxRecordings: effectiveMaxRecordings,
     preferredRecordingId: preferredRecordingId,
   );
 

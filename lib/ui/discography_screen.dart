@@ -899,7 +899,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     bool markAsSelected = false,
     int searchLimit = 50,
     int maxLookups = 12,
-    bool allowTracklistScanFallback = false,
+    // Plan Z (escaneo local) como último salvavidas cuando MusicBrainz no devuelve nada.
+    bool allowTracklistScanFallback = true,
   }) async {
     final a = pickedArtist;
     if (a == null) return;
@@ -983,9 +984,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       // el(los) álbum(es) estén en páginas aún no cargadas.
       var ids = idsRaw;
 
-      // Importante: NO escaneamos todos los álbumes cargados como fallback
-      // (es lento y puede mostrar apariciones no deseadas). El servicio ya
-      // intenta devolver el álbum de lanzamiento desde MusicBrainz.
+      // Plan Z: si A/B no devuelven nada (por datos incompletos, rate-limit, etc.),
+      // escaneamos tracklists de lo ya cargado. Esto NO reemplaza a A/B; es solo
+      // el último salvavidas.
+      if (allowTracklistScanFallback && ids.isEmpty) {
+        final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
+        if (!mounted) return;
+        if (mySeq != _songReqSeq) return;
+        if (scanned.isNotEmpty) ids = scanned;
+      }
 
       if (!mounted) return;
       if (mySeq != _songReqSeq) return;
