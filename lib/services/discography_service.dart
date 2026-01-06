@@ -1156,9 +1156,11 @@ static Future<List<AlbumItem>> searchSongAlbums({
 
         final dt = _parseMbDate(rel['date']);
         final year = dt != null ? dt.year.toString().padLeft(4, '0') : null;
+        final title = (rel['title'] ?? '').toString().trim();
         final score = 80 + recBias + (isOfficial ? 20 : 0);
         upsert(
           id,
+          title: title,
           dt: dt,
           year: year,
           score: score,
@@ -1433,27 +1435,39 @@ static Future<List<AlbumItem>> searchSongAlbums({
     });
   }
 
-  // ✅ Si hay algún candidato de estudio, NUNCA devolvemos compilaciones/en vivo.
-  final tmpStudio = tmp.where((m) => m['nonStudio'] == false).toList();
-  final tmpPickBase = tmpStudio.isNotEmpty ? tmpStudio : tmp;
+  // ✅ Mostrar TODOS los álbumes donde aparece la canción (no solo el más antiguo).
+  // Orden: studio primero, luego unknown, luego live/compilation. Dentro: año (asc) y score (desc).
+  tmp.sort((a, b) {
+    int nsRank(dynamic v) {
+      if (v == false) return 0; // studio
+      if (v == null) return 1;  // unknown
+      return 2;                 // non-studio (live/compilation)
+    }
 
-  // "Disco donde fue lanzada": elegimos el año más antiguo dentro del set elegido.
-  tmpPickBase.sort((a, b) {
+    final ra = nsRank(a['nonStudio']);
+    final rb = nsRank(b['nonStudio']);
+    final c0 = ra.compareTo(rb);
+    if (c0 != 0) return c0;
+
     final ya = (a['year'] as int?) ?? 9999;
     final yb = (b['year'] as int?) ?? 9999;
-    final c = ya.compareTo(yb);
-    if (c != 0) return c;
+    final c1 = ya.compareTo(yb);
+    if (c1 != 0) return c1;
+
     final sa = (a['score'] as int?) ?? 0;
     final sb = (b['score'] as int?) ?? 0;
-    return sb.compareTo(sa);
+    final c2 = sb.compareTo(sa);
+    if (c2 != 0) return c2;
+
+    final ta = (a['title'] ?? '').toString().toLowerCase();
+    final tb = (b['title'] ?? '').toString().toLowerCase();
+    return ta.compareTo(tb);
   });
 
-  if (tmpPickBase.isEmpty) return <AlbumItem>[];
-  final minYear = (tmpPickBase.first['year'] as int?) ?? 9999;
-  final picked = tmpPickBase.where((m) => (m['year'] as int?) == minYear).toList();
-
+  if (tmp.isEmpty) return <AlbumItem>[];
+  final ranked = tmp;
   final out = <AlbumItem>[];
-  for (final m in picked) {
+  for (final m in ranked) {
     final id = (m['id'] ?? '').toString();
     final title = (m['title'] ?? '').toString();
     final y = (m['year'] as int?) ?? 9999;
@@ -1468,13 +1482,6 @@ static Future<List<AlbumItem>> searchSongAlbums({
     );
   }
 
-  out.sort((a, b) {
-    final ay = int.tryParse(a.year ?? '') ?? 9999;
-    final by = int.tryParse(b.year ?? '') ?? 9999;
-    final c = ay.compareTo(by);
-    if (c != 0) return c;
-    return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-  });
 
   if (out.length > maxAlbums) return out.take(maxAlbums).toList();
   return out;

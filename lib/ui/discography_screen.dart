@@ -242,6 +242,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final total = list.length;
     if (!mounted) return matches;
     setState(() {
+      searchingSongs = true;
+      _songLoadingMorePages = false;
       _songScanTotal = total;
       _songScanDone = 0;
     });
@@ -1848,6 +1850,8 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     // una sugerencia (título completo) o presiona buscar.
     final songFilterActive = (pickedArtist != null && _selectedSongTitleNorm.isNotEmpty);
     final showUnfilteredWhileSearching = songFilterActive && searchingSongs && _songAlbumResults.isEmpty;
+    final showSongProgress = searchingSongs || (_songScanTotal > 0 && _songScanDone < _songScanTotal) || _songLoadingMorePages;
+
 
     // 1) Base: filtro por canción (si está activo)
     final songVisibleAlbums = (!songFilterActive || showUnfilteredWhileSearching)
@@ -2330,7 +2334,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                 ),
               ],
               SizedBox(height: 8),
-              if (searchingSongs) ...[
+              if (showSongProgress) ...[
                 LinearProgressIndicator(
                   value: (_songScanTotal > 0)
                       ? (_songScanDone / _songScanTotal).clamp(0.0, 1.0)
