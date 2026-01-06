@@ -38,6 +38,19 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   // 🧾 UI: discografía estilo MusicBrainz (secciones)
   // ==================================================
 
+  
+
+  bool _isStudioAlbumItem(AlbumItem al) {
+    final pt = al.primaryType.trim().toLowerCase();
+    if (pt != 'album') return false;
+    final secs = al.secondaryTypes
+        .map((e) => e.toString().trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (secs.contains('live') || secs.contains('compilation')) return false;
+    return true;
+  }
+
   _DiscographySection _sectionOf(AlbumItem al) {
     final ptRaw = al.primaryType.trim().toLowerCase();
     final pt = ptRaw.isEmpty ? 'album' : ptRaw;
@@ -223,6 +236,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   String _selectedSongTitleNorm = '';
   int _songReqSeq = 0;
   final Map<String, Set<String>> _songCache = <String, Set<String>>{};
+  final Map<String, List<AlbumItem>> _songItemsCache = <String, List<AlbumItem>>{};
   // Cache de tracklists por release-group (para no volver a pedirlos al filtrar).
   final Map<String, List<String>> _trackTitlesCache = <String, List<String>>{};
   int _songScanTotal = 0;
@@ -239,6 +253,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     if (rgids.isEmpty) return <AlbumItem>[];
     final out = <AlbumItem>[];
     for (final al in albums) {
+      if (!_isStudioAlbumItem(al)) continue;
       final id = al.releaseGroupId.trim();
       if (id.isNotEmpty && rgids.contains(id)) out.add(al);
     }
@@ -307,6 +322,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       _songSuggestions = <SongHit>[];
       _songAlbumsByRecording.clear();
       _songAlbumsLoading.clear();
+      _songItemsCache.clear();
       _albumPage = 1;
       _songScanTotal = 0;
       _songScanDone = 0;
@@ -324,7 +340,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     int mySeq,
   ) async {
     final matches = <String>{};
-    final list = albums;
+    final list = albums.where(_isStudioAlbumItem).toList();
     final total = list.length;
     if (!mounted) return matches;
     setState(() {
@@ -811,6 +827,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       _songSuggestions = <SongHit>[];
       _songAlbumsByRecording.clear();
       _songAlbumsLoading.clear();
+      _songItemsCache.clear();
     });
 
     _songSuggestDebounce = Timer(const Duration(milliseconds: 260), () async {
@@ -1018,26 +1035,24 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     // Cache key incluye "modo" para no reutilizar resultados livianos
     // (en vivo) cuando el usuario presiona buscar (modo completo).
     final cacheKey = '${a.id}||song:$qNorm||sl:$searchLimit||ml:$maxLookups||fb:${allowTracklistScanFallback ? 1 : 0}';
-    final cached = _songCache[cacheKey];
-    if (cached != null) {
+    final cachedItems = _songItemsCache[cacheKey];
+    if (cachedItems != null) {
       if (!mounted) return;
 
-      // (Ya activamos la selección arriba.)
+      final cachedIds = cachedItems
+          .map((e) => e.releaseGroupId.trim())
+          .where((id) => id.isNotEmpty)
+          .toSet();
 
       setState(() {
         searchingSongs = true;
         _songLoadingMorePages = false;
-        _songMatchReleaseGroups = cached;
+        _songAlbumResults = cachedItems;
+        _songMatchReleaseGroups = cachedIds;
         _albumPage = 1;
         _songScanTotal = 0;
         _songScanDone = 0;
       });
-
-      // Si la discografía está paginada, puede que aún no tengamos cargado
-      // el(los) álbum(es) donde aparece la canción. Cargamos páginas hasta que aparezca.
-      await _ensureSongMatchesAcrossPages(cached, mySeq);
-      if (!mounted) return;
-      if (mySeq != _songReqSeq) return;
 
       setState(() {
         searchingSongs = false;
@@ -1050,6 +1065,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     setState(() {
       searchingSongs = true;
       _songLoadingMorePages = false;
+      _songAlbumResults = <AlbumItem>[];
       _songMatchReleaseGroups = <String>{};
       _albumPage = 1;
       _songScanTotal = 0;
@@ -1060,18 +1076,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       // 🔎 Buscamos en MusicBrainz por recording y devolvemos release-groups.
       // Luego la UI filtra *solo* los álbumes que ya están en la discografía cargada.
       // Aumentamos `searchLimit` y `maxLookups` para reducir falsos negativos.
-      final idsRaw = await DiscographyService.searchAlbumReleaseGroupsBySongRobust(
+      // ✅ SOLO Albums: escanear discografía del artista (Albums de estudio)
+      // y verificar la canción contra el tracklist.
+      var items = await DiscographyService.searchSongAlbumsInArtistAlbumsPreferCd(
         artistId: a.id,
         songQuery: raw,
-        preferredRecordingId: preferredRecordingId,
-        searchLimit: searchLimit,
-        maxLookups: maxLookups,
+        maxScanAlbums: 320,
+        maxMatches: 40,
       );
 
-      // IDs de release-groups (álbumes) donde aparece la canción.
-      // OJO: ahora la discografía se carga paginada para ser rápida, así que puede que
-      // el(los) álbum(es) estén en páginas aún no cargadas.
-      var ids = idsRaw;
+      // IDs de release-groups (Albums) donde aparece la canción.
+      var ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
 
       // Plan Z: si A/B no devuelven nada (por datos incompletos, rate-limit, etc.),
       // escaneamos tracklists de lo ya cargado. Esto NO reemplaza a A/B; es solo
@@ -1080,7 +1095,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
         if (!mounted) return;
         if (mySeq != _songReqSeq) return;
-        if (scanned.isNotEmpty) ids = scanned;
+        if (scanned.isNotEmpty) {
+          ids = scanned;
+          final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
+          if (scannedItems.isNotEmpty) items = scannedItems;
+        }
       }
 
       if (!mounted) return;
@@ -1089,18 +1108,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       // (Ya activamos la selección arriba.)
 
       _songCache[cacheKey] = ids;
+      _songItemsCache[cacheKey] = items;
 
-      // Aplicamos el filtro (aunque aún no tengamos cargado la página donde cae el álbum).
       setState(() {
+        _songAlbumResults = items;
         _songMatchReleaseGroups = ids;
-      });
-
-      // ✅ Nuevo: si aún no hay coincidencias visibles, vamos cargando páginas hasta que aparezcan.
-      await _ensureSongMatchesAcrossPages(ids, mySeq);
-      if (!mounted) return;
-      if (mySeq != _songReqSeq) return;
-
-      setState(() {
         searchingSongs = false;
         _songLoadingMorePages = false;
       });
@@ -1110,6 +1122,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       setState(() {
         searchingSongs = false;
         _songLoadingMorePages = false;
+        _songAlbumResults = <AlbumItem>[];
         _songMatchReleaseGroups = <String>{};
       });
       if (markAsSelected || _selectedSongRecordingId.isEmpty) {

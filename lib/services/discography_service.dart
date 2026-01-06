@@ -1123,8 +1123,8 @@ class DiscographyService {
         .where((e) => e.isNotEmpty)
         .toList();
 
-    // Trae discografía (solo primary-type Album) y la ordena por año.
-    // Luego filtramos a "Albums" (excluyendo secondary-types Live/Compilation)
+    // Trae discografía del artista y luego filtramos SOLO a primary-type Album.
+    // Además excluimos secondary-types Live/Compilation
     // usando lookup del release-group solo si es necesario.
     final discog = await getDiscographyByArtistId(arid);
     if (discog.isEmpty) return <AlbumItem>[];
@@ -1136,6 +1136,15 @@ class DiscographyService {
     final toScan = discog.take(math.min(maxScanAlbums, discog.length)).toList();
 
     for (final alb in toScan) {
+      // SOLO Albums de estudio: primary-type Album, excluyendo Live/Compilation.
+      final pt = alb.primaryType.trim().toLowerCase();
+      if (pt.isNotEmpty && pt != 'album') continue;
+      final secs = alb.secondaryTypes
+          .map((e) => e.toString().trim().toLowerCase())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (secs.contains('live') || secs.contains('compilation')) continue;
+
       final rgid = alb.releaseGroupId.trim();
       if (rgid.isEmpty) continue;
 
