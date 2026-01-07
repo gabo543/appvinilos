@@ -15,7 +15,6 @@ import 'album_tracks_screen.dart';
 import 'app_logo.dart';
 import 'explore_screen.dart';
 import 'similar_artists_screen.dart';
-import 'widgets/app_pager.dart';
 import '../l10n/app_strings.dart';
 
 // ==================================================
@@ -1002,18 +1001,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
 
       if (!mounted || mySeq != _songReqSeq) return;
-      // IDs del (los) álbum(es) "de lanzamiento" que devolvió el servicio.
-      Set<String> ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
 
-      // Plan Z: si MusicBrainz devolvió vacío (datos incompletos / rate-limit),
-      // escaneamos solo lo ya cargado en pantalla como último salvavidas.
-      if (ids.isEmpty) {
-        final scanned = await _scanLoadedAlbumsForSong(_selectedSongTitleNorm, mySeq);
-        if (!mounted || mySeq != _songReqSeq) return;
-        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
-        if (scannedItems.isNotEmpty) items = scannedItems;
-        ids = scanned;
-      }
+      // ✅ SOLO Albums (estudio): nunca mostramos Live/Compilation aquí.
+      items = items.where(_isStudioAlbumItem).toList();
+
+      // IDs de release-groups donde aparece la canción.
+      final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
 
       setState(() {
         searchingSongs = false;
@@ -1134,13 +1127,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         maxMatches: 40,
       );
 
-      // IDs de release-groups (Albums) donde aparece la canción.
-      var ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
+      // ✅ SOLO Albums (estudio): nunca mostramos Live/Compilation aquí.
+      items = items.where(_isStudioAlbumItem).toList();
 
-      // Plan Z: si A/B no devuelven nada (por datos incompletos, rate-limit, etc.),
-      // escaneamos tracklists de lo ya cargado. Esto NO reemplaza a A/B; es solo
-      // el último salvavidas.
-      }
+      // IDs de release-groups (Albums) donde aparece la canción.
+      final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
 
       if (!mounted) return;
       if (mySeq != _songReqSeq) return;
@@ -1226,15 +1217,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
       if (!mounted || mySeq != _songReqSeq) return;
 
-      // Plan Z: si A/B no devolvieron nada, escanear tracklists de lo ya cargado.
-      Set<String> ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
-      if (ids.isEmpty) {
-        final scanned = await _scanLoadedAlbumsForSong(norm, mySeq);
-        if (!mounted || mySeq != _songReqSeq) return;
-        final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
-        if (scannedItems.isNotEmpty) items = scannedItems;
-        ids = scanned;
-      }
+      // ✅ SOLO Albums (estudio): nunca mostramos Live/Compilation aquí.
+      items = items.where(_isStudioAlbumItem).toList();
+
+      // IDs de release-groups donde aparece la canción.
+      final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
       setState(() {
         searchingSongs = false;
         _songAlbumResults = items;
@@ -2013,20 +2000,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final sortedVisibleAlbums = _sortDiscographyMbLike(visibleAlbums);
     final sectionCounts = _countSections(sortedVisibleAlbums);
 
-    // 📄 Paginación (20 por página)
-    final totalAlbums = sortedVisibleAlbums.length;
-    final totalPages = (totalAlbums <= 0) ? 1 : ((totalAlbums + _pageSize - 1) ~/ _pageSize);
-    final page = _albumPage.clamp(1, totalPages);
-    if (page != _albumPage) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _albumPage = page);
-      });
-    }
-    final start = (page - 1) * _pageSize;
-    final end = (start + _pageSize < totalAlbums) ? (start + _pageSize) : totalAlbums;
-    final pageAlbums = (totalAlbums <= 0 || start >= totalAlbums)
-        ? const <AlbumItem>[]
-        : sortedVisibleAlbums.sublist(start, end);
+    // 📄 (Simplificado) Mostramos toda la lista visible.
+    // La paginación visual se elimina aquí porque estaba causando errores de compilación
+    // en builds release. Si más adelante quieres volver a pager, lo reintroducimos
+    // con variables/estado acotado.
+    final pageAlbums = sortedVisibleAlbums;
 
     // ✅ Perf: hidratar (colección/wishlist/fav) en lote para la página visible,
     // evitando 2 queries por item y múltiples setState.
@@ -2812,32 +2790,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                           },
                         ),
                       ),
-                      if (pickedArtist != null && artistResults.isEmpty && _mbHasMore && !albumFilterActive && !songFilterActive)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6, bottom: 4),
-                          child: Row(
-                            children: [
-                              TextButton.icon(
-                                onPressed: _mbLoadingMore ? null : _loadMoreDiscographyPage,
-                                icon: const Icon(Icons.download),
-                                label: Text(
-                                  _mbLoadingMore ? context.tr('Cargando...') : '${context.tr('Cargar más')} (+$_mbLimit)',
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                '${albums.length} ${context.trSmart('discos')}',
-                                style: Theme.of(context).textTheme.labelSmall,
-                              ),
-                            ],
-                          ),
-                        ),
-                      AppPager(
-                        page: page,
-                        totalPages: totalPages,
-                        onPrev: () => _changeAlbumPage((page - 1).clamp(1, totalPages)),
-                        onNext: () => _changeAlbumPage((page + 1).clamp(1, totalPages)),
-                      ),
+
                     ],
                   );
                 },
