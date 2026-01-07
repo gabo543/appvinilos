@@ -1269,7 +1269,8 @@ class DiscographyService {
       // Si falta metadata (primary/secondary), confirmamos con lookup del release-group.
       if (pt.isEmpty || secs.isEmpty) {
         final rg = await _rgDetailsCached(rgid) ?? await _rgDetailsFetch(rgid);
-        if (rg is! Map) continue; // estricto: sin datos -> no incluir
+        // `rg` es nullable: en modo estricto, sin datos -> no incluir.
+        if (rg == null) continue;
         final p = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
         if (p != 'album') continue;
         if (_isLiveReleaseGroup(rg) || _isCompilationReleaseGroup(rg)) continue;
