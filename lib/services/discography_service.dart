@@ -590,45 +590,92 @@ class DiscographyService {
     final releases = (decoded['releases'] as List?) ?? const <dynamic>[];
     if (releases.isEmpty) return null;
 
-    final releaseId = _pickBestReleaseIdFromReleases(releases);
-    if (releaseId.isEmpty) return null;
-
-    final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings&fmt=json');
-    final resRel = await _get(urlRel);
-    if (resRel.statusCode != 200) return null;
-
-    dynamic relDecoded;
-    try {
-      relDecoded = jsonDecode(resRel.body);
-    } catch (_) {
-      return null;
-    }
-    if (relDecoded is! Map) return null;
-
-    final media = (relDecoded['media'] as List?) ?? const <dynamic>[];
-    if (media.isEmpty) return null;
-
-    final tracks = <Map<String, dynamic>>[];
-    for (final m in media) {
-      if (m is! Map) continue;
-      final tlist = (m['tracks'] as List?) ?? const <dynamic>[];
-      for (final t in tlist) {
-        if (t is! Map) continue;
-        final title = (t['title'] ?? '').toString().trim();
-        if (title.isEmpty) continue;
-        final n = normalizeKey(title);
-        final l = (t['length'] is num) ? (t['length'] as num).toInt() : null;
-        tracks.add({'t': title, 'n': n, 'l': l});
+    // En vez de elegir 1 sola edición (que a veces viene sin tracklist),
+    // probamos varias candidatas hasta encontrar una con tracks.
+    final candidates = <Map<String, dynamic>>[];
+    int i = 0;
+    for (final r in releases) {
+      if (r is! Map) {
+        i++;
+        continue;
       }
+      final rid = (r['id'] ?? '').toString().trim();
+      if (rid.isEmpty) {
+        i++;
+        continue;
+      }
+      final status = (r['status'] ?? '').toString().trim().toLowerCase();
+      final isOfficial = status.isEmpty || status == 'official';
+      final dt = _parseMbDate(r['date']);
+      candidates.add({
+        'id': rid,
+        'off': isOfficial,
+        'dt': dt,
+        'i': i,
+      });
+      i++;
     }
 
-    if (tracks.isEmpty) return null;
+    candidates.sort((a, b) {
+      final ao = (a['off'] == true);
+      final bo = (b['off'] == true);
+      if (ao != bo) return ao ? -1 : 1; // oficiales primero
+      final ad = a['dt'] as DateTime?;
+      final bd = b['dt'] as DateTime?;
+      if (ad == null && bd != null) return 1;
+      if (ad != null && bd == null) return -1;
+      if (ad != null && bd != null) {
+        final c = ad.compareTo(bd); // más antiguo primero
+        if (c != 0) return c;
+      }
+      return (a['i'] as int).compareTo(b['i'] as int);
+    });
 
-    return {
-      'releaseId': releaseId,
-      'tracks': tracks,
-    };
+    final maxTry = math.min(6, candidates.length);
+    for (int k = 0; k < maxTry; k++) {
+      final releaseId = (candidates[k]['id'] ?? '').toString().trim();
+      if (releaseId.isEmpty) continue;
+
+      final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings&fmt=json');
+      final resRel = await _get(urlRel);
+      if (resRel.statusCode != 200) continue;
+
+      dynamic relDecoded;
+      try {
+        relDecoded = jsonDecode(resRel.body);
+      } catch (_) {
+        continue;
+      }
+      if (relDecoded is! Map) continue;
+
+      final media = (relDecoded['media'] as List?) ?? const <dynamic>[];
+      if (media.isEmpty) continue;
+
+      final tracks = <Map<String, dynamic>>[];
+      for (final m in media) {
+        if (m is! Map) continue;
+        final tlist = (m['tracks'] as List?) ?? const <dynamic>[];
+        for (final t in tlist) {
+          if (t is! Map) continue;
+          final title = (t['title'] ?? '').toString().trim();
+          if (title.isEmpty) continue;
+          final n = normalizeKey(title);
+          final l = (t['length'] is num) ? (t['length'] as num).toInt() : null;
+          tracks.add({'t': title, 'n': n, 'l': l});
+        }
+      }
+
+      if (tracks.isEmpty) continue;
+
+      return {
+        'releaseId': releaseId,
+        'tracks': tracks,
+      };
+    }
+
+    return null;
   }
+
 
   /// Igual que _rgTracksInfoFetch, pero intenta elegir una edición en formato CD.
   ///
@@ -653,47 +700,113 @@ class DiscographyService {
       return null;
     }
     if (decoded is! Map) return null;
+
     final releases = (decoded['releases'] as List?) ?? const <dynamic>[];
     if (releases.isEmpty) return null;
 
-    final releaseId = _pickBestReleaseIdFromReleaseSearchPreferCd(releases);
-    if (releaseId.isEmpty) return null;
-
-    final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings&fmt=json');
-    final resRel = await _get(urlRel);
-    if (resRel.statusCode != 200) return null;
-
-    dynamic relDecoded;
-    try {
-      relDecoded = jsonDecode(resRel.body);
-    } catch (_) {
-      return null;
-    }
-    if (relDecoded is! Map) return null;
-
-    final media = (relDecoded['media'] as List?) ?? const <dynamic>[];
-    if (media.isEmpty) return null;
-
-    final tracks = <Map<String, dynamic>>[];
-    for (final m in media) {
-      if (m is! Map) continue;
-      final tlist = (m['tracks'] as List?) ?? const <dynamic>[];
-      for (final t in tlist) {
-        if (t is! Map) continue;
-        final title = (t['title'] ?? '').toString().trim();
-        if (title.isEmpty) continue;
-        final n = normalizeKey(title);
-        final l = (t['length'] is num) ? (t['length'] as num).toInt() : null;
-        tracks.add({'t': title, 'n': n, 'l': l});
+    // En vez de elegir 1 sola edición CD (que a veces no trae tracklist),
+    // probamos varias: CD primero, luego Official + más antigua.
+    final candidates = <Map<String, dynamic>>[];
+    int i = 0;
+    for (final r in releases) {
+      if (r is! Map) {
+        i++;
+        continue;
       }
-    }
-    if (tracks.isEmpty) return null;
+      final rid = (r['id'] ?? '').toString().trim();
+      if (rid.isEmpty) {
+        i++;
+        continue;
+      }
 
-    return {
-      'releaseId': releaseId,
-      'tracks': tracks,
-    };
+      final status = (r['status'] ?? '').toString().trim().toLowerCase();
+      final isOfficial = status.isEmpty || status == 'official';
+      final dt = _parseMbDate(r['date']);
+
+      bool hasCd = false;
+      final media = (r['media'] as List?) ?? const <dynamic>[];
+      for (final m in media) {
+        if (m is! Map) continue;
+        final fmt = (m['format'] ?? '').toString().trim().toLowerCase();
+        if (fmt.contains('cd')) {
+          hasCd = true;
+          break;
+        }
+      }
+
+      candidates.add({
+        'id': rid,
+        'cd': hasCd,
+        'off': isOfficial,
+        'dt': dt,
+        'i': i,
+      });
+      i++;
+    }
+
+    candidates.sort((a, b) {
+      final acd = (a['cd'] == true);
+      final bcd = (b['cd'] == true);
+      if (acd != bcd) return acd ? -1 : 1; // CD primero
+      final ao = (a['off'] == true);
+      final bo = (b['off'] == true);
+      if (ao != bo) return ao ? -1 : 1; // Official primero
+      final ad = a['dt'] as DateTime?;
+      final bd = b['dt'] as DateTime?;
+      if (ad == null && bd != null) return 1;
+      if (ad != null && bd == null) return -1;
+      if (ad != null && bd != null) {
+        final c = ad.compareTo(bd); // más antiguo primero
+        if (c != 0) return c;
+      }
+      return (a['i'] as int).compareTo(b['i'] as int);
+    });
+
+    final maxTry = math.min(8, candidates.length);
+    for (int k = 0; k < maxTry; k++) {
+      final releaseId = (candidates[k]['id'] ?? '').toString().trim();
+      if (releaseId.isEmpty) continue;
+
+      final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings&fmt=json');
+      final resRel = await _get(urlRel);
+      if (resRel.statusCode != 200) continue;
+
+      dynamic relDecoded;
+      try {
+        relDecoded = jsonDecode(resRel.body);
+      } catch (_) {
+        continue;
+      }
+      if (relDecoded is! Map) continue;
+
+      final media = (relDecoded['media'] as List?) ?? const <dynamic>[];
+      if (media.isEmpty) continue;
+
+      final tracks = <Map<String, dynamic>>[];
+      for (final m in media) {
+        if (m is! Map) continue;
+        final tlist = (m['tracks'] as List?) ?? const <dynamic>[];
+        for (final t in tlist) {
+          if (t is! Map) continue;
+          final title = (t['title'] ?? '').toString().trim();
+          if (title.isEmpty) continue;
+          final n = normalizeKey(title);
+          final l = (t['length'] is num) ? (t['length'] as num).toInt() : null;
+          tracks.add({'t': title, 'n': n, 'l': l});
+        }
+      }
+
+      if (tracks.isEmpty) continue;
+
+      return {
+        'releaseId': releaseId,
+        'tracks': tracks,
+      };
+    }
+
+    return null;
   }
+
 
   static bool _trackTitleMatches(String trackNorm, String wantNorm, List<String> wantTokens) {
     final tn = trackNorm.trim();
@@ -1136,26 +1249,30 @@ class DiscographyService {
     final toScan = discog.take(math.min(maxScanAlbums, discog.length)).toList();
 
     for (final alb in toScan) {
-      // SOLO Albums de estudio: primary-type Album, excluyendo Live/Compilation.
+      // SOLO Albums (estudio): primary-type Album y excluyendo Live/Compilation.
+      // En modo estricto: si no podemos confirmar que es Album de estudio, NO lo consideramos.
+      final rgid = alb.releaseGroupId.trim();
+      if (rgid.isEmpty) continue;
+
       final pt = alb.primaryType.trim().toLowerCase();
-      if (pt.isNotEmpty && pt != 'album') continue;
       final secs = alb.secondaryTypes
           .map((e) => e.toString().trim().toLowerCase())
           .where((e) => e.isNotEmpty)
           .toList();
+
+      // Si ya viene marcado como Live/Compilation, descartamos altiro.
       if (secs.contains('live') || secs.contains('compilation')) continue;
 
-      final rgid = alb.releaseGroupId.trim();
-      if (rgid.isEmpty) continue;
+      // Si el primary-type viene y NO es Album, descartamos.
+      if (pt.isNotEmpty && pt != 'album') continue;
 
-      // Confirmar que el release-group sea "Album" de estudio (no Live/Compilation).
-      // getDiscographyByArtistId no trae secondary-types, por lo que hacemos
-      // un lookup cacheado del release-group para filtrar correctamente.
-      final rg = await _rgDetailsCached(rgid) ?? await _rgDetailsFetch(rgid);
-      if (rg is Map) {
-        if (_isLiveReleaseGroup(rg) || _isCompilationReleaseGroup(rg)) {
-          continue;
-        }
+      // Si falta metadata (primary/secondary), confirmamos con lookup del release-group.
+      if (pt.isEmpty || secs.isEmpty) {
+        final rg = await _rgDetailsCached(rgid) ?? await _rgDetailsFetch(rgid);
+        if (rg is! Map) continue; // estricto: sin datos -> no incluir
+        final p = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
+        if (p != 'album') continue;
+        if (_isLiveReleaseGroup(rg) || _isCompilationReleaseGroup(rg)) continue;
       }
 
       // Tracklist preferiendo CD.

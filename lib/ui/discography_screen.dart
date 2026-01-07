@@ -206,6 +206,55 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     }
   }
 
+
+  /// Ejecuta el Plan Z manualmente (escaneo LOCAL) sobre los Albums ya cargados en la app.
+  /// No consulta internet; solo revisa tracklists locales/cacheados.
+  Future<void> _runPlanZManualScan() async {
+    final a = pickedArtist;
+    if (a == null) {
+      _snack(context.trSmart('Selecciona un artista'));
+      return;
+    }
+
+    final raw = songCtrl.text.trim();
+    final qNorm = _normQ(raw);
+    if (qNorm.isEmpty) {
+      _snack(context.trSmart('Escribe una canción'));
+      return;
+    }
+
+    final mySeq = ++_songReqSeq;
+
+    // Activar el filtro (para que la UI muestre solo coincidencias).
+    if (mounted) {
+      setState(() {
+        searchingSongs = true;
+        _songLoadingMorePages = false;
+        _songAlbumResults = <AlbumItem>[];
+        _songMatchReleaseGroups = <String>{};
+        _selectedSongRecordingId = 'planZ';
+        _selectedSongTitleNorm = qNorm;
+        _songScanTotal = 0;
+        _songScanDone = 0;
+      });
+    }
+
+    final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
+    if (!mounted) return;
+    if (mySeq != _songReqSeq) return;
+
+    final items = albums
+        .where((al) => scanned.contains(al.releaseGroupId.trim()))
+        .toList();
+
+    setState(() {
+      _songAlbumResults = items;
+      _songMatchReleaseGroups = scanned;
+      searchingSongs = false;
+      _songLoadingMorePages = false;
+    });
+  }
+
   final TextEditingController artistCtrl = TextEditingController();
   final FocusNode _artistFocus = FocusNode();
   final ScrollController _artistScrollCtrl = ScrollController();
@@ -1006,7 +1055,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     int searchLimit = 50,
     int maxLookups = 12,
     // Plan Z (escaneo local) como último salvavidas cuando MusicBrainz no devuelve nada.
-    bool allowTracklistScanFallback = true,
+    bool allowTracklistScanFallback = false,
   }) async {
     final a = pickedArtist;
     if (a == null) return;
@@ -1091,15 +1140,6 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       // Plan Z: si A/B no devuelven nada (por datos incompletos, rate-limit, etc.),
       // escaneamos tracklists de lo ya cargado. Esto NO reemplaza a A/B; es solo
       // el último salvavidas.
-      if (allowTracklistScanFallback && ids.isEmpty) {
-        final scanned = await _scanLoadedAlbumsForSong(qNorm, mySeq);
-        if (!mounted) return;
-        if (mySeq != _songReqSeq) return;
-        if (scanned.isNotEmpty) {
-          ids = scanned;
-          final scannedItems = _loadedAlbumsForReleaseGroups(scanned);
-          if (scannedItems.isNotEmpty) items = scannedItems;
-        }
       }
 
       if (!mounted) return;
@@ -2020,6 +2060,12 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                   ),
                   visualDensity: VisualDensity.compact,
                   onPressed: _toggleAlbumAndSongFilters,
+                ),
+                IconButton(
+                  tooltip: context.trSmart('Escanear (Plan Z)'),
+                  icon: const Icon(Icons.saved_search),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _runPlanZManualScan,
                 ),
                 IconButton(
                   tooltip: context.tr('Buscar'),
