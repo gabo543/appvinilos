@@ -410,45 +410,54 @@ class _StatCard extends StatelessWidget {
     final border = cs.outline.withOpacity(isDark ? 0.75 : 1.0);
     final bg = cs.surface.withOpacity(isDark ? 0.70 : 0.92);
 
-    // Diseño más “vertical” para que el texto siempre tenga espacio.
+    // ✅ Stats: Layout vertical (label arriba, icono centro, número abajo).
+    // Esto evita overflows cuando el número pasa de 99 a 100+ sin alterar el valor real.
     return InkWell(
       onTap: onTap,
-                          borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: border),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                _BadgeIcon(icon: icon),
-                const Spacer(),
-                Text(
-                  '$value',
-                  maxLines: 1,
-                  style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.8),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
+            // Label arriba
             SizedBox(
               width: double.infinity,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
+                alignment: Alignment.center,
                 child: Text(
                   label,
                   maxLines: 1,
                   softWrap: false,
+                  textAlign: TextAlign.center,
                   style: t.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w900,
                     color: cs.onSurface.withOpacity(0.82),
                   ),
+                ),
+              ),
+            ),
+
+            // Icono centro
+            Center(child: _BadgeIcon(icon: icon)),
+
+            // Número abajo (valor real)
+            Center(
+              child: Text(
+                value.toString(),
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                textScaler: TextScaler.noScaling,
+                style: t.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.4,
                 ),
               ),
             ),
