@@ -4,10 +4,10 @@ import '../../l10n/app_strings.dart';
 import '../../services/preview_player_controller.dart';
 import '../../services/track_preview_service.dart';
 
-/// Botón Play/Pause para previews de canciones (máx 30s).
+/// Botón Play/Stop para previews de canciones (máx 30s).
 ///
 /// - Muestra ▶️ por defecto.
-/// - Muestra ⏸️ si esta pista está reproduciendo.
+/// - Muestra ⏹️ si esta pista está reproduciendo (o cargando dentro del player).
 /// - Si no hay preview disponible, muestra un SnackBar.
 class TrackPreviewButton extends StatefulWidget {
   final String cacheKey;
@@ -49,15 +49,14 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
     final st = player.status.value;
     final ck = player.currentKey.value;
 
-    // Si esta pista está sonando → pausa.
-    if (ck == key && st == PreviewPlaybackStatus.playing) {
-      await player.pause();
-      return;
-    }
-
-    // Si esta pista está pausada → reanuda.
-    if (ck == key && st == PreviewPlaybackStatus.paused) {
-      await player.toggle(key: key, url: '');
+    // Si esta pista está activa → stop inmediato (por si no quiere escuchar los 30s).
+    final isThis = ck == key;
+    final isActive = isThis &&
+        (st == PreviewPlaybackStatus.playing ||
+            st == PreviewPlaybackStatus.paused ||
+            st == PreviewPlaybackStatus.loading);
+    if (isActive) {
+      await player.stop();
       return;
     }
 
@@ -76,7 +75,7 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
         await _snack('No hay preview disponible.');
         return;
       }
-      await player.toggle(key: key, url: preview.previewUrl);
+      await player.play(key: key, url: preview.previewUrl);
     } catch (_) {
       await _snack('No pude reproducir el preview.');
     } finally {
@@ -99,8 +98,14 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
           valueListenable: player.status,
           builder: (context, st, __) {
             final isThis = ck == widget.cacheKey;
-            final playing = isThis && st == PreviewPlaybackStatus.playing;
-            final loading = _loading || (isThis && st == PreviewPlaybackStatus.loading);
+            final active = isThis &&
+                (st == PreviewPlaybackStatus.playing ||
+                    st == PreviewPlaybackStatus.paused ||
+                    st == PreviewPlaybackStatus.loading);
+
+            // Solo deshabilitamos durante la búsqueda de preview (HTTP),
+            // no durante el loading interno del player, para permitir "Stop".
+            final loading = _loading;
 
             Widget icon;
             if (loading) {
@@ -110,11 +115,11 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
                 child: const CircularProgressIndicator(strokeWidth: 2),
               );
             } else {
-              icon = Icon(playing ? Icons.pause : Icons.play_arrow, size: widget.iconSize);
+              icon = Icon(active ? Icons.stop : Icons.play_arrow, size: widget.iconSize);
             }
 
             return IconButton(
-              tooltip: playing ? context.tr('Pausar') : context.tr('Escuchar preview'),
+              tooltip: active ? context.tr('Detener') : context.tr('Escuchar preview'),
               onPressed: loading ? null : _onTap,
               constraints: btnConstraints,
               padding: EdgeInsets.zero,
