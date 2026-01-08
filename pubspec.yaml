@@ -35,6 +35,10 @@ dependencies:
   # Modo escuchar (identificación por audio)
   record: ^4.4.4
 
+  # Reproducir previews (30s) en tracklists
+  just_audio: ^0.9.42
+  audio_session: ^0.1.19
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

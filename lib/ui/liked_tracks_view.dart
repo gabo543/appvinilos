@@ -5,6 +5,7 @@ import '../services/discography_service.dart';
 import '../services/backup_service.dart';
 import 'album_tracks_screen.dart';
 import 'vinyl_detail_sheet.dart';
+import 'widgets/track_preview_button.dart';
 
 /// Vista "Canciones" dentro de Vinilos.
 ///
@@ -147,6 +148,7 @@ class _LikedTracksViewState extends State<LikedTracksView> {
               final releaseGroupId = (r['releaseGroupId'] ?? '').toString().trim();
               final cover250 = (r['cover250'] ?? '').toString().trim();
               final cover500 = (r['cover500'] ?? '').toString().trim();
+              final previewKey = '$artist||$album||$track';
 
               return ListTile(
                 leading: const Icon(Icons.favorite, size: 22),
@@ -196,6 +198,13 @@ class _LikedTracksViewState extends State<LikedTracksView> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (artist.trim().isNotEmpty && track.trim().isNotEmpty)
+                      TrackPreviewButton(
+                        cacheKey: previewKey,
+                        artist: artist,
+                        album: album,
+                        title: track,
+                      ),
                     if (inVinyls)
                       Tooltip(
                         message: 'En Vinilos',

@@ -10,6 +10,7 @@ import '../services/discography_service.dart';
 import '../services/price_range_service.dart';
 import '../services/vinyl_add_service.dart';
 import '../l10n/app_strings.dart';
+import 'widgets/track_preview_button.dart';
 
 /// Ficha previa a agregar, usada desde el Escáner (código / carátula / escuchar).
 ///
@@ -779,11 +780,29 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                     if (i.isOdd) return Divider(height: 1);
                     final idx = i ~/ 2;
                     final tr = _tracks[idx];
+                    final artist = widget.prepared.artist;
+                    final album = widget.prepared.album;
+                    final previewKey = '$artist||$album||${tr.title}';
                     return ListTile(
                       dense: true,
                       visualDensity: VisualDensity(vertical: -2),
                       title: Text('${tr.number}. ${tr.title}'),
-                      trailing: Text(tr.length ?? ''),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TrackPreviewButton(
+                            cacheKey: previewKey,
+                            artist: artist,
+                            album: album,
+                            title: tr.title,
+                          ),
+                          if ((tr.length ?? '').trim().isNotEmpty)
+                            Text(
+                              tr.length!.trim(),
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                        ],
+                      ),
                     );
                   },
                   childCount: math.max(0, _tracks.length * 2 - 1),

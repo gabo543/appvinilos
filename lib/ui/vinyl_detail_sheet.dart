@@ -10,6 +10,7 @@ import '../services/backup_service.dart';
 import '../db/vinyl_db.dart';
 import '../l10n/app_strings.dart';
 import '../utils/normalize.dart';
+import 'widgets/track_preview_button.dart';
 import 'widgets/app_cover_image.dart';
 
 /// Bottom sheet con los precios (iMusic / Muziker).
@@ -951,10 +952,13 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
   }
 
   List<Widget> _buildTrackTiles(BuildContext context, List<TrackItem> items, {required Color fg, required Color sub}) {
+    final artist = (widget.vinyl['artista'] as String?)?.trim() ?? '';
+    final album = (widget.vinyl['album'] as String?)?.trim() ?? '';
     final out = <Widget>[];
     for (int i = 0; i < items.length; i++) {
       final tr = items[i];
       final liked = _likedKeys.contains(normalizeKey(tr.title));
+      final previewKey = '$artist||$album||${tr.title}';
       out.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
@@ -976,6 +980,13 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                   style: TextStyle(color: fg, fontWeight: FontWeight.w700),
                 ),
               ),
+              if (artist.isNotEmpty)
+                TrackPreviewButton(
+                  cacheKey: previewKey,
+                  artist: artist,
+                  album: album,
+                  title: tr.title,
+                ),
               IconButton(
                 tooltip: liked ? 'Quitar de canciones' : 'Guardar canción',
                 onPressed: () => _toggleLikeFromVinyl(tr),

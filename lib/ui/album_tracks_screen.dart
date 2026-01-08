@@ -9,6 +9,7 @@ import '../services/backup_service.dart';
 import '../l10n/app_strings.dart';
 import '../utils/normalize.dart';
 import 'widgets/app_cover_image.dart';
+import 'widgets/track_preview_button.dart';
 
 class AlbumTracksScreen extends StatefulWidget {
   final AlbumItem album;
@@ -469,6 +470,7 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                     final idx = i ~/ 2;
                     final t = tracks[idx];
                     final liked = _likedKeys.contains(normalizeKey(t.title));
+                    final previewKey = '${widget.artistName}||${widget.album.title}||${t.title}';
                     return ListTile(
                       dense: true,
                       visualDensity: VisualDensity(vertical: -2),
@@ -476,6 +478,12 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          TrackPreviewButton(
+                            cacheKey: previewKey,
+                            artist: widget.artistName,
+                            album: widget.album.title,
+                            title: t.title,
+                          ),
                           IconButton(
                             icon: Icon(liked ? Icons.favorite : Icons.favorite_border),
                             tooltip: liked ? context.tr('Quitar de canciones') : context.tr('Guardar en canciones'),
