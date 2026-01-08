@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../db/vinyl_db.dart';
 import '../services/discography_service.dart';
@@ -10,6 +11,10 @@ import '../l10n/app_strings.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
 import 'widgets/app_cover_image.dart';
+import 'widgets/app_skeleton.dart';
+import 'widgets/app_state_view.dart';
+
+enum _ExploreSort { relevance, yearDesc, yearAsc, titleAz, artistAz }
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -36,6 +41,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
   static const int _pageSize = 30;
   int _total = 0;
   List<ExploreAlbumHit> _items = <ExploreAlbumHit>[];
+
+  _ExploreSort _sort = _ExploreSort.relevance;
 
   // Catálogos (internet + cache local)
   bool _loadingGenres = true;
@@ -215,6 +222,83 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
   }
 
+  String _sortLabel(BuildContext context, _ExploreSort s) {
+    switch (s) {
+      case _ExploreSort.relevance:
+        return context.tr('Relevancia');
+      case _ExploreSort.yearDesc:
+        return context.tr('Año ↓');
+      case _ExploreSort.yearAsc:
+        return context.tr('Año ↑');
+      case _ExploreSort.titleAz:
+        return context.tr('Título A–Z');
+      case _ExploreSort.artistAz:
+        return context.tr('Artista A–Z');
+    }
+  }
+
+  List<ExploreAlbumHit> _sortedItems() {
+    if (_sort == _ExploreSort.relevance) return _items;
+    final out = List<ExploreAlbumHit>.from(_items);
+    int yearOf(ExploreAlbumHit it) => int.tryParse((it.year ?? '').trim()) ?? 0;
+
+    out.sort((a, b) {
+      switch (_sort) {
+        case _ExploreSort.yearDesc:
+          return yearOf(b).compareTo(yearOf(a));
+        case _ExploreSort.yearAsc:
+          return yearOf(a).compareTo(yearOf(b));
+        case _ExploreSort.titleAz:
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        case _ExploreSort.artistAz:
+          return a.artistName.toLowerCase().compareTo(b.artistName.toLowerCase());
+        case _ExploreSort.relevance:
+          return 0;
+      }
+    });
+    return out;
+  }
+
+  Future<void> _openSortSheet() async {
+    final picked = await showModalBottomSheet<_ExploreSort>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: false,
+      builder: (ctx) {
+        final t = Theme.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  context.tr('Ordenar'),
+                  style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 12),
+                ..._ExploreSort.values.map(
+                  (s) => RadioListTile<_ExploreSort>(
+                    value: s,
+                    groupValue: _sort,
+                    title: Text(_sortLabel(context, s), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    onChanged: (v) => Navigator.pop(ctx, v),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return;
+    if (picked == null || picked == _sort) return;
+    HapticFeedback.selectionClick();
+    setState(() => _sort = picked);
+  }
+
   void _pickGenre(String g) {
     _genreCtrl.text = g;
     _genreCtrl.selection = TextSelection.fromPosition(TextPosition(offset: g.length));
@@ -252,6 +336,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
       );
       await BackupService.autoSaveIfEnabled();
       if (!mounted) return;
+      HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr('Agregado a deseos'))),
       );
@@ -326,6 +411,36 @@ class _ExploreScreenState extends State<ExploreScreen> {
       );
     }
 
+    final activeChips = <Widget>[];
+    void chip(String label, VoidCallback onClear) {
+      activeChips.add(
+        InputChip(
+          label: Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800)),
+          onDeleted: onClear,
+          deleteIcon: const Icon(Icons.close, size: 18),
+          labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+        ),
+      );
+    }
+
+    final g = _genreCtrl.text.trim();
+    if (g.isNotEmpty) chip('${context.tr('Género')}: $g', () => setState(() => _genreCtrl.clear()));
+    final cc = _resolveCountryCode();
+    if (cc != null && cc.trim().isNotEmpty) {
+      chip('${context.tr('País')}: $cc', () => setState(() {
+        _pickedCountry = null;
+        _countryCtrl.clear();
+      }));
+    }
+    final yf = _fromCtrl.text.trim();
+    final yt = _toCtrl.text.trim();
+    if (yf.isNotEmpty || yt.isNotEmpty) {
+      chip('${context.tr('Año')}: ${yf.isEmpty ? '—' : yf} - ${yt.isEmpty ? '—' : yt}', () => setState(() {
+        _fromCtrl.clear();
+        _toCtrl.clear();
+      }));
+    }
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: kAppBarToolbarHeight,
@@ -359,6 +474,18 @@ class _ExploreScreenState extends State<ExploreScreen> {
                         labelText: context.tr('Género'),
                         hintText: _loadingGenres ? context.tr('Cargando…') : context.tr('Ej: Jazz, Rock, Metal'),
                         prefixIcon: const Icon(Icons.local_offer_outlined),
+                        suffixIcon: _genreCtrl.text.trim().isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: context.tr('Limpiar'),
+                                icon: const Icon(Icons.close),
+                                onPressed: () {
+                                  setState(() {
+                                    _genreCtrl.clear();
+                                    _genreSuggestions = const <String>[];
+                                  });
+                                },
+                              ),
                       ),
                     ),
                   ),
@@ -463,13 +590,33 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              if (_loading) const LinearProgressIndicator(),
+              if (activeChips.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: activeChips
+                          .expand((w) sync* {
+                            yield w;
+                            yield const SizedBox(width: 8);
+                          })
+                          .toList(growable: false),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  padding: const EdgeInsets.only(top: 8),
+                  child: AppStateView(
+                    icon: Icons.error_outline,
+                    title: context.tr('No se pudo explorar'),
+                    subtitle: _error!,
+                    actionText: context.tr('Reintentar'),
+                    onAction: _loading ? null : () => _runSearch(resetPage: false),
                   ),
                 ),
               const SizedBox(height: 8),
@@ -481,6 +628,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       style: Theme.of(context).textTheme.labelMedium,
                     ),
                     const Spacer(),
+                    TextButton.icon(
+                      onPressed: _items.isEmpty ? null : _openSortSheet,
+                      icon: const Icon(Icons.sort, size: 18),
+                      label: Text(_sortLabel(context, _sort)),
+                    ),
                     IconButton(
                       tooltip: context.tr('Anterior'),
                       onPressed: (!_loading && canPrev)
@@ -506,17 +658,29 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 ),
               const SizedBox(height: 8),
               Expanded(
-                child: _items.isEmpty
-                    ? Center(
-                        child: Text(
-                          _loading ? context.tr('Buscando en MusicBrainz…') : context.tr('Sin coincidencias'),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: _items.length,
+                child: () {
+                  if (_loading && _items.isEmpty) {
+                    // Skeleton mientras carga primera vez.
+                    return ListView.builder(
+                      itemCount: 8,
+                      itemBuilder: (_, __) => const AppSkeletonListTile(dense: true),
+                    );
+                  }
+
+                  if ((_items.isEmpty) && (_error == null)) {
+                    return AppStateView(
+                      icon: Icons.search_off,
+                      title: context.tr('Sin coincidencias'),
+                      subtitle: context.tr('Prueba con otro género, país o rango de años.'),
+                    );
+                  }
+
+                  final shown = _sortedItems();
+                  return ListView.separated(
+                        itemCount: shown.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, i) {
-                          final it = _items[i];
+                          final it = shown[i];
                           return InkWell(
                             borderRadius: BorderRadius.circular(14),
                             onTap: () {
@@ -612,7 +776,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
                             ),
                           );
                         },
-                      ),
+                      );
+                }(),
               ),
             ],
           ),

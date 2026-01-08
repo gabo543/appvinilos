@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/vinyl_db.dart';
@@ -24,6 +25,7 @@ import 'manual_vinyl_entry_screen.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
 import 'widgets/app_pager.dart';
+import 'widgets/app_skeleton.dart';
 import 'liked_tracks_view.dart';
 
 enum Vista { inicio, lista, favoritos, borrar }
@@ -1006,6 +1008,8 @@ Future<void> _loadViewMode() async {
     final current = _isFav(v);
     final next = !current;
 
+    HapticFeedback.selectionClick();
+
     // ✅ UI instantánea
     setState(() {
       if (id0 > 0) _favCache[id0] = next;
@@ -1269,6 +1273,7 @@ Future<void> _loadViewMode() async {
           tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
           icon: fav ? Icons.star : Icons.star_border,
           color: fav ? Colors.amber : cs.onSurfaceVariant,
+          animate: true,
           onPressed: () => _toggleFavorite(v),
         ),
       if (conBorrar && !_borrarPapelera)
@@ -1516,11 +1521,19 @@ Future<void> _loadViewMode() async {
     required VoidCallback onPressed,
     String? tooltip,
     Color? color,
+    bool animate = false,
   }) {
+    final iconW = Icon(icon, key: ValueKey(icon.codePoint), size: 20, color: color);
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
-      icon: Icon(icon, size: 20, color: color),
+      icon: animate
+          ? AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+              child: iconW,
+            )
+          : iconW,
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
       constraints: BoxConstraints(minWidth: 36, minHeight: 36),
@@ -1542,10 +1555,15 @@ Future<void> _loadViewMode() async {
         return IconButton(
           tooltip: fav ? 'Quitar favorito' : 'Marcar favorito',
           onPressed: () => _toggleFavorite(v),
-          icon: Icon(
-            fav ? Icons.star : Icons.star_border,
-            color: fav ? Colors.amber : cs.onSurfaceVariant,
-            size: 22,
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 160),
+            transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+            child: Icon(
+              fav ? Icons.star : Icons.star_border,
+              key: ValueKey(fav),
+              color: fav ? Colors.amber : cs.onSurfaceVariant,
+              size: 22,
+            ),
           ),
           visualDensity: VisualDensity.compact,
         );
@@ -1761,9 +1779,14 @@ Future<void> _loadViewMode() async {
 	                child: IconButton(
 	                  tooltip: fav ? 'Quitar de favoritos' : 'Agregar a favoritos',
 	                  // Borde blanco (no marcado) + relleno gris (marcado)
-	                  icon: Icon(
-	                    fav ? Icons.star : Icons.star_border,
-	                    color: fav ? cs.primary : cs.onSurfaceVariant,
+	                  icon: AnimatedSwitcher(
+	                    duration: const Duration(milliseconds: 160),
+	                    transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+	                    child: Icon(
+	                      fav ? Icons.star : Icons.star_border,
+	                      key: ValueKey(fav),
+	                      color: fav ? cs.primary : cs.onSurfaceVariant,
+	                    ),
 	                  ),
 	                  onPressed: () => _toggleFavorite(v),
 	                ),
@@ -3095,7 +3118,63 @@ Widget listaCompleta({
     future: future,
     builder: (context, snap) {
       if (snap.connectionState == ConnectionState.waiting) {
-        return Center(child: CircularProgressIndicator());
+        if (_viewMode == VinylViewMode.grid) {
+          return GridView.builder(
+            controller: _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites),
+            shrinkWrap: embedInScroll,
+            physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.68,
+            ),
+            itemCount: 6,
+            itemBuilder: (_, __) => const Card(
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: EdgeInsets.all(10),
+                child: AppSkeletonGridTile(),
+              ),
+            ),
+          );
+        }
+
+        if (_viewMode == VinylViewMode.cover) {
+          final w = MediaQuery.of(context).size.width;
+          final int cols = ((w / 140).floor()).clamp(2, 5).toInt();
+          return GridView.builder(
+            controller: _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites),
+            shrinkWrap: embedInScroll,
+            physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: 12,
+            itemBuilder: (_, __) => const Card(
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: EdgeInsets.all(10),
+                child: AppSkeletonBox(borderRadius: BorderRadius.all(Radius.circular(14))),
+              ),
+            ),
+          );
+        }
+
+        // List
+        return ListView.builder(
+          controller: _listScrollCtrl(conBorrar: conBorrar, onlyFavorites: onlyFavorites),
+          shrinkWrap: embedInScroll,
+          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: 8,
+          itemBuilder: (_, __) => const AppSkeletonListTile(),
+        );
       }
       if (snap.hasError) {
         return _emptyState(
@@ -3104,7 +3183,15 @@ Widget listaCompleta({
           subtitle: context.tr('Algo falló al leer la base de datos. Cierra y vuelve a abrir la app.'),
         );
       }
-      if (!snap.hasData) return Center(child: CircularProgressIndicator());
+      if (!snap.hasData) {
+        return ListView.builder(
+          shrinkWrap: embedInScroll,
+          physics: embedInScroll ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: 8,
+          itemBuilder: (_, __) => const AppSkeletonListTile(),
+        );
+      }
       final rawItems = snap.data ?? const <Map<String, dynamic>>[];
       // En Favoritos filtramos por el estado real (DB + cache) para que al desmarcar ⭐
       // el item desaparezca al instante, incluso si el FutureBuilder aún muestra datos antiguos.

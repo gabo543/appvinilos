@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../db/vinyl_db.dart';
@@ -13,6 +14,8 @@ import 'app_logo.dart';
 import '../l10n/app_strings.dart';
 import 'widgets/app_cover_image.dart';
 import 'widgets/app_pager.dart';
+import 'widgets/app_skeleton.dart';
+import 'widgets/app_state_view.dart';
 
 class WishlistScreen extends StatefulWidget {
   final bool showOnlyPurchased;
@@ -117,18 +120,29 @@ class _StorePricesSheetState extends State<_StorePricesSheet> {
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: CircularProgressIndicator()),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: Column(
+                    children: const [
+                      AppSkeletonBox(height: 14, borderRadius: BorderRadius.all(Radius.circular(10))),
+                      SizedBox(height: 10),
+                      AppSkeletonBox(height: 14, borderRadius: BorderRadius.all(Radius.circular(10))),
+                      SizedBox(height: 10),
+                      AppSkeletonBox(height: 14, borderRadius: BorderRadius.all(Radius.circular(10))),
+                      SizedBox(height: 10),
+                      AppSkeletonBox(height: 14, borderRadius: BorderRadius.all(Radius.circular(10))),
+                    ],
+                  ),
                 );
               }
 
               final offers = snap.data ?? const <StoreOffer>[];
               if (offers.isEmpty) {
                 return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    context.tr('No pude obtener precios en las tiendas seleccionadas.'),
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: AppStateView(
+                    icon: Icons.store_outlined,
+                    title: context.tr('Sin precios'),
+                    subtitle: context.tr('No pude obtener precios en las tiendas seleccionadas.'),
                   ),
                 );
               }
@@ -318,6 +332,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   Future<void> _onWishEuroPressed(Map<String, dynamic> w) async {
+    HapticFeedback.selectionClick();
     final artist = (w['artista'] ?? '').toString().trim();
     final album = (w['album'] ?? '').toString().trim();
     final barcode = (w['barcode'] ?? '').toString().trim();
@@ -662,6 +677,7 @@ void _snack(String t) {
   }
 
   Future<void> _editWishAlert(Map<String, dynamic> w) async {
+    HapticFeedback.selectionClick();
     final id = w['id'];
     if (id is! int) return;
 
@@ -780,6 +796,7 @@ void _snack(String t) {
   }
 
   Future<void> _removeItem(Map<String, dynamic> w) async {
+    HapticFeedback.lightImpact();
     final id = w['id'];
     if (id is! int) return;
 
@@ -1316,14 +1333,41 @@ Widget _placeholder() {
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            if (_grid) {
+              return GridView.builder(
+                padding: const EdgeInsets.all(12),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.72,
+                ),
+                itemCount: 8,
+                itemBuilder: (context, i) => const Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: EdgeInsets.all(10),
+                    child: AppSkeletonGridTile(),
+                  ),
+                ),
+              );
+            }
+            return ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: 8,
+              itemBuilder: (_, __) => const AppSkeletonListTile(),
+            );
           }
           if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text("${context.tr('Error cargando wishlist')}: ${snap.error}"),
-              ),
+            return AppStateView(
+              icon: Icons.error_outline,
+              title: context.tr('Error cargando deseos'),
+              subtitle: context.tr('No pude leer la base de datos. Intenta de nuevo.'),
+              actionText: context.tr('Reintentar'),
+              onAction: () {
+                HapticFeedback.selectionClick();
+                setState(() => _future = VinylDb.instance.getWishlist());
+              },
             );
           }
 
@@ -1337,12 +1381,14 @@ Widget _placeholder() {
           }
 
           if (items.isEmpty) {
-            return Center(
-              child: Text(
-                widget.showOnlyPurchased
-                    ? context.tr('No tienes vinilos comprados en deseos')
-                    : context.tr('Tu lista de deseos está vacía'),
-              ),
+            return AppStateView(
+              icon: Icons.bookmark_border,
+              title: widget.showOnlyPurchased
+                  ? context.tr('Sin comprados')
+                  : context.tr('Tu lista de deseos está vacía'),
+              subtitle: widget.showOnlyPurchased
+                  ? context.tr('Marca tus deseos como comprados para verlos aquí.')
+                  : context.tr('Explora y agrega vinilos para tenerlos a mano.'),
             );
           }
 
