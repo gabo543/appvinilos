@@ -31,6 +31,18 @@ class PreviewPlayerController {
   StreamSubscription<PlayerState>? _stateSub;
   bool _sessionReady = false;
 
+  // Token para cancelar operaciones en curso (setUrl/play) cuando el usuario
+  // presiona Stop o inicia otra reproducción.
+  int _token = 0;
+
+  /// Marca una pista como "activa" inmediatamente, incluso antes de resolver
+  /// el previewUrl o de que el audio comience a sonar. Esto permite que el UI
+  /// cambie a ⏹ Stop al instante.
+  void markPending(String key) {
+    currentKey.value = key;
+    status.value = PreviewPlaybackStatus.loading;
+  }
+
   Future<void> _ensureSession() async {
     if (_sessionReady) return;
     _sessionReady = true;
@@ -84,18 +96,27 @@ class PreviewPlayerController {
 
   Future<void> play({required String key, required String url}) async {
     await _ensureSession();
+    final int myToken = ++_token;
     try {
-      status.value = PreviewPlaybackStatus.loading;
-      // Si es otra canción, reiniciamos desde 0.
-      if (currentKey.value != key) {
-        await _player.stop();
-        await _player.setUrl(url);
-        await _player.seek(Duration.zero);
-        currentKey.value = key;
-      }
+      // Cambiamos el UI a "Stop" de inmediato.
+      markPending(key);
+
+      await _player.stop();
+      if (myToken != _token) return;
+
+      await _player.setUrl(url);
+      if (myToken != _token) return;
+
+      await _player.seek(Duration.zero);
+      if (myToken != _token) return;
+
       await _player.play();
+      if (myToken != _token) return;
     } catch (_) {
-      status.value = PreviewPlaybackStatus.error;
+      if (myToken == _token) {
+        status.value = PreviewPlaybackStatus.error;
+        currentKey.value = null;
+      }
     }
   }
 
@@ -109,6 +130,8 @@ class PreviewPlayerController {
   }
 
   Future<void> stop() async {
+    // Invalida cualquier operación en curso.
+    ++_token;
     try {
       await _player.stop();
     } catch (_) {

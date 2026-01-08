@@ -34,6 +34,7 @@ class TrackPreviewButton extends StatefulWidget {
 
 class _TrackPreviewButtonState extends State<TrackPreviewButton> {
   bool _loading = false;
+  int _opToken = 0; // permite cancelar una búsqueda/reproducción en curso
 
   Future<void> _snack(String text) async {
     if (!mounted) return;
@@ -56,14 +57,21 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
             st == PreviewPlaybackStatus.paused ||
             st == PreviewPlaybackStatus.loading);
     if (isActive) {
+      // Cancela operaciones en curso (HTTP / setUrl) y detiene.
+      ++_opToken;
+      if (mounted) setState(() => _loading = false);
       await player.stop();
       return;
     }
 
     if (_loading) return;
 
+    final int myOp = ++_opToken;
     setState(() => _loading = true);
     try {
+      // Cambia el botón a ⏹ inmediatamente, incluso mientras buscamos el preview.
+      player.markPending(key);
+
       final preview = await TrackPreviewService.findPreview(
         cacheKey: key,
         artist: widget.artist,
@@ -71,15 +79,22 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
         album: widget.album,
       );
 
+      // Si el usuario presionó Stop mientras cargaba, ignoramos este resultado.
+      if (myOp != _opToken) return;
+
       if (preview == null || preview.previewUrl.trim().isEmpty) {
         await _snack('No hay preview disponible.');
+        await player.stop();
         return;
       }
       await player.play(key: key, url: preview.previewUrl);
     } catch (_) {
       await _snack('No pude reproducir el preview.');
+      if (myOp == _opToken) {
+        await player.stop();
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && myOp == _opToken) setState(() => _loading = false);
     }
   }
 
@@ -107,20 +122,25 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
             // no durante el loading interno del player, para permitir "Stop".
             final loading = _loading;
 
+            // Si la pista está activa o pending, SIEMPRE mostramos Stop.
+            // Esto permite detener incluso si el preview aún se está resolviendo.
             Widget icon;
-            if (loading) {
+            if (active) {
+              icon = Icon(Icons.stop, size: widget.iconSize);
+            } else if (loading) {
               icon = SizedBox(
                 width: widget.iconSize,
                 height: widget.iconSize,
                 child: const CircularProgressIndicator(strokeWidth: 2),
               );
             } else {
-              icon = Icon(active ? Icons.stop : Icons.play_arrow, size: widget.iconSize);
+              icon = Icon(Icons.play_arrow, size: widget.iconSize);
             }
 
             return IconButton(
               tooltip: active ? context.tr('Detener') : context.tr('Escuchar preview'),
-              onPressed: loading ? null : _onTap,
+              // No deshabilizamos: si está active/pending, _onTap hará Stop.
+              onPressed: _onTap,
               constraints: btnConstraints,
               padding: EdgeInsets.zero,
               visualDensity: VisualDensity.compact,
