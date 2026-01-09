@@ -51,6 +51,8 @@ flutter:
   assets:
     - assets/splash/splash.png
     - assets/icon/app_icon.png
+    - assets/fonts/DejaVuSans.ttf
+    - assets/fonts/DejaVuSans-Bold.ttf
 
 flutter_native_splash:
   color: "#121212"

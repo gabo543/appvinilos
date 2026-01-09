@@ -268,6 +268,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
   final FocusNode _songFocus = FocusNode();
   Timer? _songDebounce;
   Timer? _songSuggestDebounce;
+  bool _suppressSongAutoFilter = false;
   bool _loadingSongSuggestions = false;
   List<SongHit> _songSuggestions = <SongHit>[];
   int _songSuggestSeq = 0;
@@ -929,6 +930,24 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       }
     });
 
+    // Auto-filtro: al escribir, filtra discos donde aparece la canción.
+    // ✅ Incluye Live/Compilation (covers/en vivo) pero NO toca Plan Z.
+    if (!_suppressSongAutoFilter && qNorm.length >= 3) {
+      final rawNow = raw;
+      final normNow = qNorm;
+      _songDebounce?.cancel();
+      _songDebounce = Timer(const Duration(milliseconds: 720), () {
+        if (!mounted) return;
+        final curNorm = _normQ(songCtrl.text.trim());
+        if (curNorm != normNow) return;
+        _applySongFilterByText(
+          rawNow,
+          markAsSelected: true,
+          includeLiveAndCompilation: true,
+        );
+      });
+    }
+
     _lastSongQueryNorm = qNorm;
   }
 
@@ -984,6 +1003,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       final title = best.title.trim();
       songCtrl.text = title;
       songCtrl.selection = TextSelection.collapsed(offset: title.length);
+    Future.microtask(() => _suppressSongAutoFilter = false);
 
       _selectedSongRecordingId = best.id;
       _selectedSongTitleNorm = _normQ(title);
@@ -994,16 +1014,16 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         items = await DiscographyService.searchSongAlbumsInArtistAlbumsPreferCd(
           artistId: a.id,
           songQuery: best.title,
-          maxScanAlbums: full ? 260 : 180,
-          maxMatches: full ? 25 : 16,
+          maxScanAlbums: full ? 1400 : 900,
+          maxMatches: full ? 250 : 200,
+          includeLiveAndCompilation: true,
         );
         _songAlbumsByRecording[best.id] = items;
       }
 
       if (!mounted || mySeq != _songReqSeq) return;
 
-      // ✅ SOLO Albums (estudio): nunca mostramos Live/Compilation aquí.
-      items = items.where(_isStudioAlbumItem).toList();
+      // ✅ Incluye Albums Live/Compilation.
 
       // IDs de release-groups donde aparece la canción.
       final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
@@ -1049,6 +1069,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     int maxLookups = 12,
     // Plan Z (escaneo local) como último salvavidas cuando MusicBrainz no devuelve nada.
     bool allowTracklistScanFallback = false,
+    bool includeLiveAndCompilation = false,
   }) async {
     final a = pickedArtist;
     if (a == null) return;
@@ -1076,7 +1097,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     final mySeq = ++_songReqSeq;
     // Cache key incluye "modo" para no reutilizar resultados livianos
     // (en vivo) cuando el usuario presiona buscar (modo completo).
-    final cacheKey = '${a.id}||song:$qNorm||sl:$searchLimit||ml:$maxLookups||fb:${allowTracklistScanFallback ? 1 : 0}';
+    final cacheKey = '${a.id}||song:$qNorm||sl:$searchLimit||ml:$maxLookups||fb:${allowTracklistScanFallback ? 1 : 0}||lc:${includeLiveAndCompilation ? 1 : 0}';
     final cachedItems = _songItemsCache[cacheKey];
     if (cachedItems != null) {
       if (!mounted) return;
@@ -1123,12 +1144,16 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
       var items = await DiscographyService.searchSongAlbumsInArtistAlbumsPreferCd(
         artistId: a.id,
         songQuery: raw,
-        maxScanAlbums: 320,
-        maxMatches: 40,
+        maxScanAlbums: includeLiveAndCompilation ? 1200 : 320,
+        maxMatches: includeLiveAndCompilation ? 200 : 40,
+        includeLiveAndCompilation: includeLiveAndCompilation,
       );
 
-      // ✅ SOLO Albums (estudio): nunca mostramos Live/Compilation aquí.
-      items = items.where(_isStudioAlbumItem).toList();
+      // ✅ Por defecto mantenemos SOLO estudio. Si se pide, incluimos Live/Compilation.
+      if (!includeLiveAndCompilation) {
+        items = items.where(_isStudioAlbumItem).toList();
+      }
+
 
       // IDs de release-groups (Albums) donde aparece la canción.
       final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();
@@ -1165,6 +1190,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   void _selectSongSuggestion(SongHit hit) {
     final title = hit.title.trim();
+    _suppressSongAutoFilter = true;
     songCtrl.text = title;
     songCtrl.selection = TextSelection.collapsed(offset: title.length);
     _lastSongQueryNorm = _normQ(title);
@@ -1210,15 +1236,15 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
         items = await DiscographyService.searchSongAlbumsInArtistAlbumsPreferCd(
           artistId: a.id,
           songQuery: hit.title,
-          maxScanAlbums: 220,
-          maxMatches: 25,
+          maxScanAlbums: 1200,
+          maxMatches: 200,
+          includeLiveAndCompilation: true,
         );
         _songAlbumsByRecording[hit.id] = items;
       }
       if (!mounted || mySeq != _songReqSeq) return;
 
-      // ✅ SOLO Albums (estudio): nunca mostramos Live/Compilation aquí.
-      items = items.where(_isStudioAlbumItem).toList();
+      // ✅ Incluye Albums Live/Compilation.
 
       // IDs de release-groups donde aparece la canción.
       final ids = items.map((e) => e.releaseGroupId.trim()).where((id) => id.isNotEmpty).toSet();

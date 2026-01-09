@@ -1223,6 +1223,7 @@ class DiscographyService {
     required String songQuery,
     int maxScanAlbums = 220,
     int maxMatches = 25,
+    bool includeLiveAndCompilation = false,
   }) async {
     final arid = artistId.trim();
     final rawQ = songQuery.trim();
@@ -1261,7 +1262,7 @@ class DiscographyService {
           .toList();
 
       // Si ya viene marcado como Live/Compilation, descartamos altiro.
-      if (secs.contains('live') || secs.contains('compilation')) continue;
+      if (!includeLiveAndCompilation && (secs.contains('live') || secs.contains('compilation'))) continue;
 
       // Si el primary-type viene y NO es Album, descartamos.
       if (pt.isNotEmpty && pt != 'album') continue;
@@ -1273,7 +1274,7 @@ class DiscographyService {
         if (rg == null) continue;
         final p = (rg['primary-type'] ?? '').toString().trim().toLowerCase();
         if (p != 'album') continue;
-        if (_isLiveReleaseGroup(rg) || _isCompilationReleaseGroup(rg)) continue;
+        if (!includeLiveAndCompilation && (_isLiveReleaseGroup(rg) || _isCompilationReleaseGroup(rg))) continue;
       }
 
       // Tracklist preferiendo CD.

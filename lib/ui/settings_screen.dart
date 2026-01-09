@@ -12,6 +12,7 @@ import '../services/price_alert_service.dart';
 import '../db/vinyl_db.dart';
 import 'app_logo.dart';
 import 'price_sources_screen.dart';
+import 'manual_screen.dart';
 import '../l10n/app_strings.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -358,6 +359,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _snack('PDF exportado ✅\n$saved');
     } catch (e) {
       _snack('No se pudo exportar PDF: $e');
+    }
+  }
+
+  Future<void> _exportarPdfManual() async {
+    try {
+      final saved = await ExportService.exportPdfManual();
+      if (saved == null || saved.isEmpty) {
+        _snack('Exportación cancelada.');
+        return;
+      }
+      _snack('Manual exportado ✅\n$saved');
+    } catch (e) {
+      _snack('No se pudo exportar manual: $e');
     }
   }
 
@@ -793,6 +807,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       SizedBox(height: 6),
                       Text(context.tr('Cambia el contorno de los cuadros.'), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.70), fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 14),
+
+                sectionTitle(Icons.help_outline, 'Ayuda', subtitle: 'Guía de pantallas, botones y flujos.'),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.menu_book_outlined),
+                        title: Text(context.tr('Manual de uso')),
+                        subtitle: Text(context.tr('Explica para qué sirve la app y qué hace cada botón.')),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const ManualUsoScreen()),
+                          );
+                        },
+                      ),
+                      div,
+                      ListTile(
+                        leading: Icon(Icons.picture_as_pdf_outlined),
+                        title: Text(context.tr('Exportar manual (PDF)')),
+                        subtitle: Text(context.tr('Manual listo para imprimir o compartir.')),
+                        onTap: _exportarPdfManual,
+                      ),
                     ],
                   ),
                 ),
