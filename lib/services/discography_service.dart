@@ -1393,7 +1393,7 @@ class DiscographyService {
     return runLucene(broadLucene(), filterLowConfidence: true, fetchLimit: fetchLimit);
   }
 
-  /// Autocompletado para Soundtracks (desde 2 letras).
+  /// Autocompletado para Soundtracks (desde 1 letra).
   ///
   /// Esta búsqueda está optimizada para *sugerencias* (rápida y tolerante a parcial):
   /// - Usa prefijos con wildcard (token*) en `releasegroup:` y `release:`.
@@ -1404,7 +1404,7 @@ class DiscographyService {
     int limit = 10,
   }) async {
     final raw = title.trim();
-    if (raw.length < 2) return <ExploreAlbumHit>[];
+    if (raw.isEmpty) return <ExploreAlbumHit>[];
 
     String squash(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
 
@@ -1412,13 +1412,17 @@ class DiscographyService {
     var q = raw;
     q = q.replaceAll(RegExp(r'[\(\)\[\]\{\}"]'), ' ');
     q = squash(q);
-    if (q.length < 2) return <ExploreAlbumHit>[];
+    if (q.isEmpty) return <ExploreAlbumHit>[];
 
-    // Tokens para AND (ignora tokens de 1 letra para reducir ruido).
+    // Tokens para AND: permitimos 1 letra solo cuando el usuario realmente está escribiendo 1 letra (autocomplete).
+    final compact = q.replaceAll(' ', '');
+    final isSingleChar = compact.length == 1;
+    final minTokLen = isSingleChar ? 1 : 2;
+
     final toks = q
         .split(RegExp(r'\s+'))
         .map((e) => e.trim())
-        .where((e) => e.isNotEmpty && e.length >= 2)
+        .where((e) => e.isNotEmpty && e.length >= minTokLen)
         .toList();
     if (toks.isEmpty) return <ExploreAlbumHit>[];
 

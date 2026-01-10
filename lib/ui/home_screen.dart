@@ -15,6 +15,7 @@ import '../services/view_mode_service.dart';
 import '../services/app_theme_service.dart';
 import 'discography_screen.dart';
 import 'similar_artists_screen.dart';
+import 'soundtrack_search_screen.dart';
 import 'scanner_screen.dart';
 import 'settings_screen.dart';
 import 'vinyl_detail_sheet.dart';
@@ -2091,6 +2092,13 @@ Future<void> _loadViewMode() async {
       });
     }
 
+    void openSoundtracks() {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const SoundtrackSearchScreen())).then((_) {
+        if (!mounted) return;
+        _reloadAllData();
+      });
+    }
+
     Widget sectionHeader(String title, {String? subtitle, String? action, VoidCallback? onAction}) {
       final t = Theme.of(context);
       final cs = t.colorScheme;
@@ -2226,6 +2234,7 @@ Future<void> _loadViewMode() async {
             });
           },
           onSearch: openDiscografias,
+          onSoundtracks: openSoundtracks,
           onScanner: () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => ScannerScreen())).then((_) {
               if (!mounted) return;

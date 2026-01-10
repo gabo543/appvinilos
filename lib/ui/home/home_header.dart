@@ -17,6 +17,7 @@ class HomeHeader extends StatelessWidget {
   final VoidCallback onFavorites;
   final VoidCallback onWishlist;
   final VoidCallback onSearch;
+  final VoidCallback onSoundtracks;
   final VoidCallback onScanner;
   final VoidCallback onSettings;
   final VoidCallback onTrash;
@@ -31,6 +32,7 @@ class HomeHeader extends StatelessWidget {
     required this.onFavorites,
     required this.onWishlist,
     required this.onSearch,
+    required this.onSoundtracks,
     required this.onScanner,
     required this.onSettings,
     required this.onTrash,
@@ -199,33 +201,93 @@ class HomeHeader extends StatelessWidget {
 
                   const SizedBox(height: 14),
 
-                  // “Search bar” (tap to open)
-                  InkWell(
-                    onTap: onSearch,
-                    borderRadius: BorderRadius.circular(18),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: cs.surface.withOpacity(isDark ? 0.68 : 0.92),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: border),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.search, size: 20, color: cs.onSurface.withOpacity(0.88)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              context.tr('Busca Discografías'),
-                              style: t.textTheme.bodyMedium?.copyWith(
-                                color: cs.onSurface.withOpacity(0.70),
-                                fontWeight: FontWeight.w800,
+                  // 🔍 Acceso directo: Discografías / Soundtrack (cada uno clickeable)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: cs.surface.withOpacity(isDark ? 0.68 : 0.92),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: border),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.search, size: 20, color: cs.onSurface.withOpacity(0.88)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: onSearch,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.library_music_outlined, size: 18, color: cs.onSurface.withOpacity(0.86)),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              context.tr('Discografías'),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: t.textTheme.bodyMedium?.copyWith(
+                                                color: cs.onSurface.withOpacity(0.80),
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                              Text(
+                                ' / ',
+                                style: t.textTheme.bodyMedium?.copyWith(
+                                  color: cs.onSurface.withOpacity(0.55),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Flexible(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: onSoundtracks,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.local_movies_outlined, size: 18, color: cs.onSurface.withOpacity(0.86)),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              context.tr('Soundtrack'),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: t.textTheme.bodyMedium?.copyWith(
+                                                color: cs.onSurface.withOpacity(0.80),
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          Icon(Icons.keyboard_arrow_right, color: cs.onSurface.withOpacity(0.55)),
-                        ],
-                      ),
+                        ),
+                        Icon(Icons.touch_app, size: 18, color: cs.onSurface.withOpacity(0.55)),
+                      ],
                     ),
                   ),
 
