@@ -445,9 +445,10 @@ class _SoundtrackSearchScreenState extends State<SoundtrackSearchScreen> {
                                 ),
                                 child: Row(
                                   children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: AppCoverImage(url250: hit.cover250, url500: hit.cover500, size: 56),
+                                    AppCoverImage(
+                                      pathOrUrl: (hit.cover500 != null && hit.cover500!.trim().isNotEmpty) ? hit.cover500 : hit.cover250,
+                                      width: 56,
+                                      height: 56,
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
