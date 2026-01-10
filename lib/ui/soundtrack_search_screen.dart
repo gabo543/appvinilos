@@ -745,7 +745,8 @@ class _SoundtrackSearchScreenState extends State<SoundtrackSearchScreen> {
 
   Widget _suggestionsView(ThemeData t) {
     final q = _titleCtrl.text.trim();
-    final show = _titleFocus.hasFocus && q.length >= 2 && (_suggestLoading || _suggestions.isNotEmpty);
+    // Autocompletado desde 1 letra (las sugerencias se muestran solo con foco).
+    final show = _titleFocus.hasFocus && q.length >= 1 && (_suggestLoading || _suggestions.isNotEmpty);
     if (!show) return const SizedBox.shrink();
 
     return Padding(

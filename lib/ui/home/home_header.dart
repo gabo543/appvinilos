@@ -210,82 +210,29 @@ class HomeHeader extends StatelessWidget {
                       border: Border.all(color: border),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(Icons.search, size: 20, color: cs.onSurface.withOpacity(0.88)),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Row(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
                             children: [
-                              Flexible(
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: onSearch,
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.library_music_outlined, size: 18, color: cs.onSurface.withOpacity(0.86)),
-                                          const SizedBox(width: 6),
-                                          Flexible(
-                                            child: Text(
-                                              context.tr('Discografías'),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: t.textTheme.bodyMedium?.copyWith(
-                                                color: cs.onSurface.withOpacity(0.80),
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              _HomeQuickChip(
+                                icon: Icons.library_music_outlined,
+                                label: context.tr('Discografías'),
+                                onTap: onSearch,
                               ),
-                              Text(
-                                ' / ',
-                                style: t.textTheme.bodyMedium?.copyWith(
-                                  color: cs.onSurface.withOpacity(0.55),
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              Flexible(
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: onSoundtracks,
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.local_movies_outlined, size: 18, color: cs.onSurface.withOpacity(0.86)),
-                                          const SizedBox(width: 6),
-                                          Flexible(
-                                            child: Text(
-                                              context.tr('Soundtrack'),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: t.textTheme.bodyMedium?.copyWith(
-                                                color: cs.onSurface.withOpacity(0.80),
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              _HomeQuickChip(
+                                icon: Icons.local_movies_outlined,
+                                label: context.tr('Soundtrack'),
+                                onTap: onSoundtracks,
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(width: 6),
                         Icon(Icons.touch_app, size: 18, color: cs.onSurface.withOpacity(0.55)),
                       ],
                     ),
@@ -354,6 +301,63 @@ class HomeHeader extends StatelessWidget {
     );
   }
 }
+
+class _HomeQuickChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _HomeQuickChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final isDark = t.brightness == Brightness.dark;
+
+    final border = cs.outline.withOpacity(isDark ? 0.80 : 1.0);
+
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.surface.withOpacity(isDark ? 0.55 : 0.85),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: cs.onSurface.withOpacity(0.86)),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: t.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurface.withOpacity(0.85),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
 
 class _IconPill extends StatelessWidget {
   final IconData icon;

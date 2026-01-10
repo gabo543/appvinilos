@@ -31,7 +31,7 @@ class TrackPreviewService {
 
   // Versionamos el prefijo para invalidar caches antiguas si mejoramos el algoritmo.
   // (Importante cuando antes se guardó un preview incorrecto para un título genérico.)
-  static const _prefsPrefix = 'trackPreview:v2:';
+  static const _prefsPrefix = 'trackPreview:v3:';
   static const _cacheTtl = Duration(days: 7);
 
   static String _safeCacheKey(String cacheKey) {
@@ -45,6 +45,8 @@ class TrackPreviewService {
     required String artist,
     required String title,
     String? album,
+    int? durationMs,
+    int? trackNumber,
   }) async {
     final a = artist.trim();
     final t = title.trim();
@@ -85,7 +87,7 @@ class TrackPreviewService {
     }
 
     // 2) Buscar en iTunes
-    final preview = await _findItunes(artist: a, title: t, album: al.isEmpty ? null : al);
+    final preview = await _findItunes(artist: a, title: t, album: al.isEmpty ? null : al, durationMs: durationMs, trackNumber: trackNumber);
 
     // 3) Guardar cache (incluye "no encontrado")
     _mem[key] = preview;
@@ -113,6 +115,8 @@ class TrackPreviewService {
     required String artist,
     required String title,
     String? album,
+    int? durationMs,
+    int? trackNumber,
   }) async {
     // Estrategia preferida cuando tenemos álbum:
     // 1) Encontrar el álbum (collection) en iTunes.
@@ -124,11 +128,32 @@ class TrackPreviewService {
         artist: artist,
         title: title,
         album: album,
+        durationMs: durationMs,
+        trackNumber: trackNumber,
       );
       if (viaAlbum != null) return viaAlbum;
     }
 
-    final term = [artist, title].where((e) => e.trim().isNotEmpty).join(' ');
+    final wantArtistKey = normalizeKey(artist);
+    final wantAlbumKey = normalizeKey(album ?? '');
+    final artistIsWildcard = wantArtistKey.isEmpty ||
+        wantArtistKey == 'various artists' ||
+        wantArtistKey == 'varios artistas' ||
+        wantArtistKey == 'various' ||
+        wantArtistKey == 'soundtrack' ||
+        wantArtistKey == 'original soundtrack';
+
+    // Si tenemos álbum, lo incluimos en el término de búsqueda para reducir falsos positivos
+    // (muy común en títulos genéricos de soundtracks).
+    String term;
+    if (wantAlbumKey.isNotEmpty) {
+      term = (artistIsWildcard ? [title, album] : [artist, title, album])
+          .where((e) => (e ?? '').toString().trim().isNotEmpty)
+          .map((e) => e.toString())
+          .join(' ');
+    } else {
+      term = [artist, title].where((e) => e.trim().isNotEmpty).join(' ');
+    }
     if (term.trim().isEmpty) return null;
 
     final url = Uri.parse(
@@ -153,6 +178,7 @@ class TrackPreviewService {
 
       int bestScore = -1;
       Map<String, dynamic>? best;
+      int bestAlbumMatch = 0;
 
       for (final r in results) {
         if (r is! Map<String, dynamic>) continue;
@@ -162,17 +188,93 @@ class TrackPreviewService {
         final gotArtist = normalizeKey((r['artistName'] ?? '').toString());
         final gotTitle = normalizeKey((r['trackName'] ?? '').toString());
         final gotAlbum = normalizeKey((r['collectionName'] ?? '').toString());
+        final gotArtistRaw = (r['artistName'] ?? '').toString();
+
+        final gotArtistRawLower = gotArtistRaw.toLowerCase();
+        final gotTitleRawLower = ((r['trackName'] ?? '')).toString().toLowerCase();
+        final gotAlbumRawLower = ((r['collectionName'] ?? '')).toString().toLowerCase();
+        final looksLikeImitation =
+            gotArtistRawLower.contains('karaoke') ||
+            gotArtistRawLower.contains('tribute') ||
+            gotArtistRawLower.contains('cover') ||
+            gotArtistRawLower.contains('sound-alike') ||
+            gotArtistRawLower.contains('originally performed') ||
+            gotArtistRawLower.contains('backing track') ||
+            gotArtistRawLower.contains('made famous') ||
+            gotArtistRawLower.contains('as made famous') ||
+            gotTitleRawLower.contains('karaoke') ||
+            gotTitleRawLower.contains('tribute') ||
+            gotTitleRawLower.contains('cover') ||
+            gotTitleRawLower.contains('sound-alike') ||
+            gotTitleRawLower.contains('originally performed') ||
+            gotAlbumRawLower.contains('karaoke') ||
+            gotAlbumRawLower.contains('tribute') ||
+            gotAlbumRawLower.contains('cover') ||
+            gotAlbumRawLower.contains('sound-alike') ||
+            gotAlbumRawLower.contains('originally performed');
 
         int score = 0;
 
-        if (gotArtist == wantArtist) score += 6;
-        if (gotArtist.contains(wantArtist) || wantArtist.contains(gotArtist)) score += 2;
+        // Si el artista de búsqueda es wildcard (p.ej. Various Artists), no usamos match por artista
+        // porque genera falsos positivos; en su lugar penalizamos versiones tipo karaoke/tribute/cover.
+        if (!artistIsWildcard) {
+          if (gotArtist == wantArtist) score += 6;
+          if (gotArtist.contains(wantArtist) || wantArtist.contains(gotArtist)) score += 2;
+        } else {
+          final raw = gotArtistRaw.toLowerCase();
+          if (raw.contains('karaoke') ||
+              raw.contains('tribute') ||
+              raw.contains('cover') ||
+              raw.contains('sound-alike') ||
+              raw.contains('originally performed') ||
+              raw.contains('backing track')) {
+            score -= 6;
+          }
+        }
+
+        if (looksLikeImitation) score -= 8;
 
         if (gotTitle == wantTitle) score += 8;
         if (gotTitle.contains(wantTitle) || wantTitle.contains(gotTitle)) score += 3;
 
-        if (wantAlbum.isNotEmpty && gotAlbum == wantAlbum) score += 2;
-        if (wantAlbum.isNotEmpty && (gotAlbum.contains(wantAlbum) || wantAlbum.contains(gotAlbum))) score += 1;
+        int albumMatch = 0;
+        if (wantAlbum.isNotEmpty && gotAlbum == wantAlbum) { score += 6; albumMatch = 2; }
+        if (wantAlbum.isNotEmpty && (gotAlbum.contains(wantAlbum) || wantAlbum.contains(gotAlbum))) {
+          score += 3;
+          if (albumMatch == 0) albumMatch = 1;
+        }
+
+        // Afinar por duración si la tenemos (reduce falsos positivos en títulos genéricos).
+        final gotMsRaw = r['trackTimeMillis'];
+        int? gotMs;
+        if (gotMsRaw is int) {
+          gotMs = gotMsRaw;
+        } else {
+          gotMs = int.tryParse((gotMsRaw ?? '').toString());
+        }
+        if (durationMs != null && durationMs > 0 && gotMs != null && gotMs > 0) {
+          final diff = (gotMs - durationMs).abs();
+          if (diff <= 2500) {
+            score += 3;
+          } else if (diff <= 7000) {
+            score += 1;
+          } else {
+            score -= 2;
+          }
+        }
+
+        // Bonus por número de pista (si está disponible).
+        final gotNumRaw = r['trackNumber'];
+        int? gotNum;
+        if (gotNumRaw is int) {
+          gotNum = gotNumRaw;
+        } else {
+          gotNum = int.tryParse((gotNumRaw ?? '').toString());
+        }
+        if (trackNumber != null && trackNumber > 0 && gotNum != null && gotNum > 0) {
+          if (gotNum == trackNumber) score += 2;
+          if ((gotNum - trackNumber).abs() == 1) score += 1;
+        }
 
         // Penaliza resultados muy distintos
         if (gotTitle.isEmpty || gotArtist.isEmpty) score -= 2;
@@ -180,10 +282,15 @@ class TrackPreviewService {
         if (score > bestScore) {
           bestScore = score;
           best = r;
+          bestAlbumMatch = albumMatch;
         }
       }
 
       if (best == null) return null;
+      if (artistIsWildcard && wantAlbum.isNotEmpty && bestAlbumMatch == 0) {
+        // En compilaciones (Various Artists), preferimos NO devolver un preview equivocado.
+        return null;
+      }
 
       final previewUrl = (best!['previewUrl'] as String?)?.trim() ?? '';
       if (previewUrl.isEmpty) return null;
@@ -210,6 +317,8 @@ class TrackPreviewService {
     required String artist,
     required String title,
     required String album,
+    int? durationMs,
+    int? trackNumber,
   }) async {
     final a = artist.trim();
     final t = title.trim();
@@ -255,6 +364,24 @@ class TrackPreviewService {
         if (collectionId == null) continue;
         final gotAlbum = normalizeKey((r['collectionName'] ?? '').toString());
         final gotArtist = normalizeKey((r['artistName'] ?? '').toString());
+        final gotArtistRaw = (r['artistName'] ?? '').toString();
+
+        final gotArtistRawLower = gotArtistRaw.toLowerCase();
+        final gotAlbumRawLower = ((r['collectionName'] ?? '')).toString().toLowerCase();
+        final looksLikeImitation =
+            gotArtistRawLower.contains('karaoke') ||
+            gotArtistRawLower.contains('tribute') ||
+            gotArtistRawLower.contains('cover') ||
+            gotArtistRawLower.contains('sound-alike') ||
+            gotArtistRawLower.contains('originally performed') ||
+            gotArtistRawLower.contains('backing track') ||
+            gotArtistRawLower.contains('made famous') ||
+            gotArtistRawLower.contains('as made famous') ||
+            gotAlbumRawLower.contains('karaoke') ||
+            gotAlbumRawLower.contains('tribute') ||
+            gotAlbumRawLower.contains('cover') ||
+            gotAlbumRawLower.contains('sound-alike') ||
+            gotAlbumRawLower.contains('originally performed');
 
         int score = 0;
         if (gotAlbum == wantAlbum) score += 14;
@@ -265,6 +392,9 @@ class TrackPreviewService {
           if (gotArtist == wantArtist) score += 3;
           if (gotArtist.contains(wantArtist) || wantArtist.contains(gotArtist)) score += 1;
         }
+
+        if (looksLikeImitation) score -= 8;
+
 
         // Bonus si parece soundtrack
         final dis = normalizeKey((r['collectionCensoredName'] ?? r['collectionName'] ?? '').toString());
@@ -316,11 +446,68 @@ class TrackPreviewService {
         if (previewUrl.isEmpty) continue;
 
         final gotTitle = normalizeKey((r['trackName'] ?? '').toString());
+        final gotArtistRaw = (r['artistName'] ?? '').toString();
+        final gotArtistRawLower = gotArtistRaw.toLowerCase();
+        final gotTitleRawLower = ((r['trackName'] ?? '')).toString().toLowerCase();
+        final gotAlbumRawLower = ((r['collectionName'] ?? '')).toString().toLowerCase();
+        final looksLikeImitation =
+            gotArtistRawLower.contains('karaoke') ||
+            gotArtistRawLower.contains('tribute') ||
+            gotArtistRawLower.contains('cover') ||
+            gotArtistRawLower.contains('sound-alike') ||
+            gotArtistRawLower.contains('originally performed') ||
+            gotArtistRawLower.contains('backing track') ||
+            gotArtistRawLower.contains('made famous') ||
+            gotArtistRawLower.contains('as made famous') ||
+            gotTitleRawLower.contains('karaoke') ||
+            gotTitleRawLower.contains('tribute') ||
+            gotTitleRawLower.contains('cover') ||
+            gotTitleRawLower.contains('sound-alike') ||
+            gotTitleRawLower.contains('originally performed') ||
+            gotAlbumRawLower.contains('karaoke') ||
+            gotAlbumRawLower.contains('tribute') ||
+            gotAlbumRawLower.contains('cover') ||
+            gotAlbumRawLower.contains('sound-alike') ||
+            gotAlbumRawLower.contains('originally performed');
         if (gotTitle.isEmpty) continue;
 
         int score = 0;
         if (gotTitle == wantTitle) score += 10;
         if (gotTitle.contains(wantTitle) || wantTitle.contains(gotTitle)) score += 4;
+
+        if (looksLikeImitation) score -= 8;
+
+        // Afinar por duración si la tenemos.
+        final gotMsRaw = r['trackTimeMillis'];
+        int? gotMs;
+        if (gotMsRaw is int) {
+          gotMs = gotMsRaw;
+        } else {
+          gotMs = int.tryParse((gotMsRaw ?? '').toString());
+        }
+        if (durationMs != null && durationMs > 0 && gotMs != null && gotMs > 0) {
+          final diff = (gotMs - durationMs).abs();
+          if (diff <= 2500) {
+            score += 3;
+          } else if (diff <= 7000) {
+            score += 1;
+          } else {
+            score -= 2;
+          }
+        }
+
+        // Bonus por número de pista.
+        final gotNumRaw = r['trackNumber'];
+        int? gotNum;
+        if (gotNumRaw is int) {
+          gotNum = gotNumRaw;
+        } else {
+          gotNum = int.tryParse((gotNumRaw ?? '').toString());
+        }
+        if (trackNumber != null && trackNumber > 0 && gotNum != null && gotNum > 0) {
+          if (gotNum == trackNumber) score += 2;
+          if ((gotNum - trackNumber).abs() == 1) score += 1;
+        }
 
         // Pequeño bonus si el artista de iTunes calza (si no es wildcard)
         if (!artistIsWildcard) {

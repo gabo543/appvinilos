@@ -957,8 +957,9 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final out = <Widget>[];
     for (int i = 0; i < items.length; i++) {
       final tr = items[i];
+      final usedArtist = (tr.artist ?? '').trim().isNotEmpty ? tr.artist!.trim() : artist;
       final liked = _likedKeys.contains(normalizeKey(tr.title));
-      final previewKey = '$artist||$album||${tr.title}';
+      final previewKey = '$usedArtist||$album||${tr.title}';
       out.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
@@ -983,9 +984,11 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
               if (artist.isNotEmpty)
                 TrackPreviewButton(
                   cacheKey: previewKey,
-                  artist: artist,
+                  artist: usedArtist,
                   album: album,
                   title: tr.title,
+                  durationMs: tr.lengthMs,
+                  trackNumber: tr.number,
                 ),
               IconButton(
                 tooltip: liked ? 'Quitar de canciones' : 'Guardar canción',

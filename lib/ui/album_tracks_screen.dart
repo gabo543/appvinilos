@@ -470,7 +470,8 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                     final idx = i ~/ 2;
                     final t = tracks[idx];
                     final liked = _likedKeys.contains(normalizeKey(t.title));
-                    final previewKey = '${widget.artistName}||${widget.album.title}||${t.title}';
+                    final usedArtist = (t.artist ?? '').trim().isNotEmpty ? t.artist!.trim() : widget.artistName;
+                    final previewKey = '$usedArtist||${widget.album.title}||${t.title}';
                     return ListTile(
                       dense: true,
                       visualDensity: VisualDensity(vertical: -2),
@@ -480,9 +481,11 @@ class _AlbumTracksScreenState extends State<AlbumTracksScreen> {
                         children: [
                           TrackPreviewButton(
                             cacheKey: previewKey,
-                            artist: widget.artistName,
+                            artist: usedArtist,
                             album: widget.album.title,
                             title: t.title,
+                            durationMs: t.lengthMs,
+                            trackNumber: t.number,
                           ),
                           IconButton(
                             icon: Icon(liked ? Icons.favorite : Icons.favorite_border),

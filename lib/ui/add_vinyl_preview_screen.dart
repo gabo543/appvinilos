@@ -780,9 +780,10 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                     if (i.isOdd) return Divider(height: 1);
                     final idx = i ~/ 2;
                     final tr = _tracks[idx];
-                    final artist = widget.prepared.artist;
+                    final baseArtist = widget.prepared.artist;
                     final album = widget.prepared.album;
-                    final previewKey = '$artist||$album||${tr.title}';
+                    final usedArtist = (tr.artist ?? '').trim().isNotEmpty ? tr.artist!.trim() : baseArtist;
+                    final previewKey = '$usedArtist||$album||${tr.title}';
                     return ListTile(
                       dense: true,
                       visualDensity: VisualDensity(vertical: -2),
@@ -792,9 +793,11 @@ class _AddVinylPreviewScreenState extends State<AddVinylPreviewScreen> {
                         children: [
                           TrackPreviewButton(
                             cacheKey: previewKey,
-                            artist: artist,
+                            artist: usedArtist,
                             album: album,
                             title: tr.title,
+                            durationMs: tr.lengthMs,
+                            trackNumber: tr.number,
                           ),
                           if ((tr.length ?? '').trim().isNotEmpty)
                             Text(

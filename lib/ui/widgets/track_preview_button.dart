@@ -14,6 +14,9 @@ class TrackPreviewButton extends StatefulWidget {
   final String artist;
   final String title;
   final String? album;
+  final int? durationMs;
+  final int? trackNumber;
+
 
   final double iconSize;
   final bool compact;
@@ -24,6 +27,8 @@ class TrackPreviewButton extends StatefulWidget {
     required this.artist,
     required this.title,
     this.album,
+    this.durationMs,
+    this.trackNumber,
     this.iconSize = 20,
     this.compact = true,
   });
@@ -77,6 +82,8 @@ class _TrackPreviewButtonState extends State<TrackPreviewButton> {
         artist: widget.artist,
         title: widget.title,
         album: widget.album,
+        durationMs: widget.durationMs,
+        trackNumber: widget.trackNumber,
       );
 
       // Si el usuario presionó Stop mientras cargaba, ignoramos este resultado.

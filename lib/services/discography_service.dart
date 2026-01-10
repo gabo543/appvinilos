@@ -169,12 +169,23 @@ class ExploreAlbumPage {
 class TrackItem {
   final int number;
   final String title;
+
+  /// Duración formateada (mm:ss) si está disponible.
   final String? length;
+
+  /// Duración cruda en milisegundos si está disponible.
+  final int? lengthMs;
+
+  /// Artista a nivel de pista (muy importante en compilaciones / soundtracks).
+  /// Puede ser null si no viene en la API.
+  final String? artist;
 
   TrackItem({
     required this.number,
     required this.title,
     this.length,
+    this.lengthMs,
+    this.artist,
   });
 }
 
@@ -636,7 +647,7 @@ class DiscographyService {
       final releaseId = (candidates[k]['id'] ?? '').toString().trim();
       if (releaseId.isEmpty) continue;
 
-      final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings&fmt=json');
+      final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings+artist-credits&fmt=json');
       final resRel = await _get(urlRel);
       if (resRel.statusCode != 200) continue;
 
@@ -767,7 +778,7 @@ class DiscographyService {
       final releaseId = (candidates[k]['id'] ?? '').toString().trim();
       if (releaseId.isEmpty) continue;
 
-      final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings&fmt=json');
+      final urlRel = Uri.parse('$_mbBase/release/$releaseId?inc=recordings+artist-credits&fmt=json');
       final resRel = await _get(urlRel);
       if (resRel.statusCode != 200) continue;
 
@@ -1191,9 +1202,31 @@ class DiscographyService {
     if (!q.toLowerCase().startsWith('the ')) addVar('The $q');
 
     String term(String s) {
-      final esc = _escLucene(s);
-      // Busca tanto por release-group como por release.
-      return '(releasegroup:"$esc" OR release:"$esc")';
+      // Coincidencia exacta por frase (mejor precisión).
+      final escPhrase = _escLucene(s);
+      final phrase = '(releasegroup:"$escPhrase" OR release:"$escPhrase")';
+
+      // Coincidencia parcial por tokens (prefijos). Esto permite que consultas
+      // como "bohemi" encuentren "Bohemian Rhapsody".
+      final rawToks = s
+          .split(RegExp(r'\s+'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final isSingleWord = rawToks.length <= 1;
+      final minTokLen = isSingleWord ? 3 : 2;
+
+      final toks = rawToks.where((e) => e.length >= minTokLen).toList();
+      if (toks.isEmpty) return phrase;
+
+      final prefix = toks
+          .map((t) {
+            final esc = _escLucene(t);
+            return '(releasegroup:${esc}* OR release:${esc}*)';
+          })
+          .join(' AND ');
+
+      return '($phrase OR ($prefix))';
     }
 
     final titleClause = variants.map(term).join(' OR ');
@@ -3004,7 +3037,7 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
     if (releaseId.isEmpty) return [];
 
     final urlRel = Uri.parse(
-      '$_mbBase/release/$releaseId?inc=recordings&fmt=json',
+      '$_mbBase/release/$releaseId?inc=recordings+artist-credits&fmt=json',
     );
     final resRel = await _get(urlRel);
     if (resRel.statusCode != 200) return [];
@@ -3017,14 +3050,31 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
 
     for (final m in media) {
       for (final t in (m['tracks'] as List? ?? [])) {
+        final title = (t is Map ? (t['title'] ?? '') : '').toString().trim();
+        final lenRaw = (t is Map ? t['length'] : null);
+        int? lenMs;
+        if (lenRaw is int) {
+          lenMs = lenRaw;
+        } else {
+          lenMs = int.tryParse((lenRaw ?? '').toString());
+        }
+
+        // En compilaciones/soundtracks, el artista viene a nivel de track/recording.
+        final ac = (t is Map ? (t['artist-credit'] as List?) : null) ??
+            (t is Map && t['recording'] is Map ? (t['recording']['artist-credit'] as List?) : null) ??
+            const <dynamic>[];
+        final trackArtist = _artistCreditToName(ac);
+
         tracks.add(
           TrackItem(
             number: n++,
-            title: t['title'],
-            length: _fmtMs(t['length']),
+            title: title,
+            length: _fmtMs(lenMs),
+            lengthMs: lenMs,
+            artist: trackArtist.isEmpty ? null : trackArtist,
           ),
         );
-      }
+}
     }
     return tracks;
   }
@@ -3125,7 +3175,7 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
       if (releaseId.isEmpty) continue;
 
       final urlRel = Uri.parse(
-        '$_mbBase/release/$releaseId?inc=recordings&fmt=json',
+        '$_mbBase/release/$releaseId?inc=recordings+artist-credits&fmt=json',
       );
       final resRel = await _get(urlRel);
       if (resRel.statusCode != 200) {
@@ -3672,6 +3722,35 @@ static Future<Set<String>> searchAlbumReleaseGroupsBySongRobust({
     if (ms == null) return null;
     final s = (ms / 1000).round();
     return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
+  static String _artistCreditToName(dynamic artistCredit) {
+    if (artistCredit == null) return '';
+    if (artistCredit is List) {
+      final sb = StringBuffer();
+      for (final it in artistCredit) {
+        if (it is! Map) continue;
+        final name = (it['name'] ??
+                (it['artist'] is Map ? (it['artist']['name'] ?? '') : '') ??
+                '')
+            .toString()
+            .trim();
+        if (name.isEmpty) continue;
+        sb.write(name);
+        final jp = (it['joinphrase'] ?? '').toString();
+        if (jp.isNotEmpty) sb.write(jp);
+      }
+      return sb.toString().trim();
+    }
+    if (artistCredit is Map) {
+      final name = (artistCredit['name'] ??
+              (artistCredit['artist'] is Map ? (artistCredit['artist']['name'] ?? '') : '') ??
+              '')
+          .toString()
+          .trim();
+      return name;
+    }
+    return '';
   }
 
   
