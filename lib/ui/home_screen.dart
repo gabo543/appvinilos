@@ -170,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _filterCountryQ = '';
   int? _filterYearFrom;
   int? _filterYearTo;
+  // ✅ Por defecto, orden/código estilo tienda: Artista.Album (ej: 1.2)
   VinylSortMode _sortMode = VinylSortMode.code;
 
   bool get _hasAnyFilter =>
@@ -347,6 +348,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     };
     ViewModeService.modeNotifier.addListener(_viewModeListener);
     _refreshHomeCounts();
+
+    // ✅ Asegura numeración 1.1 basada en inventario (numero).
+    // Si vienes de un backup antiguo, esto reindexa y deja: St Germain = 1.1, Alpha Blondy = 2.1, ...
+    Future.microtask(() async {
+      try {
+        final changed = await VinylDb.instance.ensureArtistAlbumCodesByNumeroOrder();
+        if (!mounted) return;
+        if (changed) {
+          _reloadAllData();
+        }
+      } catch (_) {
+        // No es crítico; la app puede seguir.
+      }
+    });
     _futureAll = VinylDb.instance.getAll();
     _futureArtists = VinylDb.instance.getArtistSummaries();
     _futureFav = VinylDb.instance.getFavorites();
@@ -884,10 +899,11 @@ Future<void> _loadViewMode() async {
   }
 
   String _vinylCode(Map<String, dynamic> v) {
-    final a = _asInt(v['artistNo']);
-    final b = _asInt(v['albumNo']);
-    if (a > 0 && b > 0) return '$a.$b';
-
+    // Código estilo "tienda": Artista.Album (ej: 1.2)
+    final aNo = _asInt(v['artistNo']);
+    final alNo = _asInt(v['albumNo']);
+    if (aNo > 0 && alNo > 0) return '$aNo.$alNo';
+    // Fallback (por si viene un registro viejo sin estos campos)
     final n = (v['numero'] ?? '').toString().trim();
     return n.isEmpty ? '—' : n;
   }

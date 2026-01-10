@@ -1616,6 +1616,15 @@ class BackupService {
       result.prefsApplied = true;
     }
 
+    // ✅ Normaliza el orden/código 1.1 (artistNo.albumNo) según inventario (numero).
+    // Esto evita que al importar queden artistas con numeración antigua (ej: kitaro = 1.1)
+    // cuando el inventario ya tiene otro orden.
+    try {
+      await VinylDb.instance.rebuildArtistAlbumCodesByNumeroOrder();
+    } catch (_) {
+      // No debe romper la importación si algo raro pasa.
+    }
+
     // Deja un backup local "normalizado" post-import (con rotación)
     await saveBackupNow(rotate: true);
 

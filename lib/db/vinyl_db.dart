@@ -856,6 +856,110 @@ Future<Map<String, dynamic>?> findByExact({
   // - Cada álbum del artista se numera 1..n (albumNo).
   // - El “código” que muestra la UI es: artistNo.albumNo (ej: 1.3)
 
+  /// Recalcula y reindexa `artistNo` y `albumNo` para TODA la colección
+  /// usando el orden de `numero` (inventario).
+  ///
+  /// Regla (determinista):
+  /// - Los artistas se ordenan por el `numero` más bajo que tengan en tu colección.
+  /// - Se asigna `artistNo = 1..N` en ese orden.
+  /// - Dentro de cada artista, los vinilos se ordenan por `numero` y se asigna
+  ///   `albumNo = 1..k`.
+  ///
+  /// Devuelve `true` si aplicó cambios.
+  Future<bool> rebuildArtistAlbumCodesByNumeroOrder() async {
+    final d = await db;
+
+    // Leemos lo mínimo necesario.
+    final rows = await d.query(
+      'vinyls',
+      columns: ['id', 'numero', 'artistKey', 'artistNo', 'albumNo'],
+      orderBy: 'numero ASC, id ASC',
+    );
+
+    if (rows.isEmpty) return false;
+
+    // Orden de artistas según primera aparición en la lista ordenada por numero.
+    final artistToNo = <String, int>{};
+    final nextAlbumNo = <String, int>{};
+    final updates = <int, Map<String, int>>{}; // id -> {artistNo, albumNo}
+
+    for (final r in rows) {
+      final id = _asInt(r['id']);
+      final key = (r['artistKey'] ?? '').toString().trim();
+      if (id <= 0 || key.isEmpty) continue;
+
+      if (!artistToNo.containsKey(key)) {
+        artistToNo[key] = artistToNo.length + 1;
+        nextAlbumNo[key] = 0;
+      }
+      nextAlbumNo[key] = (nextAlbumNo[key] ?? 0) + 1;
+
+      updates[id] = {
+        'artistNo': artistToNo[key]!,
+        'albumNo': nextAlbumNo[key]!,
+      };
+    }
+
+    bool changed = false;
+    for (final r in rows) {
+      final id = _asInt(r['id']);
+      final u = updates[id];
+      if (u == null) continue;
+      final curA = _asInt(r['artistNo']);
+      final curAl = _asInt(r['albumNo']);
+      if (curA != u['artistNo'] || curAl != u['albumNo']) {
+        changed = true;
+        break;
+      }
+    }
+
+    if (!changed) {
+      // Asegura que artist_orders exista y esté alineado (por si viene vacío).
+      final c = Sqflite.firstIntValue(await d.rawQuery('SELECT COUNT(*) FROM artist_orders')) ?? 0;
+      if (c == artistToNo.length) return false;
+    }
+
+    await d.transaction((txn) async {
+      // Rehacemos el mapping de artistas.
+      try { await txn.delete('artist_orders'); } catch (_) {}
+      for (final e in artistToNo.entries) {
+        await txn.insert(
+          'artist_orders',
+          {'artistKey': e.key, 'artistNo': e.value},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
+      // Actualizamos códigos por vinilo.
+      for (final e in updates.entries) {
+        await txn.update(
+          'vinyls',
+          {'artistNo': e.value['artistNo'], 'albumNo': e.value['albumNo']},
+          where: 'id = ?',
+          whereArgs: [e.key],
+        );
+      }
+    });
+
+    return true;
+  }
+
+  /// Chequeo rápido: si existen vinilos con código vacío (artistNo/albumNo = 0),
+  /// reindexamos UNA vez para que queden con formato 1.1, 1.2, etc.
+  ///
+  /// Importante: si el usuario ya editó los códigos manualmente (todos > 0),
+  /// no tocamos nada.
+  Future<bool> ensureArtistAlbumCodesByNumeroOrder() async {
+    final d = await db;
+    final rows = await d.rawQuery(
+      'SELECT COUNT(*) AS c FROM vinyls WHERE artistNo <= 0 OR albumNo <= 0',
+    );
+    if (rows.isEmpty) return false;
+    final c = _asInt(rows.first['c']);
+    if (c <= 0) return false;
+    return rebuildArtistAlbumCodesByNumeroOrder();
+  }
+
   /// Calcula (sin insertar) el próximo código de colección para un artista.
   ///
   /// Regla:
@@ -1062,6 +1166,8 @@ Future<Map<String, dynamic>?> findByExact({
   Future<void> updateVinylDetails({
     required int id,
     int? numero,
+    int? artistNo,
+    int? albumNo,
     required String artista,
     required String album,
     String? year,
@@ -1102,6 +1208,7 @@ Future<Map<String, dynamic>?> findByExact({
       final oldAl = (old['album'] ?? '').toString().trim();
       final oldKey = (old['artistKey'] ?? '').toString().trim();
       final aNo = _asInt(old['artistNo']);
+      final alNo = _asInt(old['albumNo']);
 
       // Evita colisión con otro registro
       if (oldA.toLowerCase() != a.toLowerCase() || oldAl.toLowerCase() != al.toLowerCase()) {
@@ -1119,13 +1226,50 @@ Future<Map<String, dynamic>?> findByExact({
           throw Exception('Ese vinilo ya existe en tu lista.');
         }
       }
-
       final newKey = _makeArtistKey(a);
-      if (newKey.isNotEmpty && newKey != oldKey && aNo > 0) {
-        // Mantiene el mismo número de artista para conservar tu orden.
+      final effectiveKey = newKey.isEmpty ? oldKey : newKey;
+
+      // Validación de código estilo catálogo (artistNo.albumNo)
+      if (artistNo != null && artistNo <= 0) {
+        throw Exception('Número de artista inválido.');
+      }
+      if (albumNo != null && albumNo <= 0) {
+        throw Exception('Número de disco inválido.');
+      }
+
+      final effectiveArtistNo = (artistNo ?? aNo);
+      final effectiveAlbumNo = (albumNo ?? alNo);
+
+      // Si cambias el número de artista, ese número debe ser único entre artistas.
+      if (artistNo != null && artistNo != aNo) {
+        final used = await txn.rawQuery(
+          'SELECT artistKey FROM artist_orders WHERE artistNo = ? LIMIT 1',
+          [artistNo],
+        );
+        if (used.isNotEmpty) {
+          final usedKey = (used.first['artistKey'] ?? '').toString().trim();
+          if (usedKey.isNotEmpty && usedKey != oldKey && usedKey != effectiveKey) {
+            throw Exception('Ese número de artista ya está usado.');
+          }
+        }
+      }
+
+      // Si cambias artistNo y/o albumNo, el código debe ser único.
+      if (artistNo != null || albumNo != null) {
+        final usedCode = await txn.rawQuery(
+          'SELECT id FROM vinyls WHERE artistNo = ? AND albumNo = ? AND id <> ? LIMIT 1',
+          [effectiveArtistNo, effectiveAlbumNo, id],
+        );
+        if (usedCode.isNotEmpty) {
+          throw Exception('Ese código ya está usado.');
+        }
+      }
+
+      // Mantén mapping artistKey -> artistNo (para conservar el orden)
+      if (effectiveKey.isNotEmpty && effectiveArtistNo > 0) {
         await txn.insert(
           'artist_orders',
-          {'artistKey': newKey, 'artistNo': aNo},
+          {'artistKey': effectiveKey, 'artistNo': effectiveArtistNo},
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
@@ -1134,9 +1278,11 @@ Future<Map<String, dynamic>?> findByExact({
         'vinyls',
         {
           if (numero != null) 'numero': numero,
+          if (albumNo != null) 'albumNo': effectiveAlbumNo,
+          if (artistNo != null) 'artistNo': effectiveArtistNo,
           'artista': a,
           'album': al,
-          'artistKey': newKey.isEmpty ? oldKey : newKey,
+          'artistKey': effectiveKey,
           if (year != null) 'year': year.trim().isEmpty ? null : year.trim(),
           if (country != null) 'country': country.trim().isEmpty ? null : country.trim(),
           if (condition != null) 'condition': condition.trim().isEmpty ? null : condition.trim(),
@@ -1146,6 +1292,33 @@ Future<Map<String, dynamic>?> findByExact({
         where: 'id = ?',
         whereArgs: [id],
       );
+
+      // Si el usuario cambió el número de artista, lo aplicamos a todos los vinilos del mismo artistKey.
+      if (artistNo != null) {
+        await txn.update(
+          'vinyls',
+          {'artistNo': effectiveArtistNo},
+          where: 'artistKey = ?',
+          whereArgs: [effectiveKey],
+        );
+        // Intenta mantener wishlist/trash consistentes (si existen columnas).
+        try {
+          await txn.update(
+            'wishlist',
+            {'artistNo': effectiveArtistNo},
+            where: 'artistKey = ?',
+            whereArgs: [effectiveKey],
+          );
+        } catch (_) {}
+        try {
+          await txn.update(
+            'trash',
+            {'artistNo': effectiveArtistNo},
+            where: 'artistKey = ?',
+            whereArgs: [effectiveKey],
+          );
+        } catch (_) {}
+      }
     });
   }
 

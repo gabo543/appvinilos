@@ -299,11 +299,16 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final mbid0 = (widget.vinyl['mbid'] as String?)?.trim() ?? '';
     final numero0 = int.tryParse((widget.vinyl['numero'] ?? '').toString()) ?? 0;
 
+    final artistNo0 = int.tryParse((widget.vinyl['artistNo'] ?? '').toString()) ?? 0;
+    final albumNo0 = int.tryParse((widget.vinyl['albumNo'] ?? '').toString()) ?? 0;
+
     final artistaCtrl = TextEditingController(text: artista0);
     final albumCtrl = TextEditingController(text: album0);
     final yearCtrl = TextEditingController(text: year0);
     final countryCtrl = TextEditingController(text: country0);
     final numeroCtrl = TextEditingController(text: (numero0 > 0) ? numero0.toString() : '');
+    final artistNoCtrl = TextEditingController(text: (artistNo0 > 0) ? artistNo0.toString() : '');
+    final albumNoCtrl = TextEditingController(text: (albumNo0 > 0) ? albumNo0.toString() : '');
     String condition = cond0.isEmpty ? 'VG+' : cond0;
     String format = fmt0.isEmpty ? 'LP' : fmt0;
 
@@ -424,6 +429,28 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
                       decoration: InputDecoration(labelText: context.tr('Número de vinilo')),
                     ),
                     const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: artistNoCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: InputDecoration(labelText: context.tr('Número de artista')),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: albumNoCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: InputDecoration(labelText: context.tr('Número de disco')),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: artistaCtrl,
                       textInputAction: TextInputAction.next,
@@ -541,11 +568,15 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
     final newYear = yearCtrl.text.trim();
     final newCountry = countryCtrl.text.trim();
     final newNumeroText = numeroCtrl.text.trim();
+    final newArtistNoText = artistNoCtrl.text.trim();
+    final newAlbumNoText = albumNoCtrl.text.trim();
     artistaCtrl.dispose();
     albumCtrl.dispose();
     yearCtrl.dispose();
     countryCtrl.dispose();
     numeroCtrl.dispose();
+    artistNoCtrl.dispose();
+    albumNoCtrl.dispose();
 
     if (saved != true) return;
 
@@ -563,10 +594,38 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       if (n != numero0) numeroToSave = n;
     }
 
+
+    int? artistNoToSave;
+    int? albumNoToSave;
+
+    if (newArtistNoText.isNotEmpty) {
+      final n = int.tryParse(newArtistNoText);
+      if (n == null || n <= 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart('Número inválido'))));
+        return;
+      }
+      final cur = int.tryParse((widget.vinyl['artistNo'] ?? '').toString()) ?? 0;
+      if (n != cur) artistNoToSave = n;
+    }
+
+    if (newAlbumNoText.isNotEmpty) {
+      final n = int.tryParse(newAlbumNoText);
+      if (n == null || n <= 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.trSmart('Número inválido'))));
+        return;
+      }
+      final cur = int.tryParse((widget.vinyl['albumNo'] ?? '').toString()) ?? 0;
+      if (n != cur) albumNoToSave = n;
+    }
+
     try {
       await VinylDb.instance.updateVinylDetails(
         id: id,
         numero: numeroToSave,
+        artistNo: artistNoToSave,
+        albumNo: albumNoToSave,
         artista: newArtist,
         album: newAlbum,
         year: newYear,
@@ -579,6 +638,12 @@ class _VinylDetailSheetState extends State<VinylDetailSheet> {
       // Actualiza el mapa local para reflejar cambios sin recargar.
       if (numeroToSave != null) {
         widget.vinyl['numero'] = numeroToSave;
+      }
+      if (artistNoToSave != null) {
+        widget.vinyl['artistNo'] = artistNoToSave;
+      }
+      if (albumNoToSave != null) {
+        widget.vinyl['albumNo'] = albumNoToSave;
       }
       widget.vinyl['artista'] = newArtist;
       widget.vinyl['album'] = newAlbum;
