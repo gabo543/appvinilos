@@ -120,7 +120,7 @@ class HomeHeader extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             // Evitar cortes raros (“Tu estanterí…”) en pantallas
                             // estrechas: si falta espacio, el texto se escala
@@ -210,26 +210,30 @@ class HomeHeader extends StatelessWidget {
                       border: Border.all(color: border),
                     ),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Icon(Icons.search, size: 20, color: cs.onSurface.withOpacity(0.88)),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              _HomeQuickChip(
-                                icon: Icons.library_music_outlined,
-                                label: context.tr('Discografías'),
-                                onTap: onSearch,
-                              ),
-                              _HomeQuickChip(
-                                icon: Icons.local_movies_outlined,
-                                label: context.tr('Soundtrack'),
-                                onTap: onSoundtracks,
-                              ),
-                            ],
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _HomeQuickChip(
+                                  icon: Icons.library_music_outlined,
+                                  label: context.tr('Discos'),
+                                  onTap: onSearch,
+                                ),
+                                const SizedBox(width: 8),
+                                _HomeQuickChip(
+                                  icon: Icons.local_movies_outlined,
+                                  label: context.tr('OST'),
+                                  onTap: onSoundtracks,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -329,7 +333,7 @@ class _HomeQuickChip extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(999),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: cs.surface.withOpacity(isDark ? 0.55 : 0.85),
               borderRadius: BorderRadius.circular(999),
@@ -338,7 +342,7 @@ class _HomeQuickChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 18, color: cs.onSurface.withOpacity(0.86)),
+                Icon(icon, size: 16, color: cs.onSurface.withOpacity(0.86)),
                 const SizedBox(width: 6),
                 Text(
                   label,
@@ -346,6 +350,7 @@ class _HomeQuickChip extends StatelessWidget {
                   style: t.textTheme.bodyMedium?.copyWith(
                     color: cs.onSurface.withOpacity(0.85),
                     fontWeight: FontWeight.w900,
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -505,6 +510,7 @@ class _StatCard extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: t.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w900,
+                    fontSize: 13,
                     color: cs.onSurface.withOpacity(0.82),
                   ),
                 ),
@@ -523,6 +529,7 @@ class _StatCard extends StatelessWidget {
                 textScaler: TextScaler.noScaling,
                 style: t.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w900,
+                    fontSize: 13,
                   letterSpacing: -0.4,
                 ),
               ),
@@ -573,13 +580,14 @@ class _ActionTile extends StatelessWidget {
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.2),
+                    style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900,
+                    fontSize: 13, letterSpacing: -0.2),
                   ),
                   const SizedBox(height: 3),
                   Text(

@@ -380,6 +380,8 @@ class AppStrings {
   "Papelera vacía": "Trash is empty",
   "Aquí aparecerán los vinilos que borres para que puedas recuperarlos.": "Deleted records will appear here so you can recover them.",
   "Colección vinilos": "Vinyl collection",
+  "Discos": "Records",
+  "OST": "OST",
 };
 
   static bool isEnglish(BuildContext context) {
