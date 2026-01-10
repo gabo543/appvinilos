@@ -226,7 +226,18 @@ class ManualUsoScreen extends StatelessWidget {
               child: Column(
                 children: [
                   _actionRow(context, icon: Icons.search, title: 'Buscar', desc: 'Busca en tu colección por artista o álbum.'),
-                  _actionRow(context, icon: Icons.library_music, title: 'Discografías', desc: 'Busca un artista, revisa álbumes y agrega a Lista o Deseos.'),
+                  _actionRow(
+                    context,
+                    icon: Icons.library_music,
+                    title: 'Discos',
+                    desc: 'En Inicio toca Discos para ir a Discografías: busca un artista, revisa álbumes y agrega a Lista o Deseos.',
+                  ),
+                  _actionRow(
+                    context,
+                    icon: Icons.local_movies_outlined,
+                    title: 'OST',
+                    desc: 'En Inicio toca OST para buscar bandas sonoras (película/serie/juego). Al escribir 1–2 letras aparecen sugerencias.',
+                  ),
                   const Divider(height: 10),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
@@ -258,8 +269,54 @@ class ManualUsoScreen extends StatelessWidget {
                   _actionRow(
                     context,
                     icon: Icons.local_movies_outlined,
-                    title: 'Soundtracks',
-                    desc: 'Busca bandas sonoras por título (película/serie/juego) y abre la ficha para agregar a Lista o Deseos.',
+                    title: 'OST (Soundtracks)',
+                    desc: 'Busca bandas sonoras por título (película/serie/juego) y abre la ficha (canciones) para agregar a Lista o Deseos.',
+                  ),
+                  const Divider(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                    child: Row(
+                      children: [
+                        Icon(Icons.local_movies_outlined, size: 14),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            context.tr('OST: iconos en resultados'),
+                            style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _actionRow(
+                    context,
+                    icon: Icons.format_list_bulleted,
+                    title: 'Lista',
+                    desc: 'Agrega el soundtrack a tu colección. Te pedirá condición y formato (LP).',
+                  ),
+                  _actionRow(
+                    context,
+                    icon: Icons.star_border,
+                    title: 'Fav',
+                    desc: 'Marca como favorito (requiere que el disco exista en tu colección).',
+                  ),
+                  _actionRow(
+                    context,
+                    icon: Icons.shopping_cart_outlined,
+                    title: 'Deseos',
+                    desc: 'Agrega a la wishlist y elige estado (por comprar / comprado).',
+                  ),
+                  _actionRow(
+                    context,
+                    icon: Icons.euro,
+                    title: '€ (Precios)',
+                    desc: 'Busca precios en tiendas activadas para ese soundtrack.',
+                  ),
+                  _actionRow(
+                    context,
+                    icon: Icons.grid_view_outlined,
+                    title: 'Cuadros / Lista',
+                    desc: 'Cambia la vista de resultados entre cards y lista compacta.',
                   ),
                   _actionRow(
                     context,

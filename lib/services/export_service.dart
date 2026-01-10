@@ -164,10 +164,10 @@ class ExportService {
   static Future<String?> exportPdfManual() async {
     final doc = pw.Document(theme: await _pdfTheme());
 
-    pw.Widget h1(String text) => pw.Text(text, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold));
+    pw.Widget h1(String text) => pw.Text(AppStrings.tRaw(text), style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold));
     pw.Widget h2(String text) => pw.Padding(
           padding: const pw.EdgeInsets.only(top: 10, bottom: 6),
-          child: pw.Text(text, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          child: pw.Text(AppStrings.tRaw(text), style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
         );
 
     pw.Widget bullet(String text) => pw.Padding(
@@ -176,12 +176,14 @@ class ExportService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text('•  ', style: const pw.TextStyle(fontSize: 11)),
-              pw.Expanded(child: pw.Text(text, style: const pw.TextStyle(fontSize: 11))),
+              pw.Expanded(child: pw.Text(AppStrings.tRaw(text), style: const pw.TextStyle(fontSize: 11))),
             ],
           ),
         );
 
     pw.Widget iconLine(String icon, String title, String desc) {
+      title = AppStrings.tRaw(title);
+      desc = AppStrings.tRaw(desc);
       final runes = icon.runes.length;
       final boxW = (runes <= 1) ? 18.0 : 28.0;
       final fs = (runes <= 1) ? 10.0 : 7.5;
@@ -226,13 +228,12 @@ class ExportService {
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 h1(AppStrings.tRaw('GaBoLP — Manual de uso')),
-                pw.Text('v4', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                pw.Text('v5', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
               ],
             ),
             pw.SizedBox(height: 6),
             pw.Text(
-              'Guía rápida de pantallas, botones y flujos.\n' +
-                  'En la app: Ajustes > Ayuda > Manual de uso.',
+              '${AppStrings.tRaw('Guía rápida de pantallas, botones y flujos.')}\n${AppStrings.tRaw('En la app: Ajustes > Ayuda > Manual de uso.')}',
               style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
             ),
             pw.SizedBox(height: 14),
@@ -240,13 +241,15 @@ class ExportService {
             h2('¿Para qué sirve la app?'),
             bullet('Registrar tu colección de vinilos (LPs) con artista, álbum, año, formato y condición.'),
             bullet('Mantener una lista de deseos (wishlist) para planificar compras.'),
-            bullet('Buscar discografías y agregar discos más rápido (código de barras, carátula o manual).'),
+            bullet('Buscar discografías y OST (soundtracks) y agregar discos más rápido (código de barras, carátula o manual).'),
             bullet('Revisar precios en tiendas seleccionadas y crear alertas (“Avísame si baja de…”).'),
             bullet('Respaldar y exportar: backups, CSV y PDF.'),
 
             h2('Botones y acciones más comunes'),
             iconLine('⌂', 'Inicio', 'Atajos: Buscar, Discografías, Ajustes y acceso a tus listas.'),
             iconLine('⚲', 'Buscar', 'Busca en tu colección por artista o álbum.'),
+            iconLine('DIS', 'Discos', 'En Inicio toca Discos para ir a Discografías: busca artistas y álbumes, y agrega a Lista o Deseos.'),
+            iconLine('OST', 'OST', 'En Inicio toca OST para buscar bandas sonoras. Al escribir 1–2 letras aparecen sugerencias.'),
             iconLine('+', 'Agregar', 'Agregar por escáner, carátula o a mano.'),
             iconLine('▦', 'Vinilos', 'Tu lista completa: filtra, ordena y abre fichas.'),
             iconLine('★', 'Favoritos', 'Marca vinilos destacados para encontrarlos rápido.'),
@@ -254,9 +257,16 @@ class ExportService {
             h2('Discografías: iconos'),
             iconLine('OJO', 'Ojo (filtros)', 'Muestra u oculta los buscadores de Álbum y Canción para tener más espacio.'),
             iconLine('⚲★', 'Plan Z (escaneo local)', 'Escanea tracklists ya cargados para encontrar en qué álbumes aparece la canción escrita (sin internet).'),
-            iconLine('MOV', 'Soundtracks', 'Busca bandas sonoras por título (película/serie/juego) y abre la ficha para agregar a Lista o Deseos.'),
+            iconLine('OST', 'OST (Soundtracks)', 'Busca bandas sonoras por título (película/serie/juego) y abre la ficha (canciones) para agregar a Lista o Deseos.'),
             iconLine('EXP', 'Brújula (Explorar)', 'Descubre discos por género, país y años. Desde ahí puedes abrir la ficha y agregar a Deseos.'),
             iconLine('SIM', 'Similares', 'Muestra artistas relacionados al artista seleccionado y te lleva a su discografía.'),
+
+            h2('OST: iconos en resultados'),
+            iconLine('LST', 'Lista', 'Agrega el soundtrack a tu colección. Te pedirá condición y formato (LP).'),
+            iconLine('FAV', 'Fav', 'Marca como favorito (requiere que el disco exista en tu colección).'),
+            iconLine('WIS', 'Deseos', 'Agrega a la wishlist y elige estado (por comprar / comprado).'),
+            iconLine('€', '€ (Precios)', 'Busca precios en tiendas activadas para ese soundtrack.'),
+            iconLine('V', 'Cuadros / Lista', 'Cambia la vista de resultados entre cards y lista compacta.'),
 
             iconLine('⚙', 'Ajustes', 'Backup, exportaciones, tiendas, alertas, apariencia y mantenimiento.'),
 
