@@ -167,6 +167,12 @@ class AppStrings {
   "Descubre discos por género, país y años. Desde ahí puedes abrir la ficha y agregar a Deseos.": "Discover records by genre, country and years. From there you can open details and add to Wishlist.",
   "Similares": "Similar",
   "Muestra artistas relacionados al artista seleccionado y te lleva a su discografía.": "Shows related artists for the selected artist and takes you to their discography.",
+  "Soundtracks": "Soundtracks",
+  "Busca bandas sonoras por título (película/serie/juego) y abre la ficha para agregar a Lista o Deseos.": "Search soundtracks by title (movie/series/game) and open details to add to Collection or Wishlist.",
+  "Escribe un título para buscar.": "Type a title to search.",
+  "Ej: Interstellar, Dune, The Last of Us": "e.g. Interstellar, Dune, The Last of Us",
+  "Escribe un título para buscar bandas sonoras. Ej: Interstellar, Dune, GTA.": "Type a title to search soundtracks. e.g. Interstellar, Dune, GTA.",
+  "Mostrando": "Showing",
 
   "Filtros": "Filters",
   "Fondo": "Background",

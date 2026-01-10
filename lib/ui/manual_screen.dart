@@ -257,6 +257,12 @@ class ManualUsoScreen extends StatelessWidget {
                   ),
                   _actionRow(
                     context,
+                    icon: Icons.local_movies_outlined,
+                    title: 'Soundtracks',
+                    desc: 'Busca bandas sonoras por título (película/serie/juego) y abre la ficha para agregar a Lista o Deseos.',
+                  ),
+                  _actionRow(
+                    context,
                     icon: Icons.explore,
                     title: 'Brújula (Explorar)',
                     desc: 'Descubre discos por género, país y años. Desde ahí puedes abrir la ficha y agregar a Deseos.',

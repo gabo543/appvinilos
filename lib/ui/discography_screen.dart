@@ -14,6 +14,7 @@ import 'widgets/app_cover_image.dart';
 import 'album_tracks_screen.dart';
 import 'app_logo.dart';
 import 'explore_screen.dart';
+import 'soundtrack_search_screen.dart';
 import 'similar_artists_screen.dart';
 import '../l10n/app_strings.dart';
 
@@ -2077,6 +2078,17 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                   visualDensity: VisualDensity.compact,
                   onPressed: () {
                     FocusScope.of(context).requestFocus(_artistFocus);
+                  },
+                ),
+                IconButton(
+                  tooltip: context.trSmart('Soundtracks'),
+                  icon: const Icon(Icons.local_movies_outlined),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _dismissKeyboard();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const SoundtrackSearchScreen()),
+                    );
                   },
                 ),
                 IconButton(

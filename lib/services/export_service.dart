@@ -226,7 +226,7 @@ class ExportService {
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
                 h1(AppStrings.tRaw('GaBoLP — Manual de uso')),
-                pw.Text('v3', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                pw.Text('v4', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
               ],
             ),
             pw.SizedBox(height: 6),
@@ -254,6 +254,7 @@ class ExportService {
             h2('Discografías: iconos'),
             iconLine('OJO', 'Ojo (filtros)', 'Muestra u oculta los buscadores de Álbum y Canción para tener más espacio.'),
             iconLine('⚲★', 'Plan Z (escaneo local)', 'Escanea tracklists ya cargados para encontrar en qué álbumes aparece la canción escrita (sin internet).'),
+            iconLine('MOV', 'Soundtracks', 'Busca bandas sonoras por título (película/serie/juego) y abre la ficha para agregar a Lista o Deseos.'),
             iconLine('EXP', 'Brújula (Explorar)', 'Descubre discos por género, país y años. Desde ahí puedes abrir la ficha y agregar a Deseos.'),
             iconLine('SIM', 'Similares', 'Muestra artistas relacionados al artista seleccionado y te lleva a su discografía.'),
 

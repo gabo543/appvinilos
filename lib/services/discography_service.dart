@@ -1123,6 +1123,452 @@ class DiscographyService {
     return ExploreAlbumPage(items: out, total: total, offset: offset, limit: limit);
   }
 
+
+  // ==================================================
+  // 🎬 BUSCAR SOUNDTRACKS (release-groups)
+  // ==================================================
+  /// Busca release-groups marcados como Soundtrack (secondary-type) por título.
+  ///
+  /// Mantiene una búsqueda "estricta" (secondarytype:soundtrack) y, si no hay resultados,
+  /// un fallback por texto (OST / soundtrack) para cubrir casos mal etiquetados.
+  static Future<ExploreAlbumPage> searchSoundtracksByTitle({
+    required String title,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final raw = title.trim();
+    if (raw.isEmpty) {
+      return ExploreAlbumPage(items: const <ExploreAlbumHit>[], total: 0, offset: offset, limit: limit);
+    }
+
+    String squash(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // Permite: "Dune 2021" o "Dune (2021)" (año opcional al final).
+    String q = raw;
+    String? year;
+    final mYear = RegExp(r'(?:\(|\b)(19\d{2}|20\d{2})(?:\)|\b)\s*$').firstMatch(q);
+    if (mYear != null) {
+      year = mYear.group(1);
+      q = q.substring(0, mYear.start).trim();
+      q = q.replaceAll(RegExp(r'[\(\)\[\]]+$'), '').trim();
+      if (q.isEmpty) q = raw;
+    }
+
+    final hasHint = RegExp(r'\b(soundtrack|ost|bso|banda sonora|score)\b', caseSensitive: false).hasMatch(raw);
+
+    // Variantes de búsqueda: mantenemos el título original y agregamos variantes "limpias".
+    final variants = <String>[];
+    void addVar(String s) {
+      final v = squash(s);
+      if (v.length < 2) return;
+      if (!variants.contains(v)) variants.add(v);
+    }
+
+    addVar(q);
+
+    // Variante extra: remueve sufijos/prefijos típicos (pero nunca borra la original).
+    var cleaned = q;
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'\b(original\s+motion\s+picture\s+soundtrack|motion\s+picture\s+soundtrack|original\s+soundtrack|official\s+soundtrack)\b',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp(r'\b(soundtrack|ost|bso|b\.s\.o\.|banda\s+sonora|score)\b', caseSensitive: false),
+      '',
+    );
+    cleaned = squash(cleaned);
+    if (cleaned.isNotEmpty && cleaned.length >= 3) addVar(cleaned);
+
+    // Variantes por separación típica.
+    if (q.contains(':')) addVar(q.split(':').first);
+    if (q.contains(' - ')) addVar(q.split(' - ').first);
+    if (q.contains('-') && !q.contains(' - ')) addVar(q.split('-').first);
+
+    // Variante "The ..." (mejora casos como "Last of Us" → "The Last of Us").
+    if (!q.toLowerCase().startsWith('the ')) addVar('The $q');
+
+    String term(String s) {
+      final esc = _escLucene(s);
+      // Busca tanto por release-group como por release.
+      return '(releasegroup:"$esc" OR release:"$esc")';
+    }
+
+    final titleClause = variants.map(term).join(' OR ');
+    final titleBlock = '($titleClause)';
+    final typesClause = '(primarytype:album OR primarytype:other)';
+
+    // Señales típicas: algunos soundtracks vienen mal etiquetados y solo aparecen por tags/texto.
+    final signalsClause = '('
+        'secondarytype:soundtrack OR '
+        'tag:soundtrack OR tag:ost OR tag:score OR '
+        'releasegroup:soundtrack OR releasegroup:ost OR releasegroup:score OR '
+        'releasegroup:"original soundtrack" OR releasegroup:"original motion picture soundtrack" OR '
+        'releasegroup:"music from" OR releasegroup:"banda sonora"'
+        ')';
+
+    bool looksLikeSoundtrack(String title, String disambiguation) {
+      final s = '${title.trim()} ${disambiguation.trim()}'.toLowerCase();
+      if (s.contains('soundtrack')) return true;
+      if (RegExp(r'\bost\b').hasMatch(s)) return true;
+      if (s.contains('original soundtrack')) return true;
+      if (s.contains('motion picture soundtrack')) return true;
+      if (s.contains('music from')) return true;
+      if (s.contains('banda sonora')) return true;
+      if (s.contains(' bso ')) return true;
+      if (s.endsWith(' bso')) return true;
+      if (s.startsWith('bso ')) return true;
+      if (s.contains('score')) return true;
+      return false;
+    }
+
+    int scoreHit({
+      required String title,
+      required String artist,
+      required String? yearStr,
+      required bool hasSoundtrackSecondary,
+      required String disambiguation,
+    }) {
+      final t = title.toLowerCase();
+      final ql = q.toLowerCase();
+      int score = 0;
+
+      if (hasSoundtrackSecondary) score += 260;
+      if (looksLikeSoundtrack(title, disambiguation)) score += 140;
+
+      if (t == ql) score += 90;
+      if (t.contains(ql)) score += 35;
+
+      if (hasHint && looksLikeSoundtrack(title, disambiguation)) score += 40;
+
+      if (year != null && yearStr != null && yearStr.startsWith(year!)) score += 20;
+
+      if (artist.toLowerCase() == 'various artists') score += 5;
+
+      return score;
+    }
+
+    Future<ExploreAlbumPage> runLucene(
+      String lucene, {
+      bool filterLowConfidence = false,
+      int? fetchLimit,
+    }) async {
+      final fLimit = fetchLimit ?? limit;
+      final url = Uri.parse(
+        '$_mbBase/release-group/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$fLimit&offset=$offset',
+      );
+      final res = await _get(url);
+      if (res.statusCode != 200) {
+        return ExploreAlbumPage(items: const <ExploreAlbumHit>[], total: 0, offset: offset, limit: limit);
+      }
+
+      final data = jsonDecode(res.body);
+      final rawTotal = (data['count'] as int?) ?? 0;
+      final groups = (data['release-groups'] as List?) ?? [];
+
+      final scored = <Map<String, Object>>[];
+      final seen = <String>{};
+
+      for (final g in groups) {
+        if (g is! Map) continue;
+
+        // Acepta Album y Other (algunos soundtracks vienen como Other).
+        final pt = (g['primary-type'] ?? g['primaryType'] ?? '').toString().toLowerCase();
+        if (pt.isNotEmpty && pt != 'album' && pt != 'other') continue;
+
+        final id = (g['id'] ?? '').toString().trim();
+        final ttl = (g['title'] ?? '').toString().trim();
+        if (id.isEmpty || ttl.isEmpty) continue;
+        if (seen.contains(id)) continue;
+        seen.add(id);
+
+        final date = (g['first-release-date'] ?? '').toString();
+        final y = date.length >= 4 ? date.substring(0, 4) : null;
+
+        // Artist credit suele venir como lista.
+        String artistName = '';
+        final ac = g['artist-credit'];
+        if (ac is List && ac.isNotEmpty) {
+          final first = ac.first;
+          if (first is Map) {
+            final name = (first['name'] ?? '').toString().trim();
+            if (name.isNotEmpty) artistName = name;
+            final art = first['artist'];
+            if (artistName.isEmpty && art is Map) {
+              artistName = (art['name'] ?? '').toString().trim();
+            }
+          }
+        } else if (ac is Map) {
+          artistName = (ac['name'] ?? '').toString().trim();
+        }
+        artistName = artistName.isEmpty ? '—' : artistName;
+
+        final disambiguation = (g['disambiguation'] ?? '').toString().trim();
+        bool hasSoundtrackSecondary = false;
+        final sec = g['secondary-types'] ?? g['secondaryTypes'];
+        if (sec is List) {
+          hasSoundtrackSecondary = sec.any((e) => e.toString().toLowerCase() == 'soundtrack');
+        }
+
+        final score = scoreHit(
+          title: ttl,
+          artist: artistName,
+          yearStr: y,
+          hasSoundtrackSecondary: hasSoundtrackSecondary,
+          disambiguation: disambiguation,
+        );
+
+        final hit = ExploreAlbumHit(
+          releaseGroupId: id,
+          title: ttl,
+          artistName: artistName,
+          year: y,
+          cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+          cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+        );
+
+        scored.add({'hit': hit, 'score': score});
+      }
+
+      scored.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+      var hits = scored.map((e) => e['hit'] as ExploreAlbumHit).toList();
+
+      if (filterLowConfidence) {
+        final filtered = <ExploreAlbumHit>[];
+        for (final e in scored) {
+          final s = e['score'] as int;
+          // 140: keyword fuerte o secundario soundtrack.
+          if (s >= 140) filtered.add(e['hit'] as ExploreAlbumHit);
+        }
+        if (filtered.isNotEmpty) hits = filtered;
+      }
+
+      if (hits.length > limit) hits = hits.sublist(0, limit);
+
+      return ExploreAlbumPage(items: hits, total: rawTotal, offset: offset, limit: limit);
+    }
+
+    String strictLucene([String? y]) {
+      final yClause = (y != null && y.isNotEmpty) ? ' AND firstreleasedate:${_escLucene(y)}*' : '';
+      return '$typesClause AND secondarytype:soundtrack AND $titleBlock$yClause';
+    }
+
+    String hintedLucene([String? y]) {
+      final yClause = (y != null && y.isNotEmpty) ? ' AND firstreleasedate:${_escLucene(y)}*' : '';
+      return '$typesClause AND $signalsClause AND $titleBlock$yClause';
+    }
+
+    String broadLucene([String? y]) {
+      final yClause = (y != null && y.isNotEmpty) ? ' AND firstreleasedate:${_escLucene(y)}*' : '';
+      return '$typesClause AND $titleBlock$yClause';
+    }
+
+    // 1) Estricto: secondarytype:soundtrack (con año opcional).
+    if (year != null) {
+      final p = await runLucene(strictLucene(year));
+      if (p.total > 0 || p.items.isNotEmpty) return p;
+    }
+    final p1 = await runLucene(strictLucene());
+    if (p1.total > 0 || p1.items.isNotEmpty) return p1;
+
+    // 2) Hinted: usa tags/texto para casos mal etiquetados.
+    if (year != null) {
+      final p = await runLucene(hintedLucene(year));
+      if (p.total > 0 || p.items.isNotEmpty) return p;
+    }
+    final p2 = await runLucene(hintedLucene());
+    if (p2.total > 0 || p2.items.isNotEmpty) return p2;
+
+    // 3) Muy amplio por título + ranking/filtrado de confianza (mejor que devolver vacío).
+    int fetchLimit = limit * 3;
+    if (fetchLimit < limit) fetchLimit = limit;
+    if (fetchLimit > 100) fetchLimit = 100;
+
+    if (year != null) {
+      final p = await runLucene(broadLucene(year), filterLowConfidence: true, fetchLimit: fetchLimit);
+      if (p.items.isNotEmpty) return p;
+    }
+    return runLucene(broadLucene(), filterLowConfidence: true, fetchLimit: fetchLimit);
+  }
+
+  /// Autocompletado para Soundtracks (desde 2 letras).
+  ///
+  /// Esta búsqueda está optimizada para *sugerencias* (rápida y tolerante a parcial):
+  /// - Usa prefijos con wildcard (token*) en `releasegroup:` y `release:`.
+  /// - Prioriza resultados con secondary-type `soundtrack` o señales típicas (OST/score).
+  /// - Evita traer demasiados resultados para no saturar MusicBrainz.
+  static Future<List<ExploreAlbumHit>> autocompleteSoundtracks({
+    required String title,
+    int limit = 10,
+  }) async {
+    final raw = title.trim();
+    if (raw.length < 2) return <ExploreAlbumHit>[];
+
+    String squash(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // Limpia caracteres muy ruidosos para consultas parciales.
+    var q = raw;
+    q = q.replaceAll(RegExp(r'[\(\)\[\]\{\}"]'), ' ');
+    q = squash(q);
+    if (q.length < 2) return <ExploreAlbumHit>[];
+
+    // Tokens para AND (ignora tokens de 1 letra para reducir ruido).
+    final toks = q
+        .split(RegExp(r'\s+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty && e.length >= 2)
+        .toList();
+    if (toks.isEmpty) return <ExploreAlbumHit>[];
+
+    final typesClause = '(primarytype:album OR primarytype:other)';
+    final signalsClause = '(' 
+        'secondarytype:soundtrack OR '
+        'tag:soundtrack OR tag:ost OR tag:score OR '
+        'releasegroup:soundtrack OR releasegroup:ost OR releasegroup:score OR '
+        'releasegroup:"original soundtrack" OR releasegroup:"original motion picture soundtrack" OR '
+        'releasegroup:"music from" OR releasegroup:"banda sonora"'
+        ')';
+
+    String tokClause(String t) {
+      final esc = _escLucene(t);
+      // Prefijo para parcial.
+      return '(releasegroup:${esc}* OR release:${esc}*)';
+    }
+
+    final titleClause = toks.map(tokClause).join(' AND ');
+
+    bool looksLikeSoundtrack(String title, String disambiguation) {
+      final s = '${title.trim()} ${disambiguation.trim()}'.toLowerCase();
+      if (s.contains('soundtrack')) return true;
+      if (RegExp(r'\bost\b').hasMatch(s)) return true;
+      if (s.contains('original soundtrack')) return true;
+      if (s.contains('motion picture soundtrack')) return true;
+      if (s.contains('music from')) return true;
+      if (s.contains('banda sonora')) return true;
+      if (s.contains('score')) return true;
+      return false;
+    }
+
+    int scoreHit({
+      required String title,
+      required String artist,
+      required bool hasSoundtrackSecondary,
+      required String disambiguation,
+    }) {
+      final t = title.toLowerCase();
+      final ql = q.toLowerCase();
+      int score = 0;
+      if (hasSoundtrackSecondary) score += 240;
+      if (looksLikeSoundtrack(title, disambiguation)) score += 140;
+      if (t == ql) score += 80;
+      if (t.contains(ql)) score += 40;
+      if (artist.toLowerCase() == 'various artists') score += 5;
+      return score;
+    }
+
+    Future<List<ExploreAlbumHit>> runLucene(String lucene, {bool filterLowConfidence = false}) async {
+      // Para sugerencias: un fetch un poco más alto y luego recorte.
+      int fetchLimit = limit * 3;
+      if (fetchLimit < 20) fetchLimit = 20;
+      if (fetchLimit > 50) fetchLimit = 50;
+
+      final url = Uri.parse(
+        '$_mbBase/release-group/?query=${Uri.encodeQueryComponent(lucene)}&fmt=json&limit=$fetchLimit&offset=0',
+      );
+      final res = await _get(url);
+      if (res.statusCode != 200) return <ExploreAlbumHit>[];
+
+      final data = jsonDecode(res.body);
+      final groups = (data['release-groups'] as List?) ?? [];
+
+      final scored = <Map<String, Object>>[];
+      final seen = <String>{};
+
+      for (final g in groups) {
+        if (g is! Map) continue;
+        final pt = (g['primary-type'] ?? g['primaryType'] ?? '').toString().toLowerCase();
+        if (pt.isNotEmpty && pt != 'album' && pt != 'other') continue;
+
+        final id = (g['id'] ?? '').toString().trim();
+        final ttl = (g['title'] ?? '').toString().trim();
+        if (id.isEmpty || ttl.isEmpty) continue;
+        if (seen.contains(id)) continue;
+        seen.add(id);
+
+        final date = (g['first-release-date'] ?? '').toString();
+        final y = date.length >= 4 ? date.substring(0, 4) : null;
+
+        String artistName = '';
+        final ac = g['artist-credit'];
+        if (ac is List && ac.isNotEmpty) {
+          final first = ac.first;
+          if (first is Map) {
+            final name = (first['name'] ?? '').toString().trim();
+            if (name.isNotEmpty) artistName = name;
+            final art = first['artist'];
+            if (artistName.isEmpty && art is Map) {
+              artistName = (art['name'] ?? '').toString().trim();
+            }
+          }
+        } else if (ac is Map) {
+          artistName = (ac['name'] ?? '').toString().trim();
+        }
+        artistName = artistName.isEmpty ? '—' : artistName;
+
+        final disambiguation = (g['disambiguation'] ?? '').toString().trim();
+        bool hasSoundtrackSecondary = false;
+        final sec = g['secondary-types'] ?? g['secondaryTypes'];
+        if (sec is List) {
+          hasSoundtrackSecondary = sec.any((e) => e.toString().toLowerCase() == 'soundtrack');
+        }
+
+        final score = scoreHit(
+          title: ttl,
+          artist: artistName,
+          hasSoundtrackSecondary: hasSoundtrackSecondary,
+          disambiguation: disambiguation,
+        );
+
+        final hit = ExploreAlbumHit(
+          releaseGroupId: id,
+          title: ttl,
+          artistName: artistName,
+          year: y,
+          cover250: 'https://coverartarchive.org/release-group/$id/front-250',
+          cover500: 'https://coverartarchive.org/release-group/$id/front-500',
+        );
+
+        scored.add({'hit': hit, 'score': score});
+      }
+
+      scored.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+
+      var hits = scored.map((e) => e['hit'] as ExploreAlbumHit).toList();
+      if (filterLowConfidence) {
+        final filtered = <ExploreAlbumHit>[];
+        for (final e in scored) {
+          final s = e['score'] as int;
+          if (s >= 140) filtered.add(e['hit'] as ExploreAlbumHit);
+        }
+        if (filtered.isNotEmpty) hits = filtered;
+      }
+
+      if (hits.length > limit) hits = hits.sublist(0, limit);
+      return hits;
+    }
+
+    // 1) Con señales (mejor precisión).
+    final lucene1 = '$typesClause AND $signalsClause AND $titleClause';
+    final hits1 = await runLucene(lucene1);
+    if (hits1.isNotEmpty) return hits1;
+
+    // 2) Fallback: amplio por título, pero filtrado por confianza.
+    final lucene2 = '$typesClause AND $titleClause';
+    return runLucene(lucene2, filterLowConfidence: true);
+  }
+
   // ============================================
   // 🎵 BUSCAR CANCIÓN (para filtrar discografía)
   // ============================================
