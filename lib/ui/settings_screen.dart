@@ -159,24 +159,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     if (!mounted) return;
+
+    final coversProg = ValueNotifier<CoverDownloadProgress>(
+      const CoverDownloadProgress(total: 0, processed: 0, downloaded: 0, skipped: 0, currentId: 0),
+    );
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) {
-          final t = _coversTotal <= 0 ? 'Preparando…' : '$_coversDone / $_coversTotal';
-          final p = (_coversTotal <= 0) ? null : (_coversDone / _coversTotal).clamp(0.0, 1.0);
+      builder: (ctx) => ValueListenableBuilder<CoverDownloadProgress>(
+        valueListenable: coversProg,
+        builder: (ctx, p0, _) {
+          final total = p0.total;
+          final processed = p0.processed;
+          final t = (total <= 0) ? context.tr('Preparando…') : '$processed / $total';
+          final prog = (total <= 0) ? null : (processed / total).clamp(0.0, 1.0);
+
           return AlertDialog(
             title: Text(context.tr('Descargando carátulas')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (p == null) LinearProgressIndicator() else LinearProgressIndicator(value: p),
-                SizedBox(height: 12),
-                Text(t),
-                SizedBox(height: 6),
-                Text(context.tr('Esto deja tus carátulas guardadas para ver offline.'), style: TextStyle(fontSize: 14)),
+                if (prog == null)
+                  const LinearProgressIndicator()
+                else
+                  LinearProgressIndicator(value: prog),
+                const SizedBox(height: 12),
+                Text(t, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                if (total > 0) ...[
+                  Text(
+                    '${context.tr('Descargadas')}: ${p0.downloaded}   •   ${context.tr('Omitidas')}: ${p0.skipped}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                Text('${context.tr('Faltantes')}: $total', style: const TextStyle(fontSize: 14)),
+                const SizedBox(height: 6),
+                Text(
+                  context.tr('Esto deja tus carátulas guardadas para ver offline.'),
+                  style: const TextStyle(fontSize: 14),
+                ),
               ],
             ),
           );
@@ -184,14 +208,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
 
+
     try {
       final res = await CoverCacheService.downloadMissingCovers(
-        onProgress: (d, tot) {
-          if (!mounted) return;
-          setState(() {
-            _coversDone = d;
-            _coversTotal = tot;
-          });
+        onProgress: (p) {
+          // Actualiza el diálogo en vivo (sin depender del setState del SettingsScreen).
+          coversProg.value = p;
+          _coversDone = p.processed;
+          _coversTotal = p.total;
         },
       );
       if (mounted) Navigator.of(context).pop();
@@ -200,6 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) Navigator.of(context).pop();
       _snack('No se pudo descargar carátulas: $e');
     } finally {
+      coversProg.dispose();
       if (!mounted) return;
       setState(() {
         _downloadingCovers = false;

@@ -15,6 +15,22 @@ class CoverDownloadResult {
   String summary() => 'Carátulas: $downloaded descargadas, $skipped omitidas (de $total).';
 }
 
+class CoverDownloadProgress {
+  final int total;
+  final int processed;
+  final int downloaded;
+  final int skipped;
+  final int currentId;
+
+  const CoverDownloadProgress({
+    required this.total,
+    required this.processed,
+    required this.downloaded,
+    required this.skipped,
+    required this.currentId,
+  });
+}
+
 /// Descarga carátulas faltantes para dejarlas offline.
 ///
 /// Reglas:
@@ -112,7 +128,7 @@ class CoverCacheService {
   }
 
   static Future<CoverDownloadResult> downloadMissingCovers({
-    void Function(int done, int total)? onProgress,
+    void Function(CoverDownloadProgress p)? onProgress,
     Duration delayBetween = const Duration(milliseconds: 450),
   }) async {
     final db = await VinylDb.instance.db;
@@ -138,9 +154,14 @@ class CoverCacheService {
     }
 
     final total = candidates.length;
-    int done = 0;
+    int processed = 0;
     int ok = 0;
     int skipped = 0;
+
+    // ✅ Importante: avisamos el total al principio para que la UI muestre “0 / N” al tiro.
+    onProgress?.call(
+      CoverDownloadProgress(total: total, processed: 0, downloaded: 0, skipped: 0, currentId: 0),
+    );
 
     for (final c in candidates) {
       final id = c['id'] as int;
@@ -184,6 +205,9 @@ class CoverCacheService {
       // Thumb (250) separado para listas rápidas (si existe URL 250).
       if (url250 != null) {
         localThumb = await _downloadWithRetries(url250, baseName: base, suffix: 'thumb');
+        // Nota: por ahora no guardamos thumbPath en DB, porque el esquema actual usa solo coverPath.
+        // Queda descargado igual en /covers para lecturas rápidas futuras.
+        (localThumb);
       }
 
       if (localFull != null) {
@@ -202,8 +226,17 @@ class CoverCacheService {
         skipped += 1;
       }
 
-      done += 1;
-      onProgress?.call(done, total);
+      processed += 1;
+      onProgress?.call(
+        CoverDownloadProgress(
+          total: total,
+          processed: processed,
+          downloaded: ok,
+          skipped: skipped,
+          currentId: id,
+        ),
+      );
+
       if (delayBetween.inMilliseconds > 0) {
         await Future.delayed(delayBetween);
       }
