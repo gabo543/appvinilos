@@ -350,7 +350,7 @@ class _HomeQuickChip extends StatelessWidget {
                   style: t.textTheme.bodyMedium?.copyWith(
                     color: cs.onSurface.withOpacity(0.85),
                     fontWeight: FontWeight.w900,
-                    fontSize: 13,
+                    fontSize: 15,
                   ),
                 ),
               ],
@@ -510,7 +510,7 @@ class _StatCard extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: t.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w900,
-                    fontSize: 13,
+                    fontSize: 15,
                     color: cs.onSurface.withOpacity(0.82),
                   ),
                 ),
@@ -586,8 +586,11 @@ class _ActionTile extends StatelessWidget {
                     title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900,
-                    fontSize: 13, letterSpacing: -0.2),
+                    style: t.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                      letterSpacing: -0.2,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
